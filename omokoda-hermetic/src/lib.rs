@@ -1,43 +1,41 @@
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct HermeticState {
-    pub risk: f32,
-    pub polarity: f32,
-    pub rhythm: f32,
-    pub gender: f32,
+    fingerprint_bytes: [u8; 32],
+    think_depth: f64,
+    cooldown_ms: u64,
 }
 
-pub fn risk_score(prompt: &str) -> f32 {
-    let risky_terms = ["harm", "exploit", "steal", "malware", "bypass"];
-    let hits = risky_terms.iter().filter(|term| prompt.to_lowercase().contains(**term)).count() as f32;
-    (hits / risky_terms.len() as f32).clamp(0.0, 1.0)
-}
+impl HermeticState {
+    pub fn from_seed(name: &str, timestamp: u64) -> Self {
+        assert!(!name.is_empty(), "name cannot be empty");
 
-pub fn polarity_score(tool: &str, args: &str) -> f32 {
-    let signal = format!("{} {}", tool.to_lowercase(), args.to_lowercase());
-    if signal.contains("delete") || signal.contains("wipe") || signal.contains("drop") {
-        0.2
-    } else if signal.contains("create") || signal.contains("write") || signal.contains("birth") {
-        0.8
-    } else {
-        0.5
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(name.as_bytes());
+        hasher.update(&timestamp.to_le_bytes());
+        let digest = hasher.finalize();
+
+        let mut fingerprint_bytes = [0u8; 32];
+        fingerprint_bytes.copy_from_slice(digest.as_bytes());
+
+        let think_depth_raw = u64::from_le_bytes(fingerprint_bytes[0..8].try_into().unwrap());
+        let cooldown_raw = u64::from_le_bytes(fingerprint_bytes[8..16].try_into().unwrap());
+
+        Self {
+            fingerprint_bytes,
+            think_depth: think_depth_raw as f64 / u64::MAX as f64,
+            cooldown_ms: cooldown_raw,
+        }
     }
-}
 
-pub fn rhythm_check(cooldown: i64, elapsed: i64) -> bool {
-    elapsed >= cooldown
-}
-
-pub fn gender_balance(think: u32, act: u32) -> f32 {
-    let total = think + act;
-    if total == 0 {
-        return 0.5;
+    pub fn fingerprint(&self) -> String {
+        blake3::Hash::from(self.fingerprint_bytes).to_hex().to_string()
     }
-    let balance = think.min(act) as f32 / total as f32;
-    balance.clamp(0.0, 1.0)
-}
 
-pub fn apply_vibration_decay(agent: &mut crate::Agent) {
-    agent.consistency_score = (agent.consistency_score * 0.99).clamp(0.0, 1.0);
+    pub fn think_abstraction_depth(&self) -> f64 {
+        self.think_depth
+    }
+
+    pub fn act_cooldown_ms(&self) -> u64 {
+        self.cooldown_ms
+    }
 }

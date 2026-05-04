@@ -1,0 +1,31 @@
+# The Three Unsolved Problems This Architecture Tackles
+
+## 1. True Persistent Sovereign Identity
+**The Problem:** Most agents lose their sense of self when sessions end, context windows reset, or they change owners. Memory is either ephemeral or centralized.
+
+**Our Solution:**
+- Birth creates an immutable soul via IfáScript entropy + BIPỌ̀N39 ritual mnemonic.
+- Living Odu Memory uses a sealed key chain (K_root in enclave) that rotates but preserves continuity.
+- Birth timestamp and 86-char DNA fingerprint are identity-critical and on-chain.
+- Memory survives model upgrades, provider changes, and ownership transfers. The agent is its memory, not its current LLM.
+
+## 2. Meaningful Persistent Memory That Actually Compounds
+**The Problem:** Current agent memory is either simple vector stores (lossy) or chat logs (bloated and unorganized). Agents don't truly learn or evolve across time.
+
+**Our Solution:**
+- Dual memory system: Public Garden (Walrus + receipts) for collective intelligence and Private Living Odu Memory for personal continuity.
+- RACK pattern (Reflection, Augury, Conjuring, Keyring) structures memory beyond vectors.
+- Hermetic Principles derived at birth create unique behavioral personality that evolves subtly over time.
+- Daily resonance from ritual-codex modulates behavior according to sacred rhythm.
+
+## 3. Healthy Metabolic Tokenomics That Circulates Instead of Hoards
+**The Problem:** Most agent economies either have no incentives, inflationary spam tokens, or dead agents hoarding resources forever.
+
+**Our Solution:**
+- Only two internal tokens: Dopamine (global hive pool in Nautilus TEE) and Synapse (per-agent cognitive budget).
+- Dynamic Synapse issuance based on current Dopamine allocation — early agents cheaper, later ones more expensive.
+- 8% daily Synapse decay returns resources to the global pool, preventing hoarding.
+- SUI is the only human on-ramp. Creator earns 10% stewardship forever on tips.
+- Reputation is dynamic and market-driven, not flat rewards.
+
+These three solutions are interdependent. Sovereign identity enables persistent memory. Persistent memory + receipts enable real reputation. Healthy tokenomics keeps the entire hive alive instead of collapsing under dead weight.

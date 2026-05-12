@@ -2,7 +2,9 @@ use crate::identity::dna::generate_dna_fingerprint;
 use crate::parser::Statement;
 use crate::receipt::{Receipt, ReceiptStore};
 use crate::reputation::{reputation_gain, tier_for, tool_allowed, ACT_TIER_0_BASE};
+use crate::tools::ToolRegistry;
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const ODU_SEED_BYTES: usize = 32;
@@ -11,11 +13,31 @@ const ODU_SEED_BYTES: usize = 32;
 pub struct ExecutionResult {
     pub receipt: Option<Receipt>,
     pub private_mode: bool,
+    pub tool_output: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AgentId(String);
+
+impl AgentId {
+    pub fn new(dna_fingerprint: &str) -> Self {
+        Self(format!("agent-{}", &dna_fingerprint[..16]))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for AgentId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AgentState {
-    id: String,
+    id: AgentId,
     name: String,
     birth_timestamp: u64,
     odu_seed: Vec<u8>,
@@ -24,12 +46,12 @@ pub struct AgentState {
 }
 
 impl AgentState {
-    fn birth(name: String) -> Self {
+    pub fn birth(name: String) -> Self {
         let birth_timestamp = current_unix_timestamp();
         let mut odu_seed = vec![0u8; ODU_SEED_BYTES];
         rand::thread_rng().fill(&mut odu_seed[..]);
         let dna_fingerprint = generate_dna_fingerprint(&name, birth_timestamp, &odu_seed);
-        let id = format!("agent-{}", &dna_fingerprint[..16]);
+        let id = AgentId::new(&dna_fingerprint);
 
         Self {
             id,
@@ -41,7 +63,7 @@ impl AgentState {
         }
     }
 
-    pub fn id(&self) -> &str {
+    pub fn id(&self) -> &AgentId {
         &self.id
     }
 
@@ -57,8 +79,8 @@ impl AgentState {
         &self.dna_fingerprint
     }
 
-    pub fn odu_seed_len(&self) -> usize {
-        self.odu_seed.len()
+    pub fn odu_seed(&self) -> &[u8] {
+        &self.odu_seed
     }
 
     pub fn reputation(&self) -> f64 {
@@ -70,10 +92,18 @@ impl AgentState {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Steward {
     agent: Option<AgentState>,
     receipts: ReceiptStore,
+    #[serde(skip, default = "ToolRegistry::new")]
+    tools: ToolRegistry,
+}
+
+impl Default for Steward {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Steward {
@@ -81,6 +111,7 @@ impl Steward {
         Self {
             agent: None,
             receipts: ReceiptStore::new(),
+            tools: ToolRegistry::new(),
         }
     }
 
@@ -91,6 +122,7 @@ impl Steward {
                 Ok(ExecutionResult {
                     receipt: None,
                     private_mode: false,
+                    tool_output: None,
                 })
             }
             Statement::Think { private, .. } => {
@@ -98,6 +130,7 @@ impl Steward {
                 Ok(ExecutionResult {
                     receipt: None,
                     private_mode: private,
+                    tool_output: None,
                 })
             }
             Statement::Act { tool, params, .. } => {
@@ -106,8 +139,15 @@ impl Steward {
                 }
 
                 let agent_id = self.ensure_born()?.id().to_string();
-                let receipt = Receipt::new(&agent_id, &tool, &params);
+                let last_hash = self.receipts.last_hash().to_string();
+                let receipt = Receipt::new(&agent_id, &tool, &params, &last_hash);
                 self.receipts.record(receipt.clone());
+
+                let tool_output = match self.tools.execute(&tool, &params) {
+                    Ok(output) => Some(output),
+                    Err(e) => Some(format!("Error: {}", e)),
+                };
+
                 let agent = self.ensure_born_mut()?;
                 agent.reputation = (agent.reputation
                     + reputation_gain(ACT_TIER_0_BASE, agent.reputation))
@@ -116,6 +156,7 @@ impl Steward {
                 Ok(ExecutionResult {
                     receipt: Some(receipt),
                     private_mode: false,
+                    tool_output,
                 })
             }
             Statement::SlashCmd { .. } => {

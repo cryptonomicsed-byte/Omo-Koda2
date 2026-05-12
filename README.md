@@ -28,16 +28,23 @@ That is the entire public surface. Forever.
 
 ## Current Status
 
-**59/59 tests passing. Week 1 complete; first TODO execution slice started.**
+**63/63 tests passing. Sprint 1 complete.**
 
 ```text
 omokoda-core     parser       20/20  ✅
-omokoda-core     interpreter  15/15  ✅
+omokoda-core     interpreter  16/16  ✅
 omokoda-core     identity      5/5   ✅
-omokoda-core     receipts      8/8   ✅
-omokoda-core     sessions      3/3   ✅
+omokoda-core     receipts      4/4   ✅
+omokoda-core     sessions      6/6   ✅
+omokoda-core     privacy       4/4   ✅
 omokoda-hermetic soul          8/8   ✅
 ```
+
+**Verified Capabilities:**
+- [x] Encrypted session persistence with leakage prevention.
+- [x] Receipt hash-chaining and verification.
+- [x] Tier-based tool registry with read-only workspace tools.
+- [x] Strict `/private` provider enforcement policy.
 
 **Specs frozen:**
 - `specs/language.md` — EBNF grammar
@@ -48,7 +55,7 @@ omokoda-hermetic soul          8/8   ✅
 - `specs/stdlib.md` — internal module map
 - `specs/architecture.md` — seven-layer map
 
-**Next:** Structured Steward state, session persistence, private memory encryption, and receipt-chain hardening.
+**Next:** BIPỌ̀N39 mnemonic integration, Odu seed derivation, and ASCII pet identity expressions.
 
 ---
 

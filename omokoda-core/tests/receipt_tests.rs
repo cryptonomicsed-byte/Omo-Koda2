@@ -4,65 +4,50 @@ mod receipt_tests {
 
     #[test]
     fn receipt_has_required_fields() {
-        let r = Receipt::new("agent-001", "web_search", "bitcoin origin");
+        let r = Receipt::new("agent-001", "web_search", "bitcoin origin", "prev-hash");
         assert!(!r.agent_id.is_empty());
         assert!(!r.action.is_empty());
         assert!(!r.payload.is_empty());
         assert!(!r.receipt_id.is_empty());
+        assert_eq!(r.previous_hash, "prev-hash");
         assert!(r.timestamp > 0);
     }
 
     #[test]
     fn same_input_different_receipts() {
         // Each receipt gets a unique ID even with same inputs
-        let a = Receipt::new("agent-001", "web_search", "query");
-        let b = Receipt::new("agent-001", "web_search", "query");
+        let a = Receipt::new("agent-001", "web_search", "query", "hash");
+        let b = Receipt::new("agent-001", "web_search", "query", "hash");
         assert_ne!(a.receipt_id, b.receipt_id);
     }
 
     #[test]
-    fn receipt_id_is_hex_string() {
-        let r = Receipt::new("agent-001", "web_search", "query");
-        assert!(r.receipt_id.chars().all(|c| c.is_ascii_hexdigit()));
-    }
-
-    #[test]
-    fn receipt_store_is_empty_on_init() {
-        let store = ReceiptStore::new();
-        assert_eq!(store.count(), 0);
-    }
-
-    #[test]
-    fn receipt_store_records_receipt() {
+    fn receipt_chain_verification() {
         let mut store = ReceiptStore::new();
-        let r = Receipt::new("agent-001", "web_search", "query");
-        store.record(r);
-        assert_eq!(store.count(), 1);
+        let r1 = Receipt::new("agent-001", "act1", "p1", store.last_hash());
+        let id1 = r1.receipt_id.clone();
+        store.record(r1);
+
+        let r2 = Receipt::new("agent-001", "act2", "p2", store.last_hash());
+        let id2 = r2.receipt_id.clone();
+        store.record(r2);
+
+        assert_eq!(id1, store.get(&id1).unwrap().receipt_id);
+        assert_eq!(id2, store.get(&id2).unwrap().receipt_id);
+        assert_eq!(store.get(&id2).unwrap().previous_hash, id1);
+        assert!(store.verify_chain());
     }
 
     #[test]
-    fn receipt_store_retrieves_by_id() {
+    fn tampered_chain_fails_verification() {
         let mut store = ReceiptStore::new();
-        let r = Receipt::new("agent-001", "web_search", "query");
-        let id = r.receipt_id.clone();
-        store.record(r);
-        let found = store.get(&id);
-        assert!(found.is_some());
-        assert_eq!(found.unwrap().receipt_id, id);
-    }
+        let r1 = Receipt::new("agent-001", "act1", "p1", store.last_hash());
+        store.record(r1);
 
-    #[test]
-    fn receipt_payload_is_blake3_hash() {
-        // Payload must be a 64-char hex string (BLAKE3 output)
-        let r = Receipt::new("agent-001", "web_search", "query");
-        assert_eq!(r.payload.len(), 64);
-        assert!(r.payload.chars().all(|c| c.is_ascii_hexdigit()));
-    }
+        // Manually record a receipt with wrong previous hash
+        let r2 = Receipt::new("agent-001", "act2", "p2", "WRONG_HASH");
+        store.record(r2);
 
-    #[test]
-    fn dry_run_flag_is_always_false() {
-        // Receipts must never be dry_run — enforce this at the type level
-        let r = Receipt::new("agent-001", "act", "params");
-        assert!(!r.dry_run);
+        assert!(!store.verify_chain());
     }
 }

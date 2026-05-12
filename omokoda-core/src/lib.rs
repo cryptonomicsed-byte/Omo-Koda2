@@ -4,6 +4,8 @@ pub mod parser;
 pub mod receipt;
 pub mod reputation;
 pub mod session;
+pub mod tools;
+pub mod providers;
 
 use chrono::{DateTime, Utc};
 use rand::Rng;

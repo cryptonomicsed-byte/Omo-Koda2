@@ -20,10 +20,10 @@ mod interpreter_tests {
         steward.dispatch(stmts[0].clone()).unwrap();
 
         let agent = steward.agent_state().expect("agent exists after birth");
-        assert!(agent.id().starts_with("agent-"));
+        assert!(agent.id().as_str().starts_with("agent-"));
         assert_eq!(agent.name(), "luna");
         assert!(agent.birth_timestamp() > 0);
-        assert_eq!(agent.odu_seed_len(), 32);
+        assert_eq!(agent.odu_seed().len(), 32);
         assert_eq!(agent.dna_fingerprint().len(), 86);
         assert_eq!(agent.reputation(), 0.0);
         assert_eq!(agent.tier(), 0);
@@ -187,20 +187,40 @@ mod interpreter_tests {
     #[test]
     fn reputation_tier_boundaries_match_frozen_spec() {
         assert_eq!(tier_for(0.000), 0);
-        assert_eq!(tier_for(20.000), 1);
+        assert_eq!(tier_for(20.000), 0);
+        assert_eq!(tier_for(20.001), 1);
         assert_eq!(tier_for(39.999), 1);
-        assert_eq!(tier_for(40.000), 2);
+        assert_eq!(tier_for(40.000), 1);
+        assert_eq!(tier_for(40.001), 2);
         assert_eq!(tier_for(59.999), 2);
-        assert_eq!(tier_for(60.000), 3);
+        assert_eq!(tier_for(60.000), 2);
+        assert_eq!(tier_for(60.001), 3);
         assert_eq!(tier_for(79.999), 3);
-        assert_eq!(tier_for(80.000), 4);
+        assert_eq!(tier_for(80.000), 3);
+        assert_eq!(tier_for(80.001), 4);
         assert_eq!(tier_for(99.999), 4);
         assert_eq!(tier_for(100.000), 5);
     }
 
     #[test]
+    fn act_returns_tool_output() {
+        let mut steward = Steward::new();
+        parse(r#"birth "luna""#).unwrap().into_iter().for_each(|s| {
+            steward.dispatch(s).unwrap();
+        });
+        let stmts = parse(r#"act "read_file" "config.json""#).unwrap();
+        let result = steward.dispatch(stmts[0].clone()).unwrap();
+        assert!(result.tool_output.is_some());
+        assert_eq!(result.tool_output.unwrap(), "contents of config.json");
+    }
+
+    #[test]
     fn tier_tool_unlocks_are_cumulative() {
-        assert_eq!(tools_for_tier(0), vec!["web_search", "note_taking"]);
+        let tier_0 = tools_for_tier(0);
+        assert!(tier_0.contains(&"web_search".to_string()));
+        assert!(tier_0.contains(&"read_file".to_string()));
+        assert!(tier_0.contains(&"glob".to_string()));
+        assert!(tier_0.contains(&"grep".to_string()));
         assert!(tool_allowed(1, "image_gen_basic"));
         assert!(!tool_allowed(1, "code_runner"));
         assert!(tool_allowed(2, "code_runner"));

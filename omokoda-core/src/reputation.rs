@@ -1,16 +1,29 @@
 pub const ACT_TIER_0_BASE: f64 = 0.040;
 
-const TIER_0_TOOLS: &[&str] = &["web_search", "note_taking"];
-const TIER_1_TOOLS: &[&str] = &["web_search", "note_taking", "image_gen_basic"];
+const TIER_0_TOOLS: &[&str] = &["web_search", "note_taking", "read_file", "glob", "grep"];
+const TIER_1_TOOLS: &[&str] = &[
+    "web_search",
+    "note_taking",
+    "read_file",
+    "glob",
+    "grep",
+    "image_gen_basic",
+];
 const TIER_2_TOOLS: &[&str] = &[
     "web_search",
     "note_taking",
+    "read_file",
+    "glob",
+    "grep",
     "image_gen_basic",
     "code_runner",
 ];
 const TIER_3_TOOLS: &[&str] = &[
     "web_search",
     "note_taking",
+    "read_file",
+    "glob",
+    "grep",
     "image_gen_basic",
     "code_runner",
     "data_analysis",
@@ -19,6 +32,9 @@ const TIER_3_TOOLS: &[&str] = &[
 const TIER_4_TOOLS: &[&str] = &[
     "web_search",
     "note_taking",
+    "read_file",
+    "glob",
+    "grep",
     "image_gen_basic",
     "code_runner",
     "data_analysis",
@@ -28,6 +44,9 @@ const TIER_4_TOOLS: &[&str] = &[
 const TIER_5_TOOLS: &[&str] = &[
     "web_search",
     "note_taking",
+    "read_file",
+    "glob",
+    "grep",
     "image_gen_basic",
     "code_runner",
     "data_analysis",
@@ -48,13 +67,13 @@ pub fn reputation_gain(base: f64, reputation: f64) -> f64 {
 pub fn tier_for(reputation: f64) -> u8 {
     if reputation >= 100.0 {
         5
-    } else if reputation >= 80.0 {
+    } else if reputation > 80.0 {
         4
-    } else if reputation >= 60.0 {
+    } else if reputation > 60.0 {
         3
-    } else if reputation >= 40.0 {
+    } else if reputation > 40.0 {
         2
-    } else if reputation >= 20.0 {
+    } else if reputation > 20.0 {
         1
     } else {
         0

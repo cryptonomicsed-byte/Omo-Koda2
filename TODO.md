@@ -27,13 +27,15 @@ Generated from the `Audit phase` deep dive plus local review of the current work
 
 - [x] Workspace builds and tests with `cargo test --workspace`.
 - [x] Parser grammar tests pass: 20 tests.
-- [x] Receipt tests pass: 8 tests.
-- [x] Interpreter skeleton tests pass: 15 tests.
+- [x] Receipt tests pass: 4 tests (refactored for chaining).
+- [x] Interpreter skeleton tests pass: 16 tests (refactored for tool output).
 - [x] Identity DNA fingerprint tests pass: 5 tests.
-- [x] Session persistence tests pass: 3 tests.
+- [x] Session persistence and encryption tests pass: 6 tests.
+- [x] Privacy enforcement tests pass: 4 tests.
 - [x] Hermetic state tests pass: 8 tests.
-- [x] Existing code has parser, in-memory receipt store, basic Steward dispatch, basic reputation/tier gate, and 86-char DNA fingerprint generation.
-- [x] README status updated from 35 tests to the current verified test count after the TODO landed.
+- [x] Total verified tests: 63.
+- [x] Existing code has parser, in-memory receipt store with hash-chain, basic Steward dispatch, centralized reputation/tier gate, tool registry, and encrypted sessions.
+- [x] README status updated.
 
 ## Phase 0 — Audit Cleanup and Spec Alignment
 

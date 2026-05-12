@@ -29,6 +29,7 @@ Generated from the `Audit phase` deep dive plus local review of the current work
 - [x] Implemented real LLM integration for `think`: Ollama client + ProviderRouter with fallback.
 - [x] Enforced strict `/private` privacy policy: blocks external routing, HARD FAIL on local failure.
 - [x] Implemented real Tool execution for `act`: ReadFile, Bash (with sandbox), WebSearch (DuckDuckGo).
+- [x] Implemented metadata routing for `birth`: maps `provider`, `privacy`, `sandbox` to Session config.
 - [x] Hardened receipt engine: incremental Merkle Tree + Ed25519 signing.
 - [x] Implemented full Hermetic State: All 7 principles derived from OduSeed via HKDF.
 - [x] Removed decorative PersonalityVector: HermeticState is now the canonical behavioral model.
@@ -40,7 +41,7 @@ Generated from the `Audit phase` deep dive plus local review of the current work
 - [x] Session persistence and encryption tests pass: 6 tests.
 - [x] Privacy enforcement tests pass: 3 tests.
 - [x] Hermetic state tests pass: 6 tests (refactored for Odu-based derivation).
-- [x] Total verified tests: 64.
+- [x] Total verified tests: 69.
 
 ## Phase 0 — Audit Cleanup and Spec Alignment
 

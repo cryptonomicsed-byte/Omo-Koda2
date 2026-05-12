@@ -3,7 +3,7 @@ use crate::identity::dna::generate_dna_fingerprint;
 use crate::identity::odu::{OduIdentity, OduSeed};
 use crate::identity::pet::PetIdentity;
 use crate::justice::JusticeEngine;
-use crate::parser::Statement;
+use crate::parser::{MetadataPair, Statement};
 use crate::providers::ProviderRegistry;
 use crate::receipt::{Receipt, ReceiptStore};
 use crate::reputation::{reputation_gain, tier_for, ACT_TIER_0_BASE};
@@ -61,7 +61,7 @@ pub struct AgentState {
 }
 
 impl AgentState {
-    pub fn birth(name: String) -> Self {
+    pub fn birth(name: String, metadata: Vec<MetadataPair>) -> Self {
         let birth_timestamp = current_unix_timestamp();
         let mut entropy = [0u8; 32];
         rand::thread_rng().fill(&mut entropy);
@@ -80,7 +80,11 @@ impl AgentState {
         let dna_fingerprint = generate_dna_fingerprint(&name, birth_timestamp, odu_seed.as_bytes());
         let id = AgentId::new(&dna_fingerprint);
 
-        let session = Session::new(id.clone(), name.clone(), birth_timestamp);
+        let mut session = Session::new(id.clone(), name.clone(), birth_timestamp);
+        for pair in metadata {
+            session.apply_metadata(&pair.key, &pair.value);
+        }
+
         let receipts = ReceiptStore::new();
         let hermetic_state = HermeticState::from_odu_seed(odu_seed.as_bytes());
 
@@ -215,8 +219,8 @@ impl Steward {
 
     pub async fn dispatch(&mut self, stmt: Statement) -> Result<ExecutionResult, String> {
         match stmt {
-            Statement::Birth { name, .. } => {
-                self.agent = Some(AgentState::birth(name));
+            Statement::Birth { name, metadata } => {
+                self.agent = Some(AgentState::birth(name, metadata));
                 self.auto_save();
                 Ok(ExecutionResult {
                     receipt: None,

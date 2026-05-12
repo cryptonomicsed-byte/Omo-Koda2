@@ -70,8 +70,14 @@ mod interpreter_tests {
         let mut steward = Steward::new();
         steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
 
-        let stmts = parse(r#"act "web_search" "bitcoin""#).unwrap();
+        let test_file = "test_act_receipt.txt";
+        std::fs::write(test_file, "content").unwrap();
+
+        let stmts = parse(r#"act "read_file" "test_act_receipt.txt""#).unwrap();
         let result = steward.dispatch(stmts[0].clone()).await.unwrap();
+        
+        std::fs::remove_file(test_file).unwrap();
+
         assert!(result.receipt.is_some());
         let receipt = result.receipt.unwrap();
         assert!(!receipt.dry_run);
@@ -83,10 +89,16 @@ mod interpreter_tests {
         let mut steward = Steward::new();
         steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
 
+        let test_file = "test_act_rep.txt";
+        std::fs::write(test_file, "content").unwrap();
+
         let before = steward.reputation();
-        let stmts = parse(r#"act "web_search" "query""#).unwrap();
+        let stmts = parse(r#"act "read_file" "test_act_rep.txt""#).unwrap();
         steward.dispatch(stmts[0].clone()).await.unwrap();
         let after = steward.reputation();
+        
+        std::fs::remove_file(test_file).unwrap();
+
         assert!(after > before);
         assert!(after - before < 0.1);
         assert!(after - before > 0.0);
@@ -97,16 +109,22 @@ mod interpreter_tests {
         let mut steward = Steward::new();
         steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
 
+        let test_file = "test_act_rep_grows.txt";
+        std::fs::write(test_file, "content").unwrap();
+
         // Gain at low rep
-        let stmts = parse(r#"act "web_search" "q""#).unwrap();
+        let stmts = parse(r#"act "read_file" "test_act_rep_grows.txt""#).unwrap();
         steward.dispatch(stmts[0].clone()).await.unwrap();
         let gain_low = steward.reputation();
         
         steward.set_reputation_for_test(50.0);
         let before_high = steward.reputation();
-        let stmts2 = parse(r#"act "web_search" "q""#).unwrap();
+        let stmts2 = parse(r#"act "read_file" "test_act_rep_grows.txt""#).unwrap();
         steward.dispatch(stmts2[0].clone()).await.unwrap();
         let gain_high = steward.reputation() - before_high;
+        
+        std::fs::remove_file(test_file).unwrap();
+
         assert!(gain_low > gain_high);
     }
 
@@ -146,12 +164,18 @@ mod interpreter_tests {
     async fn multi_statement_executes_in_order() {
         let mut steward = Steward::new();
         steward.set_mock_provider("done".to_string());
-        let input = r#"birth "luna"think "hello"act "web_search" "query""#;
+        
+        let test_file = "test_multi.txt";
+        std::fs::write(test_file, "content").unwrap();
+
+        let input = r#"birth "luna"think "hello"act "read_file" "test_multi.txt""#;
         let stmts = parse(input).unwrap();
         assert_eq!(stmts.len(), 3);
         for stmt in stmts {
             steward.dispatch(stmt).await.unwrap();
         }
+        
+        std::fs::remove_file(test_file).unwrap();
         assert!(steward.reputation() > 0.0);
     }
 
@@ -160,11 +184,16 @@ mod interpreter_tests {
         let mut steward = Steward::new();
         steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
 
-        steward.dispatch(parse(r#"act "web_search" "first""#).unwrap()[0].clone()).await.unwrap();
+        let test_file = "test_persist.txt";
+        std::fs::write(test_file, "content").unwrap();
+
+        steward.dispatch(parse(r#"act "read_file" "test_persist.txt""#).unwrap()[0].clone()).await.unwrap();
         let rep_after_first = steward.reputation();
         
-        steward.dispatch(parse(r#"act "web_search" "second""#).unwrap()[0].clone()).await.unwrap();
+        steward.dispatch(parse(r#"act "read_file" "test_persist.txt""#).unwrap()[0].clone()).await.unwrap();
         let rep_after_second = steward.reputation();
+        
+        std::fs::remove_file(test_file).unwrap();
         assert!(rep_after_second > rep_after_first);
     }
 
@@ -221,5 +250,18 @@ mod interpreter_tests {
         assert!(!tool_allowed(4, "self_modification"));
         assert!(tool_allowed(5, "self_modification"));
         assert!(tool_allowed(5, "multi_agent_fabric"));
+    }
+
+    #[tokio::test]
+    async fn birth_with_metadata_configures_session() {
+        let mut steward = Steward::new();
+        let stmts = parse(r#"birth "luna" provider:mock privacy:false sandbox:false"#).unwrap();
+        steward.dispatch(stmts[0].clone()).await.unwrap();
+
+        let agent = steward.agent_state().unwrap();
+        let config = &agent.session().config;
+        assert_eq!(config.default_provider, "mock");
+        assert!(!config.default_privacy);
+        assert!(!config.default_sandbox);
     }
 }

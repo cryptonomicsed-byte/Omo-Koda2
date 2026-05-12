@@ -18,8 +18,26 @@ pub struct Session {
     pub name: String,
     pub birth_timestamp: u64,
     pub reputation: f64,
+    pub config: SessionConfig,
     pub public_messages: Vec<ConversationMessage>,
     pub encrypted_private: Option<EncryptedData>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SessionConfig {
+    pub default_provider: String,
+    pub default_privacy: bool,
+    pub default_sandbox: bool,
+}
+
+impl Default for SessionConfig {
+    fn default() -> Self {
+        Self {
+            default_provider: "ollama".to_string(),
+            default_privacy: true,
+            default_sandbox: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -75,8 +93,18 @@ impl Session {
             name,
             birth_timestamp,
             reputation: 0.0,
+            config: SessionConfig::default(),
             public_messages: Vec::new(),
             encrypted_private: None,
+        }
+    }
+
+    pub fn apply_metadata(&mut self, key: &str, value: &str) {
+        match key {
+            "provider" => self.config.default_provider = value.to_string(),
+            "privacy" => self.config.default_privacy = value == "private" || value == "true",
+            "sandbox" => self.config.default_sandbox = value == "sandbox" || value == "true",
+            _ => {}
         }
     }
 

@@ -11,7 +11,7 @@ mod session_tests {
 
     #[test]
     fn session_starts_with_current_version() {
-        let agent = AgentState::birth("luna".to_string());
+        let agent = AgentState::birth("luna".to_string(), vec![]);
         let session = Session::new(agent.id().clone(), agent.name().to_string(), agent.birth_timestamp());
         assert_eq!(session.version, 1);
         assert_eq!(session.name, "luna");
@@ -21,7 +21,7 @@ mod session_tests {
     #[test]
     fn session_save_and_load_roundtrip() {
         let path = temp_session_path("roundtrip");
-        let agent = AgentState::birth("luna".to_string());
+        let agent = AgentState::birth("luna".to_string(), vec![]);
         let mut session = Session::new(agent.id().clone(), agent.name().to_string(), agent.birth_timestamp());
         session.push_public(ConversationMessage::user_text("birth luna"));
         session.push_public(ConversationMessage::assistant_text("born"));
@@ -43,7 +43,7 @@ mod session_tests {
 
     #[test]
     fn session_encryption_roundtrip() {
-        let agent = AgentState::birth("luna".to_string());
+        let agent = AgentState::birth("luna".to_string(), vec![]);
         let mut session = Session::new(agent.id().clone(), agent.name().to_string(), agent.birth_timestamp());
         let private_data = PrivateSessionData {
             odu_seed: OduSeed::from_bytes([1u8; 32]),
@@ -62,7 +62,7 @@ mod session_tests {
 
     #[test]
     fn session_decryption_fails_with_wrong_passphrase() {
-        let agent = AgentState::birth("luna".to_string());
+        let agent = AgentState::birth("luna".to_string(), vec![]);
         let mut session = Session::new(agent.id().clone(), agent.name().to_string(), agent.birth_timestamp());
         let private_data = PrivateSessionData {
             odu_seed: OduSeed::from_bytes([1u8; 32]),
@@ -80,7 +80,7 @@ mod session_tests {
 
     #[test]
     fn session_leakage_prevention() {
-        let agent = AgentState::birth("luna".to_string());
+        let agent = AgentState::birth("luna".to_string(), vec![]);
         let mut session = Session::new(agent.id().clone(), agent.name().to_string(), agent.birth_timestamp());
         let secret_text = "HIDDEN_TREASURE_123";
         let mut secret_seed = [0u8; 32];
@@ -111,7 +111,7 @@ mod session_tests {
         let path = temp_session_path("bad-version");
         fs::write(
             &path,
-            r#"{"version":999,"agent_id":"agent-1","name":"luna","birth_timestamp":0,"reputation":0.0,"public_messages":[]}"#,
+            r#"{"version":999,"agent_id":"agent-1","name":"luna","birth_timestamp":0,"reputation":0.0,"config":{"default_provider":"ollama","default_privacy":true,"default_sandbox":true},"public_messages":[]}"#,
         )
         .unwrap();
 

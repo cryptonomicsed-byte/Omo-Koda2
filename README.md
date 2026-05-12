@@ -28,12 +28,13 @@ That is the entire public surface. Forever.
 
 ## Current Status
 
-**63/63 tests passing. Sprint 1 complete.**
+**66/66 tests passing. Sprint 2 complete.**
 
 ```text
 omokoda-core     parser       20/20  ✅
 omokoda-core     interpreter  16/16  ✅
 omokoda-core     identity      5/5   ✅
+omokoda-core     bipon39       3/3   ✅
 omokoda-core     receipts      4/4   ✅
 omokoda-core     sessions      6/6   ✅
 omokoda-core     privacy       4/4   ✅
@@ -41,6 +42,9 @@ omokoda-hermetic soul          8/8   ✅
 ```
 
 **Verified Capabilities:**
+- [x] BIPỌ̀N39 mnemonic system with wordlist integrity checks.
+- [x] Odu-backed soul seeds and identity derivation.
+- [x] DNA fingerprinting (86-char) and ASCII pet expressions.
 - [x] Encrypted session persistence with leakage prevention.
 - [x] Receipt hash-chaining and verification.
 - [x] Tier-based tool registry with read-only workspace tools.

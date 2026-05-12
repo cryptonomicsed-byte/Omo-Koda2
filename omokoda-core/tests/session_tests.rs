@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod session_tests {
+    use omokoda_core::identity::odu::{OduIdentity, OduSeed};
     use omokoda_core::interpreter::AgentState;
     use omokoda_core::session::{
         ContentBlock, ConversationMessage, PrivateSessionData, Session, SessionError,
@@ -45,7 +46,8 @@ mod session_tests {
         let agent = AgentState::birth("luna".to_string());
         let mut session = Session::new(&agent);
         let private_data = PrivateSessionData {
-            odu_seed: vec![1, 2, 3, 4],
+            odu_seed: OduSeed::from_bytes([1u8; 32]),
+            odu_identity: agent.odu_identity().clone(),
             private_messages: vec![ConversationMessage::user_text("secret thought")],
         };
 
@@ -63,7 +65,8 @@ mod session_tests {
         let agent = AgentState::birth("luna".to_string());
         let mut session = Session::new(&agent);
         let private_data = PrivateSessionData {
-            odu_seed: vec![1, 2, 3, 4],
+            odu_seed: OduSeed::from_bytes([1u8; 32]),
+            odu_identity: agent.odu_identity().clone(),
             private_messages: vec![],
         };
 
@@ -80,8 +83,15 @@ mod session_tests {
         let agent = AgentState::birth("luna".to_string());
         let mut session = Session::new(&agent);
         let secret_text = "HIDDEN_TREASURE_123";
+        let mut secret_seed = [0u8; 32];
+        secret_seed[0] = 0xDE;
+        secret_seed[1] = 0xAD;
+        secret_seed[2] = 0xBE;
+        secret_seed[3] = 0xEF;
+        
         let private_data = PrivateSessionData {
-            odu_seed: vec![0xDE, 0xAD, 0xBE, 0xEF],
+            odu_seed: OduSeed::from_bytes(secret_seed),
+            odu_identity: agent.odu_identity().clone(),
             private_messages: vec![ConversationMessage::user_text(secret_text)],
         };
 

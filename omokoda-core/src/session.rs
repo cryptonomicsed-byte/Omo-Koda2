@@ -1,3 +1,4 @@
+use crate::identity::odu::{OduIdentity, OduSeed};
 use crate::interpreter::{AgentId, AgentState};
 use chacha20poly1305::{
     aead::{Aead, KeyInit},
@@ -30,7 +31,8 @@ pub struct EncryptedData {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PrivateSessionData {
-    pub odu_seed: Vec<u8>,
+    pub odu_seed: OduSeed,
+    pub odu_identity: OduIdentity,
     pub private_messages: Vec<ConversationMessage>,
 }
 

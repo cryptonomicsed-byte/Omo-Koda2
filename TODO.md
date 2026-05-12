@@ -30,11 +30,12 @@ Generated from the `Audit phase` deep dive plus local review of the current work
 - [x] Receipt tests pass: 4 tests (refactored for chaining).
 - [x] Interpreter skeleton tests pass: 16 tests (refactored for tool output).
 - [x] Identity DNA fingerprint tests pass: 5 tests.
+- [x] BIPỌ̀N39 and wordlist integrity tests pass: 3 tests.
 - [x] Session persistence and encryption tests pass: 6 tests.
 - [x] Privacy enforcement tests pass: 4 tests.
 - [x] Hermetic state tests pass: 8 tests.
-- [x] Total verified tests: 63.
-- [x] Existing code has parser, in-memory receipt store with hash-chain, basic Steward dispatch, centralized reputation/tier gate, tool registry, and encrypted sessions.
+- [x] Total verified tests: 66.
+- [x] Existing code has parser, in-memory receipt store with hash-chain, basic Steward dispatch, centralized reputation/tier gate, tool registry, encrypted sessions, and BIPỌ̀N39 identity.
 - [x] README status updated.
 
 ## Phase 0 — Audit Cleanup and Spec Alignment
@@ -128,21 +129,20 @@ Goal: replace placeholder identity with Odu-backed, mnemonic-compatible, cryptog
 
 ### BIPỌ̀N39 integration boundaries
 
-- [ ] Decide whether to vendor, path-depend, or publish/use the `bipon39` crate.
-- [ ] Import only stable mnemonic APIs needed by Ọmọ Kọ́dà:
-  - [ ] `entropy_to_mnemonic`
-  - [ ] `mnemonic_to_seed`
-  - [ ] `master_from_seed`
-  - [ ] wordlist integrity/Merkle verification
-  - [ ] Odu/Ifáscript metadata lookup
-- [ ] Add a startup check that the BIPỌ̀N39 wordlist Merkle root matches the expected root.
-- [ ] Keep lowercase ASCII tokens for cryptographic inputs; use Yorùbá canonical forms only for display.
-- [ ] Do not expose raw memory keys, seed bytes, or master keys through public APIs.
+- [x] Decide whether to vendor, path-depend, or publish/use the `bipon39` crate. (Implemented directly in `omokoda-core`).
+- [x] Import only stable mnemonic APIs needed by Ọmọ Kọ́dà:
+  - [x] `entropy_to_mnemonic`
+  - [x] `mnemonic_to_seed`
+  - [x] `wordlist integrity/Merkle verification`
+  - [x] `Odu index derivation`
+- [x] Add a startup check that the BIPỌ̀N39 wordlist Merkle root matches the expected root.
+- [x] Keep lowercase ASCII tokens for cryptographic inputs; use Yorùbá canonical forms only for display.
+- [x] Do not expose raw memory keys, seed bytes, or master keys through public APIs.
 
 ### Odu and IfáScript entropy
 
-- [ ] Add an Odu seed type that cannot be confused with mnemonic text or raw key material.
-- [ ] Use CSPRNG entropy at birth; do not derive souls from name alone.
+- [x] Add an Odu seed type that cannot be confused with mnemonic text or raw key material.
+- [x] Use CSPRNG entropy at birth; do not derive souls from name alone.
 - [ ] Integrate Ifascript's 256 Odu/opcode model as an entropy/decision oracle after a spec boundary is written.
 - [ ] Add cowrie-cast deterministic tests with fixed intent.
 - [ ] Add NIST Beacon use only behind explicit non-private configuration; default birth must work offline.
@@ -151,10 +151,10 @@ Goal: replace placeholder identity with Odu-backed, mnemonic-compatible, cryptog
 
 ### DNA and visible pet identity
 
-- [ ] Keep 86-char DNA fingerprint deterministic from name + birth timestamp + Odu seed.
-- [ ] Add DNA fingerprint to birth result and future AgentState.
-- [ ] Add mask/template selection seeded by DNA/Odu.
-- [ ] Add tier expression mapping for ASCII pet mood.
+- [x] Keep 86-char DNA fingerprint deterministic from name + birth timestamp + Odu seed.
+- [x] Add DNA fingerprint to birth result and future AgentState.
+- [x] Add mask/template selection seeded by DNA/Odu.
+- [x] Add tier expression mapping for ASCII pet mood.
 - [ ] Ensure pet output never leaks hidden Hermetic principle values or private memory.
 
 ## Phase 3 — Privacy and Memory

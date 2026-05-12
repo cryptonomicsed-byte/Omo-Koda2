@@ -1,4 +1,7 @@
+use crate::identity::bipon39::Bipon39;
 use crate::identity::dna::generate_dna_fingerprint;
+use crate::identity::odu::{OduIdentity, OduSeed};
+use crate::identity::pet::PetIdentity;
 use crate::parser::Statement;
 use crate::receipt::{Receipt, ReceiptStore};
 use crate::reputation::{reputation_gain, tier_for, tool_allowed, ACT_TIER_0_BASE};
@@ -6,8 +9,6 @@ use crate::tools::ToolRegistry;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
-
-const ODU_SEED_BYTES: usize = 32;
 
 #[derive(Debug, Clone)]
 pub struct ExecutionResult {
@@ -40,7 +41,9 @@ pub struct AgentState {
     id: AgentId,
     name: String,
     birth_timestamp: u64,
-    odu_seed: Vec<u8>,
+    odu_seed: OduSeed,
+    odu_identity: OduIdentity,
+    pet_identity: PetIdentity,
     dna_fingerprint: String,
     reputation: f64,
 }
@@ -48,9 +51,21 @@ pub struct AgentState {
 impl AgentState {
     pub fn birth(name: String) -> Self {
         let birth_timestamp = current_unix_timestamp();
-        let mut odu_seed = vec![0u8; ODU_SEED_BYTES];
-        rand::thread_rng().fill(&mut odu_seed[..]);
-        let dna_fingerprint = generate_dna_fingerprint(&name, birth_timestamp, &odu_seed);
+        let mut entropy = [0u8; 32];
+        rand::thread_rng().fill(&mut entropy);
+
+        let mnemonic = Bipon39::entropy_to_mnemonic(&entropy);
+        let indices = Bipon39::mnemonic_to_indices(&mnemonic).unwrap();
+        let primary_index = Bipon39::get_odu_index(&indices);
+
+        let odu_seed = OduSeed::new(entropy);
+        let odu_identity = OduIdentity {
+            primary_index,
+            mnemonic,
+        };
+        let pet_identity = PetIdentity::derive(&odu_identity, 0);
+
+        let dna_fingerprint = generate_dna_fingerprint(&name, birth_timestamp, odu_seed.as_bytes());
         let id = AgentId::new(&dna_fingerprint);
 
         Self {
@@ -58,6 +73,8 @@ impl AgentState {
             name,
             birth_timestamp,
             odu_seed,
+            odu_identity,
+            pet_identity,
             dna_fingerprint,
             reputation: 0.0,
         }
@@ -79,8 +96,16 @@ impl AgentState {
         &self.dna_fingerprint
     }
 
-    pub fn odu_seed(&self) -> &[u8] {
+    pub fn odu_seed(&self) -> &OduSeed {
         &self.odu_seed
+    }
+
+    pub fn odu_identity(&self) -> &OduIdentity {
+        &self.odu_identity
+    }
+
+    pub fn pet_identity(&self) -> &PetIdentity {
+        &self.pet_identity
     }
 
     pub fn reputation(&self) -> f64 {
@@ -89,6 +114,11 @@ impl AgentState {
 
     pub fn tier(&self) -> u8 {
         tier_for(self.reputation)
+    }
+
+    pub fn update_reputation(&mut self, new_rep: f64) {
+        self.reputation = new_rep.clamp(0.0, 100.0);
+        self.pet_identity = PetIdentity::derive(&self.odu_identity, self.tier());
     }
 }
 
@@ -149,9 +179,8 @@ impl Steward {
                 };
 
                 let agent = self.ensure_born_mut()?;
-                agent.reputation = (agent.reputation
-                    + reputation_gain(ACT_TIER_0_BASE, agent.reputation))
-                .min(100.0);
+                let new_rep = agent.reputation + reputation_gain(ACT_TIER_0_BASE, agent.reputation);
+                agent.update_reputation(new_rep);
 
                 Ok(ExecutionResult {
                     receipt: Some(receipt),
@@ -188,13 +217,14 @@ impl Steward {
         let late_days = days.saturating_sub(7) as f64;
         let penalty = (early_days * 0.008) + (late_days * 0.015);
         if let Some(agent) = self.agent.as_mut() {
-            agent.reputation = (agent.reputation - penalty).max(0.0);
+            let new_rep = agent.reputation - penalty;
+            agent.update_reputation(new_rep);
         }
     }
 
     pub fn set_reputation_for_test(&mut self, reputation: f64) {
         if let Some(agent) = self.agent.as_mut() {
-            agent.reputation = reputation.clamp(0.0, 100.0);
+            agent.update_reputation(reputation);
         }
     }
 

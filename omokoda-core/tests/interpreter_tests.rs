@@ -25,6 +25,8 @@ mod interpreter_tests {
         assert!(agent.birth_timestamp() > 0);
         assert_eq!(agent.odu_seed().len(), 32);
         assert_eq!(agent.dna_fingerprint().len(), 86);
+        assert!(!agent.odu_identity().mnemonic.is_empty());
+        assert_eq!(agent.odu_identity().mnemonic.split_whitespace().count(), 33);
         assert_eq!(agent.reputation(), 0.0);
         assert_eq!(agent.tier(), 0);
     }

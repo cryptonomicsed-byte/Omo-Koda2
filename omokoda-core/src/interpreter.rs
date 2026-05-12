@@ -1,7 +1,11 @@
+use crate::identity::dna::generate_dna_fingerprint;
 use crate::parser::Statement;
 use crate::receipt::{Receipt, ReceiptStore};
+use crate::reputation::{reputation_gain, tier_for, tool_allowed, ACT_TIER_0_BASE};
+use rand::Rng;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-const ACT_TIER_0_BASE: f64 = 0.040;
+const ODU_SEED_BYTES: usize = 32;
 
 #[derive(Debug, Clone)]
 pub struct ExecutionResult {
@@ -9,18 +13,73 @@ pub struct ExecutionResult {
     pub private_mode: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct AgentState {
+    id: String,
+    name: String,
+    birth_timestamp: u64,
+    odu_seed: Vec<u8>,
+    dna_fingerprint: String,
+    reputation: f64,
+}
+
+impl AgentState {
+    fn birth(name: String) -> Self {
+        let birth_timestamp = current_unix_timestamp();
+        let mut odu_seed = vec![0u8; ODU_SEED_BYTES];
+        rand::thread_rng().fill(&mut odu_seed[..]);
+        let dna_fingerprint = generate_dna_fingerprint(&name, birth_timestamp, &odu_seed);
+        let id = format!("agent-{}", &dna_fingerprint[..16]);
+
+        Self {
+            id,
+            name,
+            birth_timestamp,
+            odu_seed,
+            dna_fingerprint,
+            reputation: 0.0,
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn birth_timestamp(&self) -> u64 {
+        self.birth_timestamp
+    }
+
+    pub fn dna_fingerprint(&self) -> &str {
+        &self.dna_fingerprint
+    }
+
+    pub fn odu_seed_len(&self) -> usize {
+        self.odu_seed.len()
+    }
+
+    pub fn reputation(&self) -> f64 {
+        self.reputation
+    }
+
+    pub fn tier(&self) -> u8 {
+        tier_for(self.reputation)
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Steward {
-    agent_id: Option<String>,
-    reputation: f64,
+    agent: Option<AgentState>,
     receipts: ReceiptStore,
 }
 
 impl Steward {
     pub fn new() -> Self {
         Self {
-            agent_id: None,
-            reputation: 0.0,
+            agent: None,
             receipts: ReceiptStore::new(),
         }
     }
@@ -28,7 +87,7 @@ impl Steward {
     pub fn dispatch(&mut self, stmt: Statement) -> Result<ExecutionResult, String> {
         match stmt {
             Statement::Birth { name, .. } => {
-                self.agent_id = Some(name);
+                self.agent = Some(AgentState::birth(name));
                 Ok(ExecutionResult {
                     receipt: None,
                     private_mode: false,
@@ -42,30 +101,41 @@ impl Steward {
                 })
             }
             Statement::Act { tool, params, .. } => {
-                let agent_id = self.ensure_born()?.to_string();
                 if !tool_allowed(self.tier(), &tool) {
                     return Err(format!("tool requires higher tier: {tool}"));
                 }
 
+                let agent_id = self.ensure_born()?.id().to_string();
                 let receipt = Receipt::new(&agent_id, &tool, &params);
                 self.receipts.record(receipt.clone());
-                self.reputation = (self.reputation + rep_gain(ACT_TIER_0_BASE, self.reputation)).min(100.0);
+                let agent = self.ensure_born_mut()?;
+                agent.reputation = (agent.reputation
+                    + reputation_gain(ACT_TIER_0_BASE, agent.reputation))
+                .min(100.0);
 
                 Ok(ExecutionResult {
                     receipt: Some(receipt),
                     private_mode: false,
                 })
             }
-            Statement::SlashCmd { .. } => Err("slash commands are not executable by the Steward".into()),
+            Statement::SlashCmd { .. } => {
+                Err("slash commands are not executable by the Steward".into())
+            }
         }
     }
 
+    pub fn agent_state(&self) -> Option<&AgentState> {
+        self.agent.as_ref()
+    }
+
     pub fn reputation(&self) -> f64 {
-        self.reputation
+        self.agent_state()
+            .map(AgentState::reputation)
+            .unwrap_or(0.0)
     }
 
     pub fn tier(&self) -> u8 {
-        tier_for(self.reputation)
+        self.agent_state().map(AgentState::tier).unwrap_or(0)
     }
 
     pub fn apply_daily_decay(&mut self, days: u64) {
@@ -76,78 +146,33 @@ impl Steward {
         let early_days = days.min(7) as f64;
         let late_days = days.saturating_sub(7) as f64;
         let penalty = (early_days * 0.008) + (late_days * 0.015);
-        self.reputation = (self.reputation - penalty).max(0.0);
+        if let Some(agent) = self.agent.as_mut() {
+            agent.reputation = (agent.reputation - penalty).max(0.0);
+        }
     }
 
     pub fn set_reputation_for_test(&mut self, reputation: f64) {
-        self.reputation = reputation.clamp(0.0, 100.0);
+        if let Some(agent) = self.agent.as_mut() {
+            agent.reputation = reputation.clamp(0.0, 100.0);
+        }
     }
 
-    fn ensure_born(&self) -> Result<&str, String> {
-        self.agent_id
-            .as_deref()
+    fn ensure_born(&self) -> Result<&AgentState, String> {
+        self.agent
+            .as_ref()
+            .ok_or_else(|| "agent must be born first".to_string())
+    }
+
+    fn ensure_born_mut(&mut self) -> Result<&mut AgentState, String> {
+        self.agent
+            .as_mut()
             .ok_or_else(|| "agent must be born first".to_string())
     }
 }
 
-fn difficulty(rep: f64) -> f64 {
-    1.0 / (1.0 + (rep / 25.0))
-}
-
-fn rep_gain(base: f64, rep: f64) -> f64 {
-    base * difficulty(rep)
-}
-
-fn tier_for(reputation: f64) -> u8 {
-    if reputation >= 100.0 {
-        5
-    } else if reputation >= 80.0 {
-        4
-    } else if reputation >= 60.0 {
-        3
-    } else if reputation >= 40.0 {
-        2
-    } else if reputation >= 20.0 {
-        1
-    } else {
-        0
-    }
-}
-
-fn tool_allowed(tier: u8, tool: &str) -> bool {
-    let allowed = match tier {
-        0 => &["web_search", "note_taking"][..],
-        1 => &["web_search", "note_taking", "image_gen_basic"][..],
-        2 => &["web_search", "note_taking", "image_gen_basic", "code_runner"][..],
-        3 => &[
-            "web_search",
-            "note_taking",
-            "image_gen_basic",
-            "code_runner",
-            "data_analysis",
-            "api_connect",
-        ][..],
-        4 => &[
-            "web_search",
-            "note_taking",
-            "image_gen_basic",
-            "code_runner",
-            "data_analysis",
-            "api_connect",
-            "agent_orchestration",
-        ][..],
-        _ => &[
-            "web_search",
-            "note_taking",
-            "image_gen_basic",
-            "code_runner",
-            "data_analysis",
-            "api_connect",
-            "agent_orchestration",
-            "self_modification",
-            "multi_agent_fabric",
-        ][..],
-    };
-
-    allowed.contains(&tool)
+fn current_unix_timestamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock before unix epoch")
+        .as_secs()
 }

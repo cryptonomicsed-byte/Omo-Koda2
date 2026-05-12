@@ -110,7 +110,7 @@ fn parse_statement(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
         Some("act") => parse_act(tokens),
         Some(_) => Ok(Statement::Think {
             prompt: tokens.consume_rest_of_input_with_current_word(),
-            private: false,
+            private: true,
         }),
         None => Err(ParseError("empty statement".into())),
     }
@@ -140,7 +140,12 @@ fn parse_think(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
         return Err(ParseError("think prompt cannot be empty".into()));
     }
 
-    let private = tokens.next_flag("/private");
+    let private = if tokens.next_flag("/publish") {
+        false
+    } else {
+        tokens.next_flag("/private");
+        true
+    };
     Ok(Statement::Think { prompt, private })
 }
 
@@ -165,11 +170,7 @@ fn parse_act(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
 
 fn parse_slash_cmd(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
     tokens.pos += 1;
-    let command = tokens
-        .next_word()
-        .unwrap_or_default()
-        .trim()
-        .to_string();
+    let command = tokens.next_word().unwrap_or_default().trim().to_string();
 
     if !VALID_SLASH_COMMANDS.contains(&command.as_str()) {
         return Err(ParseError(format!("unknown slash command: /{command}")));
@@ -184,7 +185,7 @@ fn contains_raw_key_material(input: &str) -> bool {
     for word in input.split_whitespace() {
         let word = word.trim_matches('"');
         // Split on common separators to catch patterns like k_root:deadbeef1234
-        for segment in word.split(|c| c == ':' || c == '=' || c == ',') {
+        for segment in word.split([':', '=', ',']) {
             let mut s = segment;
             // Strip 0x prefix before checking
             if s.starts_with("0x") || s.starts_with("0X") {
@@ -210,9 +211,7 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn skip_whitespace(&mut self) {
-        while self.pos < self.input.len()
-            && self.input.as_bytes()[self.pos].is_ascii_whitespace()
-        {
+        while self.pos < self.input.len() && self.input.as_bytes()[self.pos].is_ascii_whitespace() {
             self.pos += 1;
         }
     }
@@ -228,8 +227,7 @@ impl<'a> Tokenizer<'a> {
     fn next_word(&mut self) -> Option<String> {
         self.skip_whitespace();
         let start = self.pos;
-        while self.pos < self.input.len()
-            && !self.input.as_bytes()[self.pos].is_ascii_whitespace()
+        while self.pos < self.input.len() && !self.input.as_bytes()[self.pos].is_ascii_whitespace()
         {
             self.pos += 1;
         }

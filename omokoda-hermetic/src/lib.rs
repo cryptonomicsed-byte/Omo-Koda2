@@ -28,7 +28,9 @@ impl HermeticState {
     }
 
     pub fn fingerprint(&self) -> String {
-        blake3::Hash::from(self.fingerprint_bytes).to_hex().to_string()
+        blake3::Hash::from(self.fingerprint_bytes)
+            .to_hex()
+            .to_string()
     }
 
     pub fn think_abstraction_depth(&self) -> f64 {

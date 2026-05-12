@@ -1,10 +1,13 @@
 pub mod identity;
-pub mod parser;
 pub mod interpreter;
+pub mod parser;
 pub mod receipt;
+pub mod reputation;
+pub mod session;
 
 use chrono::{DateTime, Utc};
 use rand::Rng;
+use reputation::{reputation_gain, tier_for, tools_for_tier};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -92,9 +95,19 @@ pub struct MemoryEntry {
 
 #[derive(Debug, Clone)]
 pub enum Primitive {
-    Birth { name: String, metadata: Vec<(String, String)> },
-    Think { prompt: String, private: bool },
-    Act { tool: String, params: String, sandbox: bool },
+    Birth {
+        name: String,
+        metadata: Vec<(String, String)>,
+    },
+    Think {
+        prompt: String,
+        private: bool,
+    },
+    Act {
+        tool: String,
+        params: String,
+        sandbox: bool,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -106,7 +119,12 @@ impl Agent {
     pub fn hidden_state_summary(&self) -> String {
         format!(
             "agent={} tier={} rep={:.3} think={} act={} sandbox={}",
-            self.name, self.tier, self.reputation, self.think_count, self.act_count, self.sandbox_mode
+            self.name,
+            self.tier,
+            self.reputation,
+            self.think_count,
+            self.act_count,
+            self.sandbox_mode
         )
     }
 
@@ -133,7 +151,10 @@ impl Agent {
             reputation: 0.0,
             tier: 0,
             memory_key: vec![],
-            odu_state: OduState { index: 0, seed: vec![] },
+            odu_state: OduState {
+                index: 0,
+                seed: vec![],
+            },
             working_memory: vec![],
             short_term_memory: vec![],
             long_term_memory: vec![],
@@ -145,7 +166,9 @@ impl Agent {
 
 impl AgentRuntime {
     pub fn birth(name: String) -> Self {
-        Self { agent: Agent::create(name) }
+        Self {
+            agent: Agent::create(name),
+        }
     }
 
     pub fn think(&mut self, prompt: &str, private: bool) -> String {
@@ -185,37 +208,11 @@ impl AgentRuntime {
             summary,
         };
         self.agent.receipt_chain.push(receipt.clone());
-        self.agent.reputation = (self.agent.reputation + reputation_gain(0.040, self.agent.reputation)).min(100.0);
+        self.agent.reputation =
+            (self.agent.reputation + reputation_gain(0.040, self.agent.reputation)).min(100.0);
         self.agent.tier = tier_for(self.agent.reputation);
         self.agent.unlocked_tools = tools_for_tier(self.agent.tier);
         receipt
-    }
-}
-
-pub fn tier_for(reputation: f64) -> u8 {
-    if reputation >= 100.0 {
-        5
-    } else if reputation >= 80.0 {
-        4
-    } else if reputation >= 60.0 {
-        3
-    } else if reputation >= 40.0 {
-        2
-    } else if reputation >= 20.0 {
-        1
-    } else {
-        0
-    }
-}
-
-pub fn tools_for_tier(tier: u8) -> Vec<String> {
-    match tier {
-        0 => vec!["web_search".to_string()],
-        1 => vec!["web_search".to_string(), "note_taking".to_string()],
-        2 => vec!["web_search".to_string(), "note_taking".to_string(), "image_gen_basic".to_string()],
-        3 => vec!["web_search".to_string(), "code_runner".to_string(), "file_edit".to_string()],
-        4 => vec!["web_search".to_string(), "code_runner".to_string(), "browser_automation".to_string()],
-        _ => vec!["web_search".to_string(), "code_runner".to_string(), "browser_automation".to_string(), "multi_agent".to_string()],
     }
 }
 
@@ -223,17 +220,37 @@ pub fn parse_primitive(input: &str) -> Option<Primitive> {
     let trimmed = input.trim();
     if let Some(rest) = trimmed.strip_prefix("birth ") {
         let name = rest.trim().trim_matches('"').to_string();
-        return Some(Primitive::Birth { name, metadata: vec![] });
+        return Some(Primitive::Birth {
+            name,
+            metadata: vec![],
+        });
     }
     if let Some(rest) = trimmed.strip_prefix("think ") {
         let prompt = rest.trim().trim_matches('"').to_string();
-        return Some(Primitive::Think { prompt, private: false });
+        return Some(Primitive::Think {
+            prompt,
+            private: true,
+        });
     }
     if let Some(rest) = trimmed.strip_prefix("act ") {
         let mut parts = rest.splitn(2, ' ');
-        let tool = parts.next().unwrap_or("").trim().trim_matches('"').to_string();
-        let params = parts.next().unwrap_or("").trim().trim_matches('"').to_string();
-        return Some(Primitive::Act { tool, params, sandbox: false });
+        let tool = parts
+            .next()
+            .unwrap_or("")
+            .trim()
+            .trim_matches('"')
+            .to_string();
+        let params = parts
+            .next()
+            .unwrap_or("")
+            .trim()
+            .trim_matches('"')
+            .to_string();
+        return Some(Primitive::Act {
+            tool,
+            params,
+            sandbox: false,
+        });
     }
     None
 }
@@ -250,7 +267,11 @@ pub fn dispatch(runtime: &mut Option<AgentRuntime>, primitive: Primitive) -> Str
             let runtime = runtime.as_mut().expect("agent must be born first");
             runtime.think(&prompt, private)
         }
-        Primitive::Act { tool, params, sandbox } => {
+        Primitive::Act {
+            tool,
+            params,
+            sandbox,
+        } => {
             let runtime = runtime.as_mut().expect("agent must be born first");
             let receipt = runtime.act(&tool, &params, sandbox);
             serde_json::to_string(&receipt).unwrap_or_else(|_| "{}".to_string())
@@ -260,10 +281,9 @@ pub fn dispatch(runtime: &mut Option<AgentRuntime>, primitive: Primitive) -> Str
 
 fn hex_hash(input: &str) -> String {
     let digest = Sha256::digest(input.as_bytes());
-    digest.iter().take(8).map(|b| format!("{:02x}", b)).collect()
-}
-
-fn reputation_gain(base: f64, reputation: f64) -> f64 {
-    let difficulty = 1.0 / (1.0 + (reputation / 25.0));
-    base * difficulty
+    digest
+        .iter()
+        .take(8)
+        .map(|b| format!("{:02x}", b))
+        .collect()
 }

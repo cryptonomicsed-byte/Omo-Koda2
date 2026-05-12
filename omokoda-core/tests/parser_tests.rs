@@ -25,6 +25,16 @@ mod parser_tests {
         assert!(result.is_ok());
         assert!(matches!(
             result.unwrap()[0],
+            Statement::Think { private: true, .. }
+        ));
+    }
+
+    #[test]
+    fn think_publish_flag_makes_thought_public() {
+        let result = parse(r#"think "publishable thought" /publish"#);
+        assert!(result.is_ok());
+        assert!(matches!(
+            result.unwrap()[0],
             Statement::Think { private: false, .. }
         ));
     }
@@ -63,7 +73,10 @@ mod parser_tests {
     fn text_fallback_becomes_think() {
         let result = parse("hello, what can you do?");
         assert!(result.is_ok());
-        assert!(matches!(result.unwrap()[0], Statement::Think { .. }));
+        assert!(matches!(
+            result.unwrap()[0],
+            Statement::Think { private: true, .. }
+        ));
     }
 
     #[test]

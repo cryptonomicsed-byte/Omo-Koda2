@@ -26,13 +26,14 @@ Generated from the `Audit phase` deep dive plus local review of the current work
 ## Current Verified State
 
 - [x] Workspace builds and tests with `cargo test --workspace`.
-- [x] Parser grammar tests pass: 19 tests.
+- [x] Parser grammar tests pass: 20 tests.
 - [x] Receipt tests pass: 8 tests.
-- [x] Interpreter skeleton tests pass: 11 tests.
+- [x] Interpreter skeleton tests pass: 15 tests.
 - [x] Identity DNA fingerprint tests pass: 5 tests.
+- [x] Session persistence tests pass: 3 tests.
 - [x] Hermetic state tests pass: 8 tests.
 - [x] Existing code has parser, in-memory receipt store, basic Steward dispatch, basic reputation/tier gate, and 86-char DNA fingerprint generation.
-- [ ] README status is stale; update it from 35 tests to the current verified test count after the TODO lands.
+- [x] README status updated from 35 tests to the current verified test count after the TODO landed.
 
 ## Phase 0 — Audit Cleanup and Spec Alignment
 
@@ -71,8 +72,8 @@ Goal: turn the Week-1 skeleton into a coherent Steward runtime while avoiding pr
 ### Parser and primitive semantics
 
 - [ ] Confirm the fallback-to-`think` behavior is intentional and documented.
-- [ ] Decide whether `think` defaults to private in parser/runtime; specs say yes, current parser returns `private: false` unless `/private` appears.
-- [ ] Add `/publish` handling semantics if private-by-default is adopted.
+- [x] Decide whether `think` defaults to private in parser/runtime; specs say yes, so parser/runtime now default to private.
+- [x] Add `/publish` handling semantics after adopting private-by-default thoughts.
 - [ ] Add parser tests for slash-command composition and flag order.
 - [ ] Ensure blocked internal identifiers stay hidden while not overblocking ordinary user text.
 - [ ] Add structured parse errors with stable error codes for UI/bridge use.
@@ -80,17 +81,17 @@ Goal: turn the Week-1 skeleton into a coherent Steward runtime while avoiding pr
 ### Steward state
 
 - [ ] Replace `agent_id: Option<String>` with a proper `AgentId` newtype.
-- [ ] Introduce an `AgentState` owned by the Steward instead of scattered primitive fields.
-- [ ] Add `birth_timestamp` as identity-critical runtime state.
-- [ ] Add `odu_seed` / `odu_primary_index` placeholders with explicit TODO boundaries.
-- [ ] Wire existing `identity::dna::generate_dna_fingerprint` into birth.
+- [x] Introduce an `AgentState` owned by the Steward instead of scattered primitive fields.
+- [x] Add `birth_timestamp` as identity-critical runtime state.
+- [x] Add `odu_seed` / `odu_primary_index` placeholders with explicit TODO boundaries.
+- [x] Wire existing `identity::dna::generate_dna_fingerprint` into birth.
 - [ ] Keep `AgentCore` and `AgentSnapshot` separate to avoid circular state snapshots.
 - [ ] Add snapshot serialization tests before adding durable storage.
 
 ### Reputation and tiers
 
-- [ ] Centralize `tier_for` and `tools_for_tier`; current `lib.rs` and `interpreter.rs` mappings differ.
-- [ ] Align tier tool unlocks with `specs/reputation.md`.
+- [x] Centralize `tier_for` and `tools_for_tier`; current `lib.rs` and `interpreter.rs` mappings differed.
+- [x] Align tier tool unlocks with `specs/reputation.md`.
 - [ ] Add reason-coded reputation changes: `Think`, `Act`, `Decay`, `Violation`, `BudgetOverrun`, `ManualAudit`.
 - [ ] Implement think reputation gain from frozen values: `THINK_NORMAL`, `THINK_HIGH`.
 - [ ] Implement Justice-owned act tier assignment; agent/tool must not self-declare act tier.
@@ -111,8 +112,8 @@ Goal: turn the Week-1 skeleton into a coherent Steward runtime while avoiding pr
 
 ### Session persistence
 
-- [ ] Add `steward/session.rs` with `Session`, `ConversationMessage`, and `ContentBlock` modeled after Claw-code patterns.
-- [ ] Persist public messages and receipts as versioned JSON.
+- [x] Add `steward/session.rs` with `Session`, `ConversationMessage`, and `ContentBlock` modeled after Claw-code patterns.
+- [x] Persist public messages as versioned JSON.
 - [ ] Add an encrypted private section for `/private` content.
 - [ ] Add schema versioning and migration stubs.
 - [ ] Add `SessionStore::save`, `load`, `list`, `resume`, and `archive`.
@@ -418,9 +419,9 @@ Goal: make each architecture promise mechanically testable.
 
 ### CI and quality gates
 
-- [ ] Add formatting check: `cargo fmt --check`.
-- [ ] Add lint check: `cargo clippy --workspace --all-targets -- -D warnings` after existing warnings are fixed.
-- [ ] Fix current useless-comparison warning in hermetic tests.
+- [x] Add formatting check: `cargo fmt --check`.
+- [x] Add lint check: `cargo clippy --workspace --all-targets -- -D warnings` after existing warnings are fixed.
+- [x] Fix current useless-comparison warning in hermetic tests.
 - [ ] Add `cargo test --workspace` CI.
 - [ ] Add secret scanning before any public release.
 - [ ] Add dependency audit.
@@ -455,11 +456,11 @@ Only start after the Rust core proves the full local flow.
 
 ## Suggested Immediate Sprint
 
-1. [ ] Update README current status to 51 passing tests and mention `identity/dna.rs`.
-2. [ ] Resolve `think` default privacy mismatch between parser and `specs/privacy.md`.
-3. [ ] Centralize tier/tool mapping and add boundary tests.
-4. [ ] Add `birth_timestamp`, DNA fingerprint, and structured `AgentState` to the Steward.
-5. [ ] Add versioned session persistence without encryption first.
+1. [x] Update README current status to 59 passing tests and mention the identity/session test suites.
+2. [x] Resolve `think` default privacy mismatch between parser and `specs/privacy.md`.
+3. [x] Centralize tier/tool mapping and add boundary tests.
+4. [x] Add `birth_timestamp`, DNA fingerprint, and structured `AgentState` to the Steward.
+5. [x] Add versioned session persistence without encryption first.
 6. [ ] Add private session encryption and leakage tests.
 7. [ ] Add receipt chain links and verification.
 8. [ ] Add minimal tool registry with read-only file/glob/grep tools behind tier gates.

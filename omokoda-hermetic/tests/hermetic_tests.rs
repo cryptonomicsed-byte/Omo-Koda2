@@ -31,9 +31,7 @@ mod hermetic_tests {
 
     #[test]
     fn empty_name_is_rejected() {
-        let result = std::panic::catch_unwind(|| {
-            HermeticState::from_seed("", 0)
-        });
+        let result = std::panic::catch_unwind(|| HermeticState::from_seed("", 0));
         assert!(result.is_err());
     }
 
@@ -51,13 +49,13 @@ mod hermetic_tests {
     fn think_policy_returns_valid_depth() {
         let state = HermeticState::from_seed("agent-001", 1714348800);
         let depth = state.think_abstraction_depth();
-        assert!(depth >= 0.0 && depth <= 1.0);
+        assert!((0.0..=1.0).contains(&depth));
     }
 
     #[test]
-    fn act_cooldown_is_nonnegative() {
+    fn act_cooldown_is_deterministic() {
         let state = HermeticState::from_seed("agent-001", 1714348800);
-        let cooldown_ms = state.act_cooldown_ms();
-        assert!(cooldown_ms >= 0);
+        let same_state = HermeticState::from_seed("agent-001", 1714348800);
+        assert_eq!(state.act_cooldown_ms(), same_state.act_cooldown_ms());
     }
 }

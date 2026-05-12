@@ -28,11 +28,14 @@ That is the entire public surface. Forever.
 
 ## Current Status
 
-**35/35 tests passing. Week 1 complete.**
+**59/59 tests passing. Week 1 complete; first TODO execution slice started.**
 
 ```text
-omokoda-core     parser       19/19  ✅
+omokoda-core     parser       20/20  ✅
+omokoda-core     interpreter  15/15  ✅
+omokoda-core     identity      5/5   ✅
 omokoda-core     receipts      8/8   ✅
+omokoda-core     sessions      3/3   ✅
 omokoda-hermetic soul          8/8   ✅
 ```
 
@@ -45,7 +48,7 @@ omokoda-hermetic soul          8/8   ✅
 - `specs/stdlib.md` — internal module map
 - `specs/architecture.md` — seven-layer map
 
-**Next:** The Steward interpreter (`omokoda-core/src/interpreter.rs`)
+**Next:** Structured Steward state, session persistence, private memory encryption, and receipt-chain hardening.
 
 ---
 

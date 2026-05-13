@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod interpreter_tests {
-    use omokoda_core::interpreter::Steward;
+    use omokoda_core::interpreter::{Steward, TurnEvent};
     use omokoda_core::parser::parse;
     use omokoda_core::reputation::{tier_for, tool_allowed, tools_for_tier};
 
@@ -44,6 +44,53 @@ mod interpreter_tests {
     }
 
     #[tokio::test]
+    async fn think_dispatch_with_event_sink_emits_cycle_events() {
+        use tokio::sync::mpsc;
+
+        let mut steward = Steward::new();
+        steward.set_mock_provider("mock thought".to_string());
+        steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
+
+        let (tx, mut rx) = mpsc::channel(10);
+        let stmt = parse(r#"think "hello world""#).unwrap()[0].clone();
+        let result = steward.dispatch_with_event_sink(stmt, tx).await.unwrap();
+
+        let mut events = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            events.push(event);
+        }
+
+        assert!(result.receipt.is_none());
+        assert!(events.iter().any(|e| matches!(e, TurnEvent::Started)));
+        assert!(events.iter().any(|e| matches!(e, TurnEvent::Finished)));
+    }
+
+    #[tokio::test]
+    async fn act_dispatch_with_event_sink_emits_receipt_event() {
+        use tokio::sync::mpsc;
+
+        let mut steward = Steward::new();
+        steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
+        let test_file = "test_act_event.txt";
+        std::fs::write(test_file, "content").unwrap();
+
+        let (tx, mut rx) = mpsc::channel(10);
+        let stmt = parse(r#"act "read_file" "test_act_event.txt""#).unwrap()[0].clone();
+        let result = steward.dispatch_with_event_sink(stmt, tx).await.unwrap();
+
+        let mut has_receipt = false;
+        while let Ok(event) = rx.try_recv() {
+            if let TurnEvent::ReceiptGenerated(_) = event {
+                has_receipt = true;
+            }
+        }
+
+        let _ = std::fs::remove_file(test_file);
+        assert!(result.receipt.is_some());
+        assert!(has_receipt);
+    }
+
+    #[tokio::test]
     async fn think_private_sets_private_mode() {
         let mut steward = Steward::new();
         steward.set_mock_provider("mock thought".to_string());
@@ -63,6 +110,29 @@ mod interpreter_tests {
         let stmts = parse(r#"think "share this" /publish"#).unwrap();
         let result = steward.dispatch(stmts[0].clone()).await.unwrap();
         assert!(!result.private_mode);
+    }
+
+    #[tokio::test]
+    async fn steward_can_register_a_provider() {
+        use omokoda_core::providers::MockProvider;
+
+        let mut steward = Steward::new();
+        steward.register_provider(Box::new(MockProvider::new("mock thought".to_string())));
+        steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
+
+        let stmts = parse(r#"think "hello""#).unwrap();
+        let result = steward.dispatch(stmts[0].clone()).await.unwrap();
+        assert_eq!(result.tool_output, Some("mock thought".to_string()));
+    }
+
+    #[tokio::test]
+    async fn configure_rejects_unknown_provider() {
+        let mut steward = Steward::new();
+        steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
+
+        let result = steward.dispatch(parse(r#"/configure provider:unknown"#).unwrap()[0].clone()).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("unknown provider"));
     }
 
     #[tokio::test]
@@ -262,5 +332,22 @@ mod interpreter_tests {
         assert_eq!(config.default_provider, "mock");
         assert!(!config.default_privacy);
         assert!(!config.default_sandbox);
+    }
+
+    #[tokio::test]
+    async fn slash_seal_and_unlock_preserves_private_memory() {
+        let mut steward = Steward::new();
+        steward.set_mock_provider("mock thought".to_string());
+        steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
+
+        steward.dispatch(parse(r#"think "secret thought""#).unwrap()[0].clone()).await.unwrap();
+        assert!(steward.agent_state().unwrap().private_data().is_some());
+
+        steward.dispatch(parse(r#"/seal mypass"#).unwrap()[0].clone()).await.unwrap();
+        assert!(steward.agent_state().unwrap().private_data().is_none());
+        assert!(steward.agent_state().unwrap().session.encrypted_private.is_some());
+
+        steward.dispatch(parse(r#"/unlock mypass"#).unwrap()[0].clone()).await.unwrap();
+        assert!(steward.agent_state().unwrap().private_data().is_some());
     }
 }

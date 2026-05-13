@@ -191,11 +191,11 @@ Goal: make private memory real, encrypted, and impossible to route externally by
 
 ### `/private` provider enforcement
 
-- [ ] Add provider metadata: local, browser-local, registered-local, external, hive.
+- [x] Add provider metadata: local, browser-local, registered-local, external, hive.
 - [ ] Allow `/private`: WebLLM, Ollama localhost, user-registered local endpoint.
-- [ ] Block `/private`: Claude, OpenAI, Gemini, OpenRouter, Hive node, any unregistered external endpoint.
-- [ ] On `/private` timeout, return an explicit hard failure.
-- [ ] Add tests proving no external provider is attempted under `/private`.
+- [x] Block `/private`: Claude, OpenAI, Gemini, OpenRouter, Hive node, any unregistered external endpoint.
+- [x] On `/private` timeout, return an explicit hard failure.
+- [x] Add tests proving no external provider is attempted under `/private`.
 - [ ] Add a runtime audit event for every private-provider denial.
 
 ## Phase 4 — Tool Execution and Safety
@@ -228,11 +228,11 @@ Goal: make `act` useful while keeping capability unlocks, permissions, sandboxin
 - [ ] Implement a security policy from flags:
   - [ ] `/sandbox`: strict execution, no network by default, workspace read-only unless approved, mandatory receipts.
   - [ ] `/private`: no external network, encrypted memory, no public publication.
-- [ ] Add Linux namespace sandbox where available.
+- [x] Add Linux namespace sandbox where available.
 - [ ] Add WASM sandbox plan before executing untrusted plugin/tool code.
-- [ ] Restrict file operations to the agent workspace.
+- [x] Restrict file operations to the agent workspace.
 - [ ] Add timeout and output-size limits for command execution.
-- [ ] Add tests for path traversal, network denial, private key/file access denial, timeout, and output truncation.
+- [x] Add tests for path traversal, network denial, private key/file access denial, timeout, and output truncation.
 
 ### Hooks and audit
 
@@ -248,13 +248,13 @@ Goal: move from stub `think` to a real, streaming reasoning loop.
 
 ### Provider abstraction
 
-- [ ] Add provider trait: generate, stream, token usage, model metadata, privacy class.
-- [ ] Implement `MockProvider` for deterministic tests.
-- [ ] Implement `OllamaProvider` for local default.
+- [x] Add provider trait: generate, stream, token usage, model metadata, privacy class.
+- [x] Implement `MockProvider` for deterministic tests.
+- [x] Implement `OllamaProvider` for local default.
 - [ ] Add `WebLLM` integration plan for frontend/browser-local runtime.
 - [ ] Add external providers only behind explicit public/permissive mode.
-- [ ] Add fallback chain for public mode: local → free/public → paid → mock.
-- [ ] Add hard-fail chain for private mode: local only → fail.
+- [x] Add fallback chain for public mode: local → free/public → paid → mock.
+- [x] Add hard-fail chain for private mode: local only → fail.
 
 ### Turn loop
 
@@ -402,11 +402,11 @@ Goal: make each architecture promise mechanically testable.
 
 ### Near-term Rust tests
 
-- [ ] Add `tests/session_tests.rs`.
-- [ ] Add `tests/privacy_tests.rs`.
+- [x] Add `tests/session_tests.rs`.
+- [x] Add `tests/privacy_tests.rs`.
 - [ ] Add `tests/memory_tests.rs`.
 - [ ] Add `tests/permissions_tests.rs`.
-- [ ] Add `tests/tool_registry_tests.rs`.
+- [x] Add `tests/tool_registry_tests.rs`.
 - [ ] Add `tests/sandbox_tests.rs`.
 - [ ] Add `tests/provider_tests.rs`.
 - [ ] Add `tests/economics_tests.rs`.

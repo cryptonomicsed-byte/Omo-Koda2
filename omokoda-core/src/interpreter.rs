@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::mpsc;
 
 #[derive(Debug, Clone)]
 pub struct ExecutionResult {
@@ -25,6 +26,19 @@ pub struct ExecutionResult {
     pub private_mode: bool,
     pub tool_output: Option<String>,
 }
+
+#[derive(Debug, Clone)]
+pub enum TurnEvent {
+    Started,
+    Token(String),
+    ToolRequestDetected(String),
+    ReceiptGenerated(Receipt),
+    Warning(String),
+    Error(String),
+    Finished,
+}
+
+pub type TurnEventSender = mpsc::Sender<TurnEvent>;
 
 pub const AGENT_STATE_VERSION: u32 = 1;
 
@@ -241,10 +255,21 @@ impl Steward {
         self.providers = ProviderRegistry::with_mock(response);
     }
 
+    pub fn register_provider(&mut self, provider: Box<dyn crate::providers::LlmProvider>) {
+        self.providers.register(provider);
+    }
+
     pub async fn dispatch(&mut self, stmt: Statement) -> Result<ExecutionResult, String> {
         match stmt {
             Statement::Birth { name, metadata } => {
-                self.agent = Some(AgentState::birth(name, metadata));
+                let mut agent = AgentState::birth(name, metadata);
+                let provider = agent.session.config.default_provider.clone();
+                if !provider.is_empty() && !provider.eq_ignore_ascii_case("default") {
+                    if !self.providers.is_known_provider(&provider) {
+                        return Err(format!("unknown provider '{}' in birth metadata", provider));
+                    }
+                }
+                self.agent = Some(agent);
                 self.auto_save();
                 Ok(ExecutionResult {
                     receipt: None,
@@ -262,20 +287,11 @@ impl Steward {
 
                 let agent = self.ensure_born()?;
                 let config = &agent.session.config;
-                let provider = if private {
-                    &config.default_provider
-                } else {
-                    "openrouter" // hardcoded public default for now
-                };
-
-                // Routing enforcement
-                if private && provider != "ollama" && provider != "webllm" && provider != "mock" {
-                    return Err(format!("Privacy violation: external provider '{}' not allowed for private thoughts", provider));
-                }
+                let provider = &config.default_provider;
 
                 let response = self
                     .providers
-                    .think(provider, &prompt)
+                    .think(provider, &prompt, &[], private)
                     .await
                     .map_err(|e| format!("Provider error: {}", e))?;
 
@@ -421,12 +437,48 @@ impl Steward {
                         if let Some((key, value)) = arg_str.split_once(':') {
                             match key {
                                 "provider" => {
+                                    if !self.providers.is_known_provider(value) && !value.eq_ignore_ascii_case("default") {
+                                        let available = self.providers.provider_names().join(", ");
+                                        return Err(format!("unknown provider '{}'. available: {}", value, available));
+                                    }
                                     agent.session.config.default_provider = value.to_string();
                                     self.auto_save();
                                     Ok(ExecutionResult {
                                         receipt: None,
                                         private_mode: false,
                                         tool_output: Some(format!("Configured provider to {}", value)),
+                                    })
+                                }
+                                "privacy" => {
+                                    let parsed = match value {
+                                        "true" | "on" | "yes" => true,
+                                        "false" | "off" | "no" => false,
+                                        _ => {
+                                            return Err("privacy must be true/on/yes or false/off/no".to_string())
+                                        }
+                                    };
+                                    agent.session.config.default_privacy = parsed;
+                                    self.auto_save();
+                                    Ok(ExecutionResult {
+                                        receipt: None,
+                                        private_mode: false,
+                                        tool_output: Some(format!("Configured privacy to {}", parsed)),
+                                    })
+                                }
+                                "sandbox" => {
+                                    let parsed = match value {
+                                        "true" | "on" | "yes" => true,
+                                        "false" | "off" | "no" => false,
+                                        _ => {
+                                            return Err("sandbox must be true/on/yes or false/off/no".to_string())
+                                        }
+                                    };
+                                    agent.session.config.default_sandbox = parsed;
+                                    self.auto_save();
+                                    Ok(ExecutionResult {
+                                        receipt: None,
+                                        private_mode: false,
+                                        tool_output: Some(format!("Configured sandbox to {}", parsed)),
                                     })
                                 }
                                 _ => Err(format!("Unknown configuration key: {}", key)),
@@ -450,7 +502,7 @@ impl Steward {
                             &mut key,
                         );
                         
-                        agent.session.seal_private(&private_data, &agent.odu_seed)?;
+                        agent.session.seal_private(&private_data, &agent.odu_seed, &key)?;
                         self.unlock_key = None;
                         self.auto_save();
                         
@@ -477,7 +529,7 @@ impl Steward {
                         );
 
                         // Try to unseal
-                        let private_data = agent.session.unseal_private(&agent.odu_seed)?;
+                        let private_data = agent.session.unseal_private(&agent.odu_seed, &key)?;
                         agent.private_data = Some(private_data);
                         self.unlock_key = Some(key);
                         
@@ -528,6 +580,34 @@ impl Steward {
         agent.update_reputation(new_rep, ReputationChangeReason::BudgetOverrun);
         self.auto_save();
         Ok(())
+    }
+
+    pub async fn dispatch_with_event_sink(
+        &mut self,
+        stmt: Statement,
+        mut sink: TurnEventSender,
+    ) -> Result<ExecutionResult, String> {
+        let _ = sink.send(TurnEvent::Started).await;
+        if let Statement::Act { tool, .. } = &stmt {
+            let _ = sink.send(TurnEvent::ToolRequestDetected(tool.clone())).await;
+        }
+
+        let result = self.dispatch(stmt).await;
+
+        match &result {
+            Ok(exec) => {
+                if let Some(receipt) = exec.receipt.clone() {
+                    let _ = sink.send(TurnEvent::ReceiptGenerated(receipt)).await;
+                }
+                let _ = sink.send(TurnEvent::Finished).await;
+            }
+            Err(err) => {
+                let _ = sink.send(TurnEvent::Error(err.clone())).await;
+                let _ = sink.send(TurnEvent::Finished).await;
+            }
+        }
+
+        result
     }
 
     pub fn apply_daily_decay(&mut self, days: u32) {

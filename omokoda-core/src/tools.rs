@@ -111,14 +111,19 @@ impl Tool for BashTool {
         2 // Creator tier
     }
     async fn execute(&self, params: &str, sandbox: bool) -> Result<String, String> {
+        if sandbox && params.contains("..") {
+            return Err("sandboxed bash commands must not contain '..'".to_string());
+        }
+
+        let workspace_root = std::env::current_dir().map_err(|e| format!("failed to determine workspace root: {}", e))?;
         let mut cmd = if sandbox {
             let mut c = Command::new("unshare");
             c.args(["--map-root-user", "--net", "--mount", "--pid", "--fork", "bash", "-c", params]);
-            c
+            c.current_dir(&workspace_root)
         } else {
             let mut c = Command::new("bash");
             c.args(["-c", params]);
-            c
+            c.current_dir(&workspace_root)
         };
 
         let output = cmd.output().map_err(|e| format!("failed to execute bash: {}", e))?;

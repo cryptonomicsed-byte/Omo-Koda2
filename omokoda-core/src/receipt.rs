@@ -2,6 +2,8 @@ use crate::identity::AgentId;
 use ed25519_dalek::{Signature, Signer, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -132,6 +134,17 @@ impl ReceiptStore {
         }
     }
 
+    pub fn save_to_path(&self, path: &Path) -> Result<(), String> {
+        let json = serde_json::to_string_pretty(self)
+            .map_err(|e| format!("failed to serialize receipts: {e}"))?;
+        std::fs::write(path, json).map_err(|e| format!("failed to write receipt file: {e}"))
+    }
+
+    pub fn load_from_path(path: &Path) -> Result<Self, String> {
+        let content = std::fs::read_to_string(path).map_err(|e| format!("failed to read receipt file: {e}"))?;
+        serde_json::from_str(&content).map_err(|e| format!("failed to deserialize receipts: {e}"))
+    }
+
     pub fn record(&mut self, receipt: Receipt) {
         let id = receipt.receipt_id.clone();
         self.last_hash = id.clone();
@@ -175,6 +188,29 @@ impl ReceiptStore {
                     return false;
                 }
                 current_expected_prev = r.receipt_id.clone();
+            } else {
+                return false;
+            }
+        }
+        true
+    }
+
+    pub fn verify_history(&self) -> bool {
+        let mut built_ids: Vec<String> = Vec::new();
+        for id in &self.chain {
+            if let Some(receipt) = self.receipts.get(id) {
+                if receipt.previous_hash != if built_ids.is_empty() { "0".repeat(64) } else { built_ids.last().unwrap().clone() } {
+                    return false;
+                }
+                built_ids.push(receipt.receipt_id.clone());
+
+                let mut tree = SimpleMerkleTree::new();
+                for leaf in &built_ids {
+                    tree.insert(leaf.clone());
+                }
+                if receipt.merkle_root != tree.root() && receipt.merkle_root != "0".repeat(64) {
+                    return false;
+                }
             } else {
                 return false;
             }

@@ -69,4 +69,12 @@ mod tool_registry_tests {
         let result = registry.execute("grep", "secret ../file.txt", false, 0).await;
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn bash_sandbox_rejects_parent_traversal() {
+        let registry = ToolRegistry::new();
+        let result = registry.execute("bash", "cd ../ && ls", true, 2).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("must not contain '..'"));
+    }
 }

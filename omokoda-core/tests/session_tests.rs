@@ -65,11 +65,12 @@ fn session_encryption_roundtrip() {
     };
 
     // Seal
-    session.seal_private(&private_data, &odu_seed).unwrap();
+    let password_key = [0u8; 32];
+    session.seal_private(&private_data, &odu_seed, &password_key).unwrap();
     assert!(session.encrypted_private.is_some());
 
     // Unseal
-    let decrypted = session.unseal_private(&odu_seed).unwrap();
+    let decrypted = session.unseal_private(&odu_seed, &password_key).unwrap();
     assert_eq!(decrypted.private_messages.len(), 1);
     
     if let ContentBlock::Text { text } = &decrypted.private_messages[0].blocks[0] {
@@ -96,9 +97,35 @@ fn session_decryption_fails_with_wrong_seed() {
         private_messages: vec![ConversationMessage::new_user("secret".to_string(), true)],
     };
 
-    session.seal_private(&private_data, &odu_seed).unwrap();
+    let password_key = [0u8; 32];
+    session.seal_private(&private_data, &odu_seed, &password_key).unwrap();
 
     let wrong_seed = OduSeed::new([2u8; 32]);
-    let result = session.unseal_private(&wrong_seed);
+    let result = session.unseal_private(&wrong_seed, &password_key);
+    assert!(result.is_err());
+}
+
+#[test]
+fn session_decryption_fails_with_wrong_password_key() {
+    let agent_id = AgentId::from_str("agent-1");
+    let mut session = Session::new(agent_id, "luna".to_string(), 12345);
+    
+    let odu_seed = OduSeed::new([1u8; 32]);
+    let odu_identity = OduIdentity {
+        primary_index: 0,
+        mnemonic: "test".to_string(),
+    };
+
+    let private_data = PrivateSessionData {
+        odu_seed: odu_seed.clone(),
+        odu_identity: odu_identity.clone(),
+        private_messages: vec![ConversationMessage::new_user("secret".to_string(), true)],
+    };
+
+    let password_key = [0u8; 32];
+    session.seal_private(&private_data, &odu_seed, &password_key).unwrap();
+
+    let mut wrong_key = [1u8; 32];
+    let result = session.unseal_private(&odu_seed, &wrong_key);
     assert!(result.is_err());
 }

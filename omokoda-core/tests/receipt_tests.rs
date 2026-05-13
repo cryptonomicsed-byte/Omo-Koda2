@@ -120,4 +120,28 @@ mod receipt_tests {
         assert_ne!(root2, root1);
         assert_ne!(root2, r2.receipt_id);
     }
+
+    #[test]
+    fn receipt_store_verify_history_and_persistence() {
+        let key = generate_key();
+        let mut store = ReceiptStore::new();
+        let agent_id = AgentId::from_str("agent-001");
+        let path = std::path::Path::new("test_receipts.json");
+
+        let r1 = Receipt::new_merkle(&agent_id, "act1", "p1", store.last_hash(), &store.current_merkle_root(), &key);
+        store.record(r1.clone());
+        let r2 = Receipt::new_merkle(&agent_id, "act2", "p2", store.last_hash(), &store.current_merkle_root(), &key);
+        store.record(r2.clone());
+
+        assert!(store.verify_chain());
+        assert!(store.verify_history());
+
+        store.save_to_path(path).unwrap();
+        let loaded = ReceiptStore::load_from_path(path).unwrap();
+        assert_eq!(loaded.count(), 2);
+        assert!(loaded.verify_chain());
+        assert!(loaded.verify_history());
+
+        let _ = std::fs::remove_file(path);
+    }
 }

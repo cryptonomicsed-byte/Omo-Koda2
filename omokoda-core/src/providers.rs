@@ -35,6 +35,7 @@ impl ProviderRegistry {
             providers: Vec::new(),
         };
         registry.register(Box::new(OllamaProvider::new("http://localhost:11434".to_string())));
+        registry.register(Box::new(WebLLMProvider::new()));
         registry
     }
 
@@ -62,10 +63,66 @@ impl ProviderRegistry {
         }
     }
 
-    pub async fn think(&self, _provider: &str, prompt: &str) -> Result<String, String> {
-        // Simplified for now: route based on default logic
-        // In the future, this can use the specific provider name
-        self.route_think(prompt, &[], false).await
+    pub fn get_provider(&self, provider_name: &str) -> Option<&Box<dyn LlmProvider>> {
+        let normalized = provider_name.to_lowercase();
+        self.providers.iter().find(|p| {
+            let metadata = p.metadata();
+            metadata.name.to_lowercase() == normalized
+                || metadata.endpoint.to_lowercase() == normalized
+        })
+    }
+
+    pub fn provider_names(&self) -> Vec<String> {
+        self.providers
+            .iter()
+            .map(|provider| provider.metadata().name.clone())
+            .collect()
+    }
+
+    pub fn is_known_provider(&self, provider_name: &str) -> bool {
+        self.get_provider(provider_name).is_some()
+    }
+
+    pub async fn think(
+        &self,
+        provider: &str,
+        prompt: &str,
+        history: &[ConversationMessage],
+        private_mode: bool,
+    ) -> Result<String, String> {
+        let provider_name = provider.trim();
+        if provider_name.is_empty() || provider_name.eq_ignore_ascii_case("default") {
+            return self.route_think(prompt, history, private_mode).await;
+        }
+
+        let provider = self
+            .get_provider(provider_name)
+            .ok_or_else(|| format!("provider '{}' not found", provider_name))?;
+
+        let metadata = provider.metadata();
+        if private_mode && !self.is_allowed_in_private(metadata) {
+            return Err("No local provider available in /private mode (HARD FAIL)".to_string());
+        }
+
+        match tokio::time::timeout(Duration::from_secs(30), provider.generate(prompt, history)).await {
+            Ok(Ok(response)) => Ok(response),
+            Ok(Err(e)) => Err(format!("provider '{}' error: {}", provider_name, e)),
+            Err(_) => Err(format!("provider '{}' timed out", provider_name)),
+        }
+    }
+
+    fn provider_order(private_mode: bool) -> &'static [ProviderClass] {
+        if private_mode {
+            &[ProviderClass::Local, ProviderClass::BrowserLocal, ProviderClass::RegisteredLocal]
+        } else {
+            &[
+                ProviderClass::Local,
+                ProviderClass::BrowserLocal,
+                ProviderClass::RegisteredLocal,
+                ProviderClass::External,
+                ProviderClass::Hive,
+            ]
+        }
     }
 
     pub async fn route_think(
@@ -75,20 +132,23 @@ impl ProviderRegistry {
         history: &[ConversationMessage],
         private_mode: bool,
     ) -> Result<String, String> {
-        for provider in &self.providers {
-            let metadata = provider.metadata();
-            
-            if private_mode && !self.is_allowed_in_private(metadata) {
-                continue;
-            }
+        let order = Self::provider_order(private_mode);
+        for provider_class in order {
+            for provider in self.providers.iter().filter(|p| p.metadata().class == *provider_class) {
+                let metadata = provider.metadata();
 
-            match tokio::time::timeout(Duration::from_secs(30), provider.generate(prompt, history)).await {
-                Ok(Ok(response)) => return Ok(response),
-                Ok(Err(_e)) => {
-                    // Try next provider
+                if private_mode && !self.is_allowed_in_private(metadata) {
+                    continue;
                 }
-                Err(_) => {
-                    // Timeout, try next provider
+
+                match tokio::time::timeout(Duration::from_secs(30), provider.generate(prompt, history)).await {
+                    Ok(Ok(response)) => return Ok(response),
+                    Ok(Err(_e)) => {
+                        // Try next provider in the same class or next class
+                    }
+                    Err(_) => {
+                        // Timeout, try next provider
+                    }
                 }
             }
         }
@@ -160,6 +220,34 @@ impl LlmProvider for OllamaProvider {
 
         let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
         Ok(json["response"].as_str().unwrap_or("").to_string())
+    }
+}
+
+#[derive(Debug)]
+pub struct WebLLMProvider {
+    metadata: ProviderMetadata,
+}
+
+impl WebLLMProvider {
+    pub fn new() -> Self {
+        Self {
+            metadata: ProviderMetadata {
+                name: "WebLLM".to_string(),
+                class: ProviderClass::BrowserLocal,
+                endpoint: "browserllm://local".to_string(),
+            },
+        }
+    }
+}
+
+#[async_trait]
+impl LlmProvider for WebLLMProvider {
+    fn metadata(&self) -> &ProviderMetadata {
+        &self.metadata
+    }
+
+    async fn generate(&self, _prompt: &str, _history: &[ConversationMessage]) -> Result<String, String> {
+        Err("WebLLM provider not implemented".to_string())
     }
 }
 

@@ -56,4 +56,27 @@ mod persistence_tests {
         let path = PathBuf::from("sessions").join(format!("{}.json", agent_id));
         let _ = std::fs::remove_file(path);
     }
+
+    #[tokio::test]
+    async fn load_agent_can_unlock_sealed_private_session() {
+        let mut steward = Steward::new();
+        steward.set_mock_provider("mock thought".to_string());
+        steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
+        steward.dispatch(parse(r#"think "secret thought""#).unwrap()[0].clone()).await.unwrap();
+        steward.dispatch(parse(r#"/seal mypass"#).unwrap()[0].clone()).await.unwrap();
+
+        let agent_id = steward.agent_state().unwrap().id().clone();
+        let path = PathBuf::from("sessions").join(format!("{}.json", agent_id));
+        assert!(path.exists());
+
+        let mut new_steward = Steward::new();
+        new_steward.load_agent(&agent_id).unwrap();
+        assert!(new_steward.agent_state().unwrap().private_data().is_none());
+        assert!(new_steward.agent_state().unwrap().session.encrypted_private.is_some());
+
+        new_steward.dispatch(parse(r#"/unlock mypass"#).unwrap()[0].clone()).await.unwrap();
+        assert!(new_steward.agent_state().unwrap().private_data().is_some());
+
+        let _ = std::fs::remove_file(path);
+    }
 }

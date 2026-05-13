@@ -1,5 +1,7 @@
 use crate::identity::odu::{OduIdentity, OduSeed};
 use crate::identity::AgentId;
+use argon2::{Argon2, Algorithm, Params, Version};
+use blake3;
 use chacha20poly1305::{
     aead::{Aead, KeyInit},
     ChaCha20Poly1305, Nonce,
@@ -129,9 +131,10 @@ impl Session {
         &mut self,
         private_data: &PrivateSessionData,
         odu_seed: &OduSeed,
+        password_key: &[u8; 32],
     ) -> Result<(), String> {
         let salt = generate_salt(&self.agent_id, self.birth_timestamp);
-        let key = derive_session_key(odu_seed, &salt);
+        let key = derive_session_key(odu_seed, &salt, password_key);
 
         let json = serde_json::to_string(private_data)
             .map_err(|e| format!("failed to serialize private data: {e}"))?;
@@ -154,13 +157,17 @@ impl Session {
         Ok(())
     }
 
-    pub fn unseal_private(&self, odu_seed: &OduSeed) -> Result<PrivateSessionData, String> {
+    pub fn unseal_private(
+        &self,
+        odu_seed: &OduSeed,
+        password_key: &[u8; 32],
+    ) -> Result<PrivateSessionData, String> {
         let data = self
             .encrypted_private
             .as_ref()
             .ok_or_else(|| "no encrypted private data found".to_string())?;
 
-        let key = derive_session_key(odu_seed, &data.salt);
+        let key = derive_session_key(odu_seed, &data.salt, password_key);
         let cipher = ChaCha20Poly1305::new(&key.into());
         let nonce = Nonce::from_slice(&data.nonce);
 
@@ -234,24 +241,46 @@ impl ConversationMessage {
     }
 }
 
+const ARGON2_MEMORY_KB: u32 = 65536;
+const ARGON2_ITERATIONS: u32 = 3;
+const ARGON2_PARALLELISM: u32 = 1;
+const ARGON2_OUTPUT_LEN: u32 = 32;
+const SESSION_CHAIN_ID: &str = "omokoda-main";
+
 pub fn generate_salt(agent_id: &AgentId, birth_timestamp: u64) -> [u8; 16] {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
+    let mut hasher = blake3::Hasher::new();
     hasher.update(agent_id.as_str().as_bytes());
-    hasher.update(birth_timestamp.to_be_bytes());
+    hasher.update(&birth_timestamp.to_be_bytes());
+    hasher.update(SESSION_CHAIN_ID.as_bytes());
     let result = hasher.finalize();
     let mut salt = [0u8; 16];
-    salt.copy_from_slice(&result[..16]);
+    salt.copy_from_slice(&result.as_bytes()[..16]);
     salt
 }
 
-fn derive_session_key(odu_seed: &OduSeed, salt: &[u8; 16]) -> [u8; 32] {
-    use hkdf::Hkdf;
-    use sha2::Sha256;
-    let hk = Hkdf::<Sha256>::new(Some(salt), odu_seed.as_bytes());
+fn derive_session_key(
+    odu_seed: &OduSeed,
+    salt: &[u8; 16],
+    password_key: &[u8; 32],
+) -> [u8; 32] {
+    let params = Params::new(
+        ARGON2_MEMORY_KB,
+        ARGON2_ITERATIONS,
+        ARGON2_PARALLELISM,
+        Some(ARGON2_OUTPUT_LEN),
+    )
+    .expect("invalid Argon2 parameters");
+
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
     let mut okm = [0u8; 32];
-    hk.expand(b"omokoda-session-v1", &mut okm)
-        .expect("HKDF expansion failed");
+
+    let mut combined_salt = Vec::with_capacity(48);
+    combined_salt.extend_from_slice(salt);
+    combined_salt.extend_from_slice(odu_seed.as_bytes());
+
+    argon2
+        .hash_password_into(password_key, &combined_salt, &mut okm)
+        .expect("Argon2 key derivation failed");
     okm
 }
 

@@ -33,6 +33,45 @@ mod receipt_tests {
     }
 
     #[test]
+    fn receipt_tamper_detection() {
+        let key = mock_signing_key();
+        let pub_key = key.verifying_key().to_bytes();
+        let r_orig = Receipt::new_merkle("agent-001", "act", "p", "prev", "root", &key);
+        
+        assert!(r_orig.verify(&pub_key).is_ok());
+
+        // Tamper with action
+        let mut r = r_orig.clone();
+        r.action = "tampered".to_string();
+        assert!(r.verify(&pub_key).is_err());
+
+        // Tamper with agent_id
+        let mut r = r_orig.clone();
+        r.agent_id = "agent-666".to_string();
+        assert!(r.verify(&pub_key).is_err());
+
+        // Tamper with payload
+        let mut r = r_orig.clone();
+        r.payload = "fake-payload".to_string();
+        assert!(r.verify(&pub_key).is_err());
+
+        // Tamper with previous_hash
+        let mut r = r_orig.clone();
+        r.previous_hash = "fake-prev".to_string();
+        assert!(r.verify(&pub_key).is_err());
+
+        // Tamper with merkle_root
+        let mut r = r_orig.clone();
+        r.merkle_root = "fake-root".to_string();
+        assert!(r.verify(&pub_key).is_err());
+
+        // Tamper with timestamp
+        let mut r = r_orig.clone();
+        r.timestamp += 1;
+        assert!(r.verify(&pub_key).is_err());
+    }
+
+    #[test]
     fn receipt_signature_verification() {
         let key = mock_signing_key();
         let pub_key = key.verifying_key().to_bytes();

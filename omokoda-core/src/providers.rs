@@ -25,31 +25,35 @@ pub trait LlmProvider: Send + Sync {
     async fn generate(&self, prompt: &str, history: &[ConversationMessage]) -> Result<String, String>;
 }
 
-#[derive(Debug)]
 pub struct ProviderRegistry {
-    pub ollama: OllamaProvider,
-    pub mock: Option<MockProvider>,
+    pub providers: Vec<Box<dyn LlmProvider>>,
 }
 
 impl ProviderRegistry {
     pub fn new() -> Self {
-        Self {
-            ollama: OllamaProvider::new("http://localhost:11434".to_string()),
-            mock: None,
-        }
+        let mut registry = Self {
+            providers: Vec::new(),
+        };
+        registry.register(Box::new(OllamaProvider::new("http://localhost:11434".to_string())));
+        registry
     }
 
     pub fn with_mock(response: String) -> Self {
-        Self {
-            ollama: OllamaProvider::new("http://localhost:11434".to_string()),
-            mock: Some(MockProvider::new(response)),
-        }
+        let mut registry = Self {
+            providers: Vec::new(),
+        };
+        registry.register(Box::new(MockProvider::new(response)));
+        registry
+    }
+
+    pub fn register(&mut self, provider: Box<dyn LlmProvider>) {
+        self.providers.push(provider);
     }
 
     pub fn is_allowed_in_private(&self, provider: &ProviderMetadata) -> bool {
         match provider.class {
             ProviderClass::Local => {
-                provider.endpoint.contains("localhost") || provider.endpoint.contains("127.0.0.1")
+                provider.endpoint.contains("localhost") || provider.endpoint.contains("127.0.0.1") || provider.endpoint.contains("mock://")
             }
             ProviderClass::BrowserLocal => true,
             ProviderClass::RegisteredLocal => true,
@@ -64,40 +68,37 @@ impl ProviderRegistry {
         history: &[ConversationMessage],
         private_mode: bool,
     ) -> Result<String, String> {
-        // 0. Try Mock if present (for tests)
-        if let Some(ref mock) = self.mock {
-            return mock.generate(prompt, history).await;
-        }
+        for provider in &self.providers {
+            let metadata = provider.metadata();
+            
+            if private_mode && !self.is_allowed_in_private(metadata) {
+                continue;
+            }
 
-        // Fallback chain: Ollama -> WebLLM (BrowserLocal stub) -> HARD FAIL
-        
-        // 1. Try Ollama
-        if self.is_allowed_in_private(self.ollama.metadata()) || !private_mode {
-            match tokio::time::timeout(Duration::from_secs(30), self.ollama.generate(prompt, history)).await {
+            match tokio::time::timeout(Duration::from_secs(30), provider.generate(prompt, history)).await {
                 Ok(Ok(response)) => return Ok(response),
-                Ok(Err(e)) => {
-                    if private_mode {
-                        return Err(format!("Ollama error in /private (HARD FAIL): {}", e));
-                    }
+                Ok(Err(_e)) => {
+                    // Try next provider
                 }
                 Err(_) => {
-                    if private_mode {
-                        return Err("Ollama timeout in /private (HARD FAIL)".to_string());
-                    }
+                    // Timeout, try next provider
                 }
             }
         }
 
-        // 2. Try WebLLM (Stub for now)
-        // If we were in a real browser environment, we'd call WebLLM here.
-        // For now, if Ollama failed and we are in private, we HARD FAIL.
-        
         if private_mode {
             Err("No local provider available in /private mode (HARD FAIL)".to_string())
         } else {
-            // In public mode, we could fallback to external, but for now just fail if local is gone
             Err("Reasoning failed: no provider responded".to_string())
         }
+    }
+}
+
+impl std::fmt::Debug for ProviderRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProviderRegistry")
+            .field("providers", &self.providers.iter().map(|p| p.metadata().name.clone()).collect::<Vec<_>>())
+            .finish()
     }
 }
 

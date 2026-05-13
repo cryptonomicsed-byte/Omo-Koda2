@@ -65,6 +65,8 @@ const VALID_SLASH_COMMANDS: &[&str] = &[
     "configure",
     "help",
     "tools",
+    "unlock",
+    "seal",
 ];
 
 pub fn parse(input: &str) -> Result<Vec<Statement>, ParseError> {

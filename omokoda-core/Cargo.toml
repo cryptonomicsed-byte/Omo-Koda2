@@ -23,3 +23,5 @@ async-trait = "0.1"
 urlencoding = "2.1"
 ed25519-dalek = "2.0"
 omokoda-hermetic = { path = "../omokoda-hermetic" }
+glob = "0.3"
+regex = "1.5"

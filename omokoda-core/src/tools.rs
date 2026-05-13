@@ -149,7 +149,6 @@ impl Tool for WebSearchTool {
     }
 }
 
-// Stubs for backward compatibility
 struct GlobTool;
 #[async_trait]
 impl Tool for GlobTool {
@@ -157,7 +156,18 @@ impl Tool for GlobTool {
     fn description(&self) -> &str { "Find files matching a pattern" }
     fn required_tier(&self) -> u8 { 0 }
     async fn execute(&self, params: &str, _sandbox: bool) -> Result<String, String> {
-        Ok(format!("glob stub: {}", params))
+        if params.contains("..") {
+            return Err("path must be within workspace (no .. allowed)".to_string());
+        }
+        
+        let mut results = Vec::new();
+        for entry in glob::glob(params).map_err(|e| format!("invalid glob pattern: {}", e))? {
+            match entry {
+                Ok(path) => results.push(path.display().to_string()),
+                Err(e) => results.push(format!("error: {}", e)),
+            }
+        }
+        Ok(results.join("\n"))
     }
 }
 
@@ -168,7 +178,28 @@ impl Tool for GrepTool {
     fn description(&self) -> &str { "Search for a pattern in files" }
     fn required_tier(&self) -> u8 { 0 }
     async fn execute(&self, params: &str, _sandbox: bool) -> Result<String, String> {
-        Ok(format!("grep stub: {}", params))
+        // Simple parser for "pattern path"
+        let parts: Vec<&str> = params.splitn(2, ' ').collect();
+        if parts.len() != 2 {
+            return Err("grep requires 'pattern path'".to_string());
+        }
+        let pattern = parts[0];
+        let path_str = parts[1];
+        
+        if path_str.contains("..") {
+            return Err("path must be within workspace (no .. allowed)".to_string());
+        }
+
+        let re = regex::Regex::new(pattern).map_err(|e| format!("invalid regex: {}", e))?;
+        let content = fs::read_to_string(path_str).map_err(|e| format!("failed to read file: {}", e))?;
+        
+        let mut results = Vec::new();
+        for (i, line) in content.lines().enumerate() {
+            if re.is_match(line) {
+                results.push(format!("{}: {}", i + 1, line));
+            }
+        }
+        Ok(results.join("\n"))
     }
 }
 

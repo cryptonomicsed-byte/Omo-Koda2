@@ -7,7 +7,7 @@ use crate::parser::{MetadataPair, Statement};
 use crate::providers::ProviderRegistry;
 use crate::receipt::{Receipt, ReceiptStore};
 use crate::reputation::{reputation_gain, tier_for, ACT_TIER_0_BASE};
-use crate::session::{ConversationMessage, Session};
+use crate::session::{ConversationMessage, PrivateSessionData, Session};
 use crate::tools::ToolRegistry;
 use ed25519_dalek::SigningKey;
 use hkdf::Hkdf;
@@ -58,6 +58,8 @@ pub struct AgentState {
     receipts: ReceiptStore,
     hermetic_state: HermeticState,
     public_key: [u8; 32],
+    #[serde(skip)]
+    private_data: Option<PrivateSessionData>,
 }
 
 impl AgentState {
@@ -87,6 +89,12 @@ impl AgentState {
             session.apply_metadata(&pair.key, &pair.value);
         }
 
+        let private_data = PrivateSessionData {
+            odu_seed: odu_seed.clone(),
+            odu_identity: odu_identity.clone(),
+            private_messages: Vec::new(),
+        };
+
         // Derive signing key
         let signing_key = derive_signing_key(&odu_seed);
         let public_key = signing_key.verifying_key().to_bytes();
@@ -104,6 +112,7 @@ impl AgentState {
             receipts,
             hermetic_state,
             public_key,
+            private_data: Some(private_data),
         }
     }
 
@@ -159,6 +168,10 @@ impl AgentState {
         &self.public_key
     }
 
+    pub fn private_data(&self) -> Option<&PrivateSessionData> {
+        self.private_data.as_ref()
+    }
+
     pub fn signing_key(&self) -> SigningKey {
         derive_signing_key(&self.odu_seed)
     }
@@ -189,6 +202,8 @@ pub struct Steward {
     justice: JusticeEngine,
     #[serde(skip)]
     persistence_path: Option<PathBuf>,
+    #[serde(skip)]
+    unlock_key: Option<[u8; 32]>,
 }
 
 impl Default for Steward {
@@ -205,6 +220,7 @@ impl Steward {
             providers: ProviderRegistry::new(),
             justice: JusticeEngine::new(),
             persistence_path: None,
+            unlock_key: None,
         }
     }
 
@@ -241,10 +257,66 @@ impl Steward {
                     "status" => self.slash_status(),
                     "tools" => self.slash_tools(),
                     "help" => self.slash_help(),
+                    "unlock" => self.slash_unlock(arg),
+                    "seal" => self.slash_seal(arg),
                     _ => Err(format!("unhandled slash command: /{command}")),
                 }
             }
         }
+    }
+
+    fn slash_unlock(&mut self, arg: Option<String>) -> Result<ExecutionResult, String> {
+        let passphrase = arg.ok_or_else(|| "unlock requires a passphrase".to_string())?;
+        let agent = self.ensure_born_mut()?;
+        
+        let private_data = agent.session.decrypt_private(&passphrase)
+            .map_err(|e| format!("failed to unlock private session: {e}"))?;
+            
+        agent.private_data = Some(private_data);
+        
+        // Cache the derived key for auto-saving
+        let salt = crate::session::generate_salt(&agent.id, agent.birth_timestamp);
+        let key = crate::session::derive_key(&passphrase, &salt)
+            .map_err(|_| "failed to derive key".to_string())?;
+        self.unlock_key = Some(key);
+        
+        Ok(ExecutionResult {
+            receipt: None,
+            private_mode: false,
+            tool_output: Some("Session unlocked. Private memory is now accessible.".to_string()),
+        })
+    }
+
+    fn slash_seal(&mut self, arg: Option<String>) -> Result<ExecutionResult, String> {
+        if let Some(passphrase) = arg {
+            let agent = self.ensure_born_mut()?;
+            let salt = crate::session::generate_salt(&agent.id, agent.birth_timestamp);
+            let key = crate::session::derive_key(&passphrase, &salt)
+                .map_err(|_| "failed to derive key".to_string())?;
+            self.unlock_key = Some(key);
+        }
+
+        self.seal_private()?;
+        Ok(ExecutionResult {
+            receipt: None,
+            private_mode: false,
+            tool_output: Some("Session sealed. Private memory cleared from memory.".to_string()),
+        })
+    }
+
+    fn seal_private(&mut self) -> Result<(), String> {
+        if let (Some(agent), Some(key)) = (&mut self.agent, self.unlock_key) {
+            if let Some(private_data) = &agent.private_data {
+                agent.session.encrypt_private_with_key(private_data, &key)
+                    .map_err(|e| format!("failed to seal private data: {e}"))?;
+            }
+        }
+        if let Some(agent) = &mut self.agent {
+            agent.private_data = None;
+        }
+        self.unlock_key = None;
+        self.auto_save();
+        Ok(())
     }
 
     fn slash_configure(&mut self, arg: Option<String>) -> Result<ExecutionResult, String> {
@@ -328,11 +400,18 @@ act "<tool>" "<params>" [/sandbox] - Execute a tool
 
         let agent = self.ensure_born_mut()?;
         
-        // Always push to session for persistent memory (User prompt)
-        agent.session.push_public(ConversationMessage::user_text(prompt));
-        
-        // Push Assistant response (the thought output)
-        agent.session.push_public(ConversationMessage::assistant_text(&thought_output));
+        if private {
+            let pdata = agent.private_data.as_mut()
+                .ok_or_else(|| "session is locked. Use /unlock <passphrase> to access private memory.".to_string())?;
+            pdata.push_private(ConversationMessage::user_text(prompt));
+            pdata.push_private(ConversationMessage::assistant_text(&thought_output));
+        } else {
+            // Always push to session for persistent memory (User prompt)
+            agent.session.push_public(ConversationMessage::user_text(prompt));
+            
+            // Push Assistant response (the thought output)
+            agent.session.push_public(ConversationMessage::assistant_text(&thought_output));
+        }
         
         self.auto_save();
         
@@ -365,17 +444,16 @@ act "<tool>" "<params>" [/sandbox] - Execute a tool
         let new_rep = agent.reputation + gain;
         agent.update_reputation(new_rep);
 
-        // Add to session as well (public)
-        agent.session.push_public(ConversationMessage {
+        let msg = ConversationMessage {
             role: crate::session::MessageRole::Assistant,
             blocks: vec![crate::session::ContentBlock::ToolUse {
                 id: receipt.receipt_id.clone(),
                 name: tool,
                 input: params,
             }],
-        });
+        };
         
-        agent.session.push_public(ConversationMessage {
+        let result_msg = ConversationMessage {
             role: crate::session::MessageRole::Assistant,
             blocks: vec![crate::session::ContentBlock::ToolResult {
                 tool_use_id: receipt.receipt_id.clone(),
@@ -383,7 +461,17 @@ act "<tool>" "<params>" [/sandbox] - Execute a tool
                 output: tool_output.clone(),
                 is_error: false,
             }],
-        });
+        };
+
+        if sandbox {
+            let pdata = agent.private_data.as_mut()
+                .ok_or_else(|| "session is locked. Unlock to use /sandbox mode.".to_string())?;
+            pdata.push_private(msg);
+            pdata.push_private(result_msg);
+        } else {
+            agent.session.push_public(msg);
+            agent.session.push_public(result_msg);
+        }
 
         self.auto_save();
 
@@ -477,6 +565,13 @@ act "<tool>" "<params>" [/sandbox] - Execute a tool
 
     fn auto_save(&self) {
         if let Some(agent) = &self.agent {
+            let mut agent_to_save = agent.clone();
+            
+            // Re-encrypt private data if we have the key and data
+            if let (Some(key), Some(pdata)) = (self.unlock_key, &agent.private_data) {
+                let _ = agent_to_save.session.encrypt_private_with_key(pdata, &key);
+            }
+
             let path = self.persistence_path.clone().unwrap_or_else(|| {
                 let dir = PathBuf::from("sessions");
                 if !dir.exists() {
@@ -485,7 +580,7 @@ act "<tool>" "<params>" [/sandbox] - Execute a tool
                 dir.join(format!("{}.json", agent.id()))
             });
             
-            if let Ok(encoded) = serde_json::to_string_pretty(agent) {
+            if let Ok(encoded) = serde_json::to_string_pretty(&agent_to_save) {
                 let _ = std::fs::write(path, encoded);
             }
         }

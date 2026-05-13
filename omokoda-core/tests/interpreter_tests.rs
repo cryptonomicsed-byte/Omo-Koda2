@@ -80,7 +80,6 @@ mod interpreter_tests {
 
         assert!(result.receipt.is_some());
         let receipt = result.receipt.unwrap();
-        assert!(!receipt.dry_run);
         assert!(!receipt.receipt_id.is_empty());
     }
 

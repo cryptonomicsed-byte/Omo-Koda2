@@ -153,18 +153,26 @@ impl Session {
     ) -> Result<(), SessionError> {
         let salt = generate_salt(&self.agent_id, self.birth_timestamp);
         let key = derive_key(passphrase, &salt)?;
-        
+        self.encrypt_private_with_key(private_data, &key)
+    }
+
+    pub fn encrypt_private_with_key(
+        &mut self,
+        private_data: &PrivateSessionData,
+        key: &[u8; 32],
+    ) -> Result<(), SessionError> {
         let plaintext = serde_json::to_vec(private_data).map_err(SessionError::Encode)?;
         
         let mut nonce_bytes = [0u8; 12];
         rand::thread_rng().fill(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
         
-        let cipher = ChaCha20Poly1305::new_from_slice(&key).map_err(|_| SessionError::Crypto)?;
+        let cipher = ChaCha20Poly1305::new_from_slice(key).map_err(|_| SessionError::Crypto)?;
         let ciphertext = cipher
             .encrypt(nonce, plaintext.as_slice())
             .map_err(|_| SessionError::Crypto)?;
             
+        let salt = generate_salt(&self.agent_id, self.birth_timestamp);
         self.encrypted_private = Some(EncryptedData {
             ciphertext,
             nonce: nonce_bytes,
@@ -195,7 +203,7 @@ impl Session {
     }
 }
 
-fn generate_salt(agent_id: &AgentId, birth_timestamp: u64) -> [u8; 16] {
+pub fn generate_salt(agent_id: &AgentId, birth_timestamp: u64) -> [u8; 16] {
     let chain_id = "omokoda-v1";
     let mut hasher = blake3::Hasher::new();
     hasher.update(agent_id.as_str().as_bytes());
@@ -207,7 +215,7 @@ fn generate_salt(agent_id: &AgentId, birth_timestamp: u64) -> [u8; 16] {
     salt
 }
 
-fn derive_key(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], SessionError> {
+pub fn derive_key(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], SessionError> {
     use argon2::{Algorithm, Argon2, Params, Version};
     
     let params = Params::new(65536, 3, 1, Some(32)).map_err(|_| SessionError::Crypto)?;

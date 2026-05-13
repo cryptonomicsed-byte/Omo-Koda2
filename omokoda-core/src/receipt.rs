@@ -13,7 +13,7 @@ pub struct Receipt {
     pub merkle_root: String,
     pub signature: String,
     pub timestamp: u64,
-    pub dry_run: bool,
+    pub nonce: u64,
 }
 
 impl Receipt {
@@ -25,24 +25,24 @@ impl Receipt {
         merkle_root: &str,
         signing_key: &ed25519_dalek::SigningKey,
     ) -> Self {
+        use rand::Rng;
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system clock before unix epoch")
             .as_secs();
-        let timestamp_nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock before unix epoch")
-            .as_nanos();
+        let nonce: u64 = rand::thread_rng().gen();
 
         let payload = blake3_hash_hex(&[action.as_bytes(), params.as_bytes()]);
-        let receipt_id = blake3_hash_hex(&[
-            agent_id.as_bytes(),
-            action.as_bytes(),
-            params.as_bytes(),
-            previous_hash.as_bytes(),
-            merkle_root.as_bytes(),
-            timestamp_nanos.to_string().as_bytes(),
-        ]);
+        
+        let receipt_id = Self::calculate_id(
+            agent_id,
+            action,
+            &payload,
+            previous_hash,
+            merkle_root,
+            timestamp,
+            nonce,
+        );
 
         // Sign the receipt_id
         let signature = signing_key.sign(receipt_id.as_bytes());
@@ -57,11 +57,47 @@ impl Receipt {
             merkle_root: merkle_root.to_string(),
             signature: signature_hex,
             timestamp,
-            dry_run: false,
+            nonce,
         }
     }
 
+    pub fn calculate_id(
+        agent_id: &str,
+        action: &str,
+        payload: &str,
+        previous_hash: &str,
+        merkle_root: &str,
+        timestamp: u64,
+        nonce: u64,
+    ) -> String {
+        blake3_hash_hex(&[
+            agent_id.as_bytes(),
+            action.as_bytes(),
+            payload.as_bytes(),
+            previous_hash.as_bytes(),
+            merkle_root.as_bytes(),
+            timestamp.to_string().as_bytes(),
+            nonce.to_string().as_bytes(),
+        ])
+    }
+
     pub fn verify(&self, public_key_bytes: &[u8; 32]) -> Result<(), String> {
+        // 1. Verify receipt_id derivation
+        let expected_id = Self::calculate_id(
+            &self.agent_id,
+            &self.action,
+            &self.payload,
+            &self.previous_hash,
+            &self.merkle_root,
+            self.timestamp,
+            self.nonce,
+        );
+
+        if self.receipt_id != expected_id {
+            return Err("receipt_id does not match fields".to_string());
+        }
+
+        // 2. Verify signature
         let verifying_key = VerifyingKey::from_bytes(public_key_bytes)
             .map_err(|e| format!("invalid public key: {}", e))?;
         

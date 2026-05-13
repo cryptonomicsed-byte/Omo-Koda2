@@ -6,6 +6,7 @@ pub mod receipt;
 pub mod reputation;
 pub mod justice;
 pub mod session;
+pub mod sandbox;
 pub mod tools;
 
 pub use identity::AgentId;

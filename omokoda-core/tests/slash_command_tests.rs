@@ -31,6 +31,7 @@ mod slash_command_tests {
     #[tokio::test]
     async fn slash_configure_updates_config() {
         let mut steward = Steward::new();
+        steward.set_mock_provider("mock response".to_string());
         steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
         
         let result = steward.dispatch(parse("/configure provider:mock").unwrap()[0].clone()).await.unwrap();

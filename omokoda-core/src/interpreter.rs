@@ -262,7 +262,7 @@ impl Steward {
     pub async fn dispatch(&mut self, stmt: Statement) -> Result<ExecutionResult, String> {
         match stmt {
             Statement::Birth { name, metadata } => {
-                let mut agent = AgentState::birth(name, metadata);
+                let agent = AgentState::birth(name, metadata);
                 let provider = agent.session.config.default_provider.clone();
                 if !provider.is_empty() && !provider.eq_ignore_ascii_case("default") {
                     if !self.providers.is_known_provider(&provider) {
@@ -432,7 +432,6 @@ impl Steward {
                         })
                     }
                     "configure" => {
-                        let agent = self.ensure_born_mut()?;
                         let arg_str = arg.ok_or_else(|| "configure requires an argument (e.g. provider:mock)".to_string())?;
                         if let Some((key, value)) = arg_str.split_once(':') {
                             match key {
@@ -441,6 +440,7 @@ impl Steward {
                                         let available = self.providers.provider_names().join(", ");
                                         return Err(format!("unknown provider '{}'. available: {}", value, available));
                                     }
+                                    let agent = self.ensure_born_mut()?;
                                     agent.session.config.default_provider = value.to_string();
                                     self.auto_save();
                                     Ok(ExecutionResult {
@@ -457,6 +457,7 @@ impl Steward {
                                             return Err("privacy must be true/on/yes or false/off/no".to_string())
                                         }
                                     };
+                                    let agent = self.ensure_born_mut()?;
                                     agent.session.config.default_privacy = parsed;
                                     self.auto_save();
                                     Ok(ExecutionResult {
@@ -473,6 +474,7 @@ impl Steward {
                                             return Err("sandbox must be true/on/yes or false/off/no".to_string())
                                         }
                                     };
+                                    let agent = self.ensure_born_mut()?;
                                     agent.session.config.default_sandbox = parsed;
                                     self.auto_save();
                                     Ok(ExecutionResult {
@@ -585,7 +587,7 @@ impl Steward {
     pub async fn dispatch_with_event_sink(
         &mut self,
         stmt: Statement,
-        mut sink: TurnEventSender,
+        sink: TurnEventSender,
     ) -> Result<ExecutionResult, String> {
         let _ = sink.send(TurnEvent::Started).await;
         if let Statement::Act { tool, .. } = &stmt {

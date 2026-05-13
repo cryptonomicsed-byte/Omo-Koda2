@@ -4,6 +4,8 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+use crate::sandbox::WasmSandbox;
+
 #[async_trait]
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
@@ -23,6 +25,7 @@ impl ToolRegistry {
         };
         registry.register(Box::new(ReadFileTool));
         registry.register(Box::new(BashTool));
+        registry.register(Box::new(WasmTool));
         registry.register(Box::new(WebSearchTool));
         registry.register(Box::new(AgentOrchestrationTool));
         // Keep these for backward compatibility in tests if needed, or remove if stubs
@@ -119,11 +122,13 @@ impl Tool for BashTool {
         let mut cmd = if sandbox {
             let mut c = Command::new("unshare");
             c.args(["--map-root-user", "--net", "--mount", "--pid", "--fork", "bash", "-c", params]);
-            c.current_dir(&workspace_root)
+            c.current_dir(&workspace_root);
+            c
         } else {
             let mut c = Command::new("bash");
             c.args(["-c", params]);
-            c.current_dir(&workspace_root)
+            c.current_dir(&workspace_root);
+            c
         };
 
         let output = cmd.output().map_err(|e| format!("failed to execute bash: {}", e))?;
@@ -219,6 +224,37 @@ impl Tool for GrepTool {
             }
         }
         Ok(results.join("\n"))
+    }
+}
+
+struct WasmTool;
+#[async_trait]
+impl Tool for WasmTool {
+    fn name(&self) -> &str {
+        "wasm"
+    }
+    fn description(&self) -> &str {
+        "Execute a WASM module in the sandbox"
+    }
+    fn required_tier(&self) -> u8 {
+        2
+    }
+    async fn execute(&self, params: &str, sandbox: bool) -> Result<String, String> {
+        let mut parts = params.split_whitespace();
+        let module_path = parts
+            .next()
+            .ok_or_else(|| "wasm tool requires module path".to_string())?;
+        if module_path.is_empty() {
+            return Err("wasm tool requires module path".to_string());
+        }
+
+        if module_path.starts_with('/') || module_path.contains("..") {
+            return Err("module path must be relative and within workspace".to_string());
+        }
+
+        let args: Vec<String> = parts.map(|s| s.to_string()).collect();
+        let wasm_sandbox = WasmSandbox::new().map_err(|e| format!("failed to initialize wasm sandbox: {}", e))?;
+        wasm_sandbox.execute_module(Path::new(module_path), &args, sandbox)
     }
 }
 

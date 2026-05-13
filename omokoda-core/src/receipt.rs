@@ -2,7 +2,6 @@ use crate::identity::AgentId;
 use ed25519_dalek::{Signature, Signer, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -202,7 +201,6 @@ impl ReceiptStore {
                 if receipt.previous_hash != if built_ids.is_empty() { "0".repeat(64) } else { built_ids.last().unwrap().clone() } {
                     return false;
                 }
-                built_ids.push(receipt.receipt_id.clone());
 
                 let mut tree = SimpleMerkleTree::new();
                 for leaf in &built_ids {
@@ -211,6 +209,8 @@ impl ReceiptStore {
                 if receipt.merkle_root != tree.root() && receipt.merkle_root != "0".repeat(64) {
                     return false;
                 }
+
+                built_ids.push(receipt.receipt_id.clone());
             } else {
                 return false;
             }

@@ -36,6 +36,14 @@ impl ProviderRegistry {
         };
         registry.register(Box::new(OllamaProvider::new("http://localhost:11434".to_string())));
         registry.register(Box::new(WebLLMProvider::new()));
+
+        if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
+            registry.register(Box::new(OpenAIProvider::new(api_key, None, None)));
+        }
+        if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
+            registry.register(Box::new(AnthropicProvider::new(api_key, None, None)));
+        }
+
         registry
     }
 
@@ -49,6 +57,14 @@ impl ProviderRegistry {
 
     pub fn register(&mut self, provider: Box<dyn LlmProvider>) {
         self.providers.push(provider);
+    }
+
+    pub fn register_openai(&mut self, api_key: String, model: Option<String>, endpoint: Option<String>) {
+        self.register(Box::new(OpenAIProvider::new(api_key, model, endpoint)));
+    }
+
+    pub fn register_anthropic(&mut self, api_key: String, model: Option<String>, endpoint: Option<String>) {
+        self.register(Box::new(AnthropicProvider::new(api_key, model, endpoint)));
     }
 
     pub fn is_allowed_in_private(&self, provider: &ProviderMetadata) -> bool {
@@ -248,6 +264,159 @@ impl LlmProvider for WebLLMProvider {
 
     async fn generate(&self, _prompt: &str, _history: &[ConversationMessage]) -> Result<String, String> {
         Err("WebLLM provider not implemented".to_string())
+    }
+}
+
+#[derive(Debug)]
+pub struct OpenAIProvider {
+    metadata: ProviderMetadata,
+    client: reqwest::Client,
+    api_key: String,
+    model: String,
+}
+
+impl OpenAIProvider {
+    pub fn new(api_key: String, model: Option<String>, endpoint: Option<String>) -> Self {
+        let endpoint = endpoint.unwrap_or_else(|| "https://api.openai.com".to_string());
+        let model = model.unwrap_or_else(|| "gpt-4o-mini".to_string());
+        Self {
+            metadata: ProviderMetadata {
+                name: "OpenAI".to_string(),
+                class: ProviderClass::External,
+                endpoint,
+            },
+            client: reqwest::Client::new(),
+            api_key,
+            model,
+        }
+    }
+}
+
+#[async_trait]
+impl LlmProvider for OpenAIProvider {
+    fn metadata(&self) -> &ProviderMetadata {
+        &self.metadata
+    }
+
+    async fn generate(&self, prompt: &str, history: &[ConversationMessage]) -> Result<String, String> {
+        let url = if self.metadata.endpoint.contains("/v1/") {
+            self.metadata.endpoint.clone()
+        } else {
+            format!("{}/v1/chat/completions", self.metadata.endpoint.trim_end_matches('/'))
+        };
+
+        let mut messages = Vec::new();
+        for message in history {
+            let role = match message.role {
+                crate::session::MessageRole::User => "user",
+                crate::session::MessageRole::Assistant => "assistant",
+                crate::session::MessageRole::System => "system",
+                _ => "user",
+            };
+            let content = message
+                .blocks
+                .iter()
+                .filter_map(|block| match block {
+                    crate::session::ContentBlock::Text { text } => Some(text.clone()),
+                    crate::session::ContentBlock::ToolResult { output, .. } => Some(output.clone()),
+                    crate::session::ContentBlock::ToolUse { input, .. } => Some(input.clone()),
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            if !content.is_empty() {
+                messages.push(serde_json::json!({"role": role, "content": content}));
+            }
+        }
+        messages.push(serde_json::json!({"role": "user", "content": prompt}));
+
+        let body = serde_json::json!({
+            "model": self.model,
+            "messages": messages,
+            "temperature": 0.7,
+            "max_tokens": 500,
+        });
+
+        let resp = self
+            .client
+            .post(url)
+            .bearer_auth(&self.api_key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if !resp.status().is_success() {
+            return Err(format!("OpenAI status error: {}", resp.status()));
+        }
+
+        let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+        Ok(json["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or("")
+            .to_string())
+    }
+}
+
+#[derive(Debug)]
+pub struct AnthropicProvider {
+    metadata: ProviderMetadata,
+    client: reqwest::Client,
+    api_key: String,
+    model: String,
+}
+
+impl AnthropicProvider {
+    pub fn new(api_key: String, model: Option<String>, endpoint: Option<String>) -> Self {
+        let endpoint = endpoint.unwrap_or_else(|| "https://api.anthropic.com".to_string());
+        let model = model.unwrap_or_else(|| "claude-3.0".to_string());
+        Self {
+            metadata: ProviderMetadata {
+                name: "Anthropic".to_string(),
+                class: ProviderClass::External,
+                endpoint,
+            },
+            client: reqwest::Client::new(),
+            api_key,
+            model,
+        }
+    }
+}
+
+#[async_trait]
+impl LlmProvider for AnthropicProvider {
+    fn metadata(&self) -> &ProviderMetadata {
+        &self.metadata
+    }
+
+    async fn generate(&self, prompt: &str, _history: &[ConversationMessage]) -> Result<String, String> {
+        let url = if self.metadata.endpoint.contains("/v1/") {
+            self.metadata.endpoint.clone()
+        } else {
+            format!("{}/v1/complete", self.metadata.endpoint.trim_end_matches('/'))
+        };
+
+        let body = serde_json::json!({
+            "model": self.model,
+            "prompt": format!("\n\nHuman: {}\n\nAssistant:", prompt),
+            "max_tokens_to_sample": 500,
+            "temperature": 0.7,
+        });
+
+        let resp = self
+            .client
+            .post(url)
+            .bearer_auth(&self.api_key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if !resp.status().is_success() {
+            return Err(format!("Anthropic status error: {}", resp.status()));
+        }
+
+        let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+        Ok(json["completion"].as_str().unwrap_or("").to_string())
     }
 }
 

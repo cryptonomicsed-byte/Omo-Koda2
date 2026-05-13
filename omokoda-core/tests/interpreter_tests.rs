@@ -119,6 +119,7 @@ mod interpreter_tests {
         let mut steward = Steward::new();
         steward.register_provider(Box::new(MockProvider::new("mock thought".to_string())));
         steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
+        steward.dispatch(parse(r#"/configure provider:Mock"#).unwrap()[0].clone()).await.unwrap();
 
         let stmts = parse(r#"think "hello""#).unwrap();
         let result = steward.dispatch(stmts[0].clone()).await.unwrap();
@@ -237,7 +238,9 @@ mod interpreter_tests {
         let test_file = "test_multi.txt";
         std::fs::write(test_file, "content").unwrap();
 
-        let input = r#"birth "luna"think "hello"act "read_file" "test_multi.txt""#;
+        let input = r#"birth "luna" provider:mock
+think "hello"
+act "read_file" "test_multi.txt""#;
         let stmts = parse(input).unwrap();
         assert_eq!(stmts.len(), 3);
         for stmt in stmts {
@@ -324,6 +327,7 @@ mod interpreter_tests {
     #[tokio::test]
     async fn birth_with_metadata_configures_session() {
         let mut steward = Steward::new();
+        steward.set_mock_provider("mock response".to_string());
         let stmts = parse(r#"birth "luna" provider:mock privacy:false sandbox:false"#).unwrap();
         steward.dispatch(stmts[0].clone()).await.unwrap();
 
@@ -345,7 +349,7 @@ mod interpreter_tests {
 
         steward.dispatch(parse(r#"/seal mypass"#).unwrap()[0].clone()).await.unwrap();
         assert!(steward.agent_state().unwrap().private_data().is_none());
-        assert!(steward.agent_state().unwrap().session.encrypted_private.is_some());
+        assert!(steward.agent_state().unwrap().session().encrypted_private.is_some());
 
         steward.dispatch(parse(r#"/unlock mypass"#).unwrap()[0].clone()).await.unwrap();
         assert!(steward.agent_state().unwrap().private_data().is_some());

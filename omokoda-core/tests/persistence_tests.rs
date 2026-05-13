@@ -72,7 +72,7 @@ mod persistence_tests {
         let mut new_steward = Steward::new();
         new_steward.load_agent(&agent_id).unwrap();
         assert!(new_steward.agent_state().unwrap().private_data().is_none());
-        assert!(new_steward.agent_state().unwrap().session.encrypted_private.is_some());
+        assert!(new_steward.agent_state().unwrap().session().encrypted_private.is_some());
 
         new_steward.dispatch(parse(r#"/unlock mypass"#).unwrap()[0].clone()).await.unwrap();
         assert!(new_steward.agent_state().unwrap().private_data().is_some());

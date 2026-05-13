@@ -35,7 +35,7 @@ pub struct SessionConfig {
 impl Default for SessionConfig {
     fn default() -> Self {
         Self {
-            default_provider: "ollama".to_string(),
+            default_provider: "default".to_string(),
             default_privacy: true,
             default_sandbox: true,
         }
@@ -267,7 +267,7 @@ fn derive_session_key(
         ARGON2_MEMORY_KB,
         ARGON2_ITERATIONS,
         ARGON2_PARALLELISM,
-        Some(ARGON2_OUTPUT_LEN),
+        Some(ARGON2_OUTPUT_LEN as usize),
     )
     .expect("invalid Argon2 parameters");
 

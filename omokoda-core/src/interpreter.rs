@@ -262,7 +262,13 @@ impl Steward {
     pub async fn dispatch(&mut self, stmt: Statement) -> Result<ExecutionResult, String> {
         match stmt {
             Statement::Birth { name, metadata } => {
-                let agent = AgentState::birth(name, metadata);
+                let mut agent = AgentState::birth(name, metadata);
+                let provider = agent.session.config.default_provider.clone();
+                if !provider.is_empty() && !provider.eq_ignore_ascii_case("default") {
+                    if !self.providers.is_known_provider(&provider) {
+                        return Err(format!("unknown provider '{}' in birth metadata", provider));
+                    }
+                }
                 self.agent = Some(agent);
                 self.auto_save();
                 Ok(ExecutionResult {
@@ -426,21 +432,15 @@ impl Steward {
                         })
                     }
                     "configure" => {
+                        let agent = self.ensure_born_mut()?;
                         let arg_str = arg.ok_or_else(|| "configure requires an argument (e.g. provider:mock)".to_string())?;
                         if let Some((key, value)) = arg_str.split_once(':') {
                             match key {
                                 "provider" => {
                                     if !self.providers.is_known_provider(value) && !value.eq_ignore_ascii_case("default") {
-                                        if value.eq_ignore_ascii_case("mock") {
-                                            self.providers.register(Box::new(crate::providers::MockProvider::new(
-                                                "mock thought".to_string(),
-                                            )));
-                                        } else {
-                                            let available = self.providers.provider_names().join(", ");
-                                            return Err(format!("unknown provider '{}'. available: {}", value, available));
-                                        }
+                                        let available = self.providers.provider_names().join(", ");
+                                        return Err(format!("unknown provider '{}'. available: {}", value, available));
                                     }
-                                    let agent = self.ensure_born_mut()?;
                                     agent.session.config.default_provider = value.to_string();
                                     self.auto_save();
                                     Ok(ExecutionResult {
@@ -450,7 +450,6 @@ impl Steward {
                                     })
                                 }
                                 "privacy" => {
-                                    let agent = self.ensure_born_mut()?;
                                     let parsed = match value {
                                         "true" | "on" | "yes" => true,
                                         "false" | "off" | "no" => false,
@@ -467,7 +466,6 @@ impl Steward {
                                     })
                                 }
                                 "sandbox" => {
-                                    let agent = self.ensure_born_mut()?;
                                     let parsed = match value {
                                         "true" | "on" | "yes" => true,
                                         "false" | "off" | "no" => false,
@@ -587,7 +585,7 @@ impl Steward {
     pub async fn dispatch_with_event_sink(
         &mut self,
         stmt: Statement,
-        sink: TurnEventSender,
+        mut sink: TurnEventSender,
     ) -> Result<ExecutionResult, String> {
         let _ = sink.send(TurnEvent::Started).await;
         if let Statement::Act { tool, .. } = &stmt {

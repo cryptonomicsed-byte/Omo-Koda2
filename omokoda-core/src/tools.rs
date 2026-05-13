@@ -119,14 +119,13 @@ impl Tool for BashTool {
         let mut cmd = if sandbox {
             let mut c = Command::new("unshare");
             c.args(["--map-root-user", "--net", "--mount", "--pid", "--fork", "bash", "-c", params]);
-            c
+            c.current_dir(&workspace_root)
         } else {
             let mut c = Command::new("bash");
             c.args(["-c", params]);
-            c
+            c.current_dir(&workspace_root)
         };
 
-        cmd.current_dir(&workspace_root);
         let output = cmd.output().map_err(|e| format!("failed to execute bash: {}", e))?;
         
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();

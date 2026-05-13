@@ -125,7 +125,7 @@ fn session_decryption_fails_with_wrong_password_key() {
     let password_key = [0u8; 32];
     session.seal_private(&private_data, &odu_seed, &password_key).unwrap();
 
-    let wrong_key = [1u8; 32];
+    let mut wrong_key = [1u8; 32];
     let result = session.unseal_private(&odu_seed, &wrong_key);
     assert!(result.is_err());
 }

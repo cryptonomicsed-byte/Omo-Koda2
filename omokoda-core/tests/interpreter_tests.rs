@@ -345,7 +345,7 @@ mod interpreter_tests {
 
         steward.dispatch(parse(r#"/seal mypass"#).unwrap()[0].clone()).await.unwrap();
         assert!(steward.agent_state().unwrap().private_data().is_none());
-        assert!(steward.agent_state().unwrap().session().encrypted_private.is_some());
+        assert!(steward.agent_state().unwrap().session.encrypted_private.is_some());
 
         steward.dispatch(parse(r#"/unlock mypass"#).unwrap()[0].clone()).await.unwrap();
         assert!(steward.agent_state().unwrap().private_data().is_some());

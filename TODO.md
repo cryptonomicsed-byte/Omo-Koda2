@@ -460,7 +460,7 @@ Only start after the Rust core proves the full local flow.
 
 ## Suggested Immediate Sprint
 
-1. [x] Update README current status to 96 passing tests and mention the identity/session test suites.
+1. [x] Update README current status to 59 passing tests and mention the identity/session test suites.
 2. [x] Resolve `think` default privacy mismatch between parser and `specs/privacy.md`.
 3. [x] Centralize tier/tool mapping and add boundary tests.
 4. [x] Add `birth_timestamp`, DNA fingerprint, and structured `AgentState` to the Steward.
@@ -473,4 +473,3 @@ Only start after the Rust core proves the full local flow.
 11. [x] Implement Reputation Ledger and reason-coded changes.
 12. [x] Add messages for Act execution and fix private message persistence.
 13. [x] Fix slash command failures and implement /configure.
-14. [x] Clean remaining compiler warnings and verify tests again.

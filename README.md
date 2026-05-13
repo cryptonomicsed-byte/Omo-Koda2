@@ -103,6 +103,18 @@ No Àṣẹ token. It does not exist.
 
 ---
 
+## Documentation
+
+Detailed documentation on the architecture, audit findings, and roadmap can be found in the [docs/](docs/) directory:
+
+- [Audit Overview](docs/audit/overview.md) — Summary of the initial codebase audit.
+- [Security Findings](docs/audit/security-findings.md) — Critical security and privacy vulnerabilities identified.
+- [Implementation Roadmap](docs/audit/implementation-roadmap.md) — Phased plan for stabilizing the Rust core and expanding to the full 7-layer architecture.
+- [Architecture](docs/architecture.md) — Detailed technical architecture and module mapping.
+- [Sovereign Synthesis](docs/synthesis.md) — The philosophical and technical foundation of Ọmọ Kọ́dà.
+
+---
+
 ## Build
 
 ```bash

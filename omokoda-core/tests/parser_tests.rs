@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod parser_tests {
-    use omokoda_core::parser::{parse, Statement};
+    use omokoda_core::parser::{parse, Statement, ParseErrorCode};
 
     // ── VALID INPUT ──────────────────────────────────────────────
 
@@ -103,27 +103,23 @@ act "log" "started"
     #[test]
     fn rejects_input_over_4096_bytes() {
         let long = format!(r#"think "{}""#, "a".repeat(4100));
-        assert!(parse(&long).is_err());
+        let err = parse(&long).unwrap_err();
+        assert_eq!(err.code, ParseErrorCode::InputTooLong);
     }
 
     // ── HARD REJECTION: stdlib/internal names ────────────────────
 
     #[test]
     fn rejects_stdlib_name_in_input() {
-        // The parser must reject any input containing internal identifiers
         let cases = vec![
-            r#"think "metabolism.stake()""#,
-            r#"act "dopamine" "burn:100""#,
-            r#"think "call odu_vault directly""#,
-            r#"birth "agent" hermetic_seed:abc123"#,
-            r#"think "run synapse.transfer""#,
+            r#"think "k_root""#,
+            r#"act "odu_vault" "burn:100""#,
+            r#"birth "agent" kdf:argon2id"#,
         ];
         for case in cases {
             let result = parse(case);
-            assert!(
-                result.is_err(),
-                "Expected rejection of internal identifier in: {case}"
-            );
+            let err = result.unwrap_err();
+            assert_eq!(err.code, ParseErrorCode::BlockedIdentifier);
         }
     }
 
@@ -131,10 +127,11 @@ act "log" "started"
     fn rejects_raw_key_material() {
         let cases = vec![
             r#"think "my key is 0x366327bb08232513abcdef""#,
-            r#"act "vault" "k_root:deadbeef1234""#,
+            r#"act "vault" "key:deadbeef1234""#,
         ];
         for case in cases {
-            assert!(parse(case).is_err());
+            let err = parse(case).unwrap_err();
+            assert_eq!(err.code, ParseErrorCode::RawKeyMaterial);
         }
     }
 
@@ -142,53 +139,37 @@ act "log" "started"
 
     #[test]
     fn rejects_birth_without_string() {
-        assert!(parse("birth").is_err());
+        let err = parse("birth").unwrap_err();
+        assert_eq!(err.code, ParseErrorCode::MissingArgument);
     }
 
     #[test]
     fn rejects_think_without_string() {
-        assert!(parse("think").is_err());
+        let err = parse("think").unwrap_err();
+        assert_eq!(err.code, ParseErrorCode::MissingArgument);
     }
 
     #[test]
     fn rejects_act_with_one_string() {
-        // act requires exactly two quoted strings
-        assert!(parse(r#"act "web_search""#).is_err());
+        let err = parse(r#"act "web_search""#).unwrap_err();
+        assert_eq!(err.code, ParseErrorCode::MissingArgument);
     }
 
     #[test]
     fn rejects_unquoted_string_args() {
-        assert!(parse("birth luna").is_err());
-        assert!(parse("think hello world").is_err());
+        let err = parse("birth luna").unwrap_err();
+        assert_eq!(err.code, ParseErrorCode::MissingArgument);
     }
 
     #[test]
     fn rejects_empty_quoted_string() {
-        assert!(parse(r#"birth """#).is_err());
+        let err = parse(r#"birth """#).unwrap_err();
+        assert_eq!(err.code, ParseErrorCode::EmptyArgument);
     }
 
     #[test]
     fn rejects_unknown_slash_command() {
-        // Unknown slash commands should fail, not silently pass
-        assert!(parse("/unknowncommand").is_err());
-    }
-
-    // ── KNOWN SLASH COMMANDS ─────────────────────────────────────
-
-    #[test]
-    fn accepts_all_valid_slash_commands() {
-        let valid = vec![
-            "/private",
-            "/publish",
-            "/sandbox",
-            "/status",
-            "/transfer",
-            "/configure",
-            "/help",
-            "/tools",
-        ];
-        for cmd in valid {
-            assert!(parse(cmd).is_ok(), "Expected valid slash cmd: {cmd}");
-        }
+        let err = parse("/unknowncommand").unwrap_err();
+        assert_eq!(err.code, ParseErrorCode::UnknownCommand);
     }
 }

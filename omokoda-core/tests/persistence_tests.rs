@@ -23,7 +23,7 @@ mod persistence_tests {
         let mut steward = Steward::new();
         steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
         
-        let agent_id = steward.agent_state().unwrap().id().to_string();
+        let agent_id = steward.agent_state().unwrap().id().clone();
         let dna = steward.agent_state().unwrap().dna_fingerprint().to_string();
         
         // Start a new steward and load the agent
@@ -43,7 +43,7 @@ mod persistence_tests {
         let mut steward = Steward::new();
         steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
         
-        let agent_id = steward.agent_state().unwrap().id().to_string();
+        let agent_id = steward.agent_state().unwrap().id().clone();
         
         // Manually update reputation and check if it's saved
         steward.set_reputation_for_test(10.0);

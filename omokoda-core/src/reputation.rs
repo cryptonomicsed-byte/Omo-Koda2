@@ -1,4 +1,52 @@
-pub const ACT_TIER_0_BASE: f64 = 0.040;
+use serde::{Deserialize, Serialize};
+
+pub const THINK_NORMAL: f64 = 0.008;
+pub const THINK_HIGH: f64 = 0.020;
+pub const ACT_TIER_0: f64 = 0.040;
+pub const ACT_TIER_1: f64 = 0.060;
+pub const ACT_TIER_2: f64 = 0.100;
+pub const ACT_TIER_3: f64 = 0.140;
+pub const ACT_TIER_4: f64 = 0.180;
+
+pub const DECAY_DAILY: f64 = -0.008;
+pub const DECAY_EXTENDED: f64 = -0.015;
+pub const SANDBOX_DECAY: f64 = -0.010;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ReputationChangeReason {
+    Think,
+    Act,
+    Decay,
+    Violation,
+    BudgetOverrun,
+    ManualAudit,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ReputationEntry {
+    pub timestamp: u64,
+    pub amount: f64,
+    pub reason: ReputationChangeReason,
+    pub previous_reputation: f64,
+    pub new_reputation: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct ReputationLedger {
+    pub entries: Vec<ReputationEntry>,
+}
+
+impl ReputationLedger {
+    pub fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+        }
+    }
+
+    pub fn record(&mut self, entry: ReputationEntry) {
+        self.entries.push(entry);
+    }
+}
 
 const TIER_0_TOOLS: &[&str] = &["web_search", "note_taking", "read_file", "glob", "grep"];
 const TIER_1_TOOLS: &[&str] = &[

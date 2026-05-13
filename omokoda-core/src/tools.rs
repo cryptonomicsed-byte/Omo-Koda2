@@ -35,7 +35,21 @@ impl ToolRegistry {
         self.tools.insert(tool.name().to_string(), tool);
     }
 
+    pub fn is_allowed(&self, name: &str, tier: u8) -> bool {
+        self.tools.get(name).map_or(false, |t| tier >= t.required_tier())
+    }
+
+    pub fn list_available(&self, tier: u8) -> Vec<String> {
+        let mut list: Vec<String> = self.tools.values()
+            .filter(|t| tier >= t.required_tier())
+            .map(|t| t.name().to_string())
+            .collect();
+        list.sort();
+        list
+    }
+
     pub async fn execute(&self, name: &str, params: &str, sandbox: bool, current_tier: u8) -> Result<String, String> {
+
         let tool = self.tools
             .get(name)
             .ok_or_else(|| format!("tool not found: {}", name))?;

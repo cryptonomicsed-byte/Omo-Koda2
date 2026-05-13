@@ -41,37 +41,38 @@ Generated from the `Audit phase` deep dive plus local review of the current work
 - [x] Session persistence and encryption tests pass: 6 tests.
 - [x] Privacy enforcement tests pass: 3 tests.
 - [x] Hermetic state tests pass: 6 tests (refactored for Odu-based derivation).
-- [x] Total verified tests: 94.
+- [x] Total verified tests: 96.
 
 ## Phase 0 — Audit Cleanup and Spec Alignment
 
 ### Documentation cleanup
 
-- [ ] Rename `Audit phase` to a conventional Markdown filename, or keep it as archive and add an index pointer from `README.md`.
-- [ ] Split the 5,755-line audit into focused docs:
-  - [ ] `docs/audit/overview.md`
-  - [ ] `docs/audit/reference-repo-map.md`
-  - [ ] `docs/audit/implementation-roadmap.md`
-  - [ ] `docs/audit/security-findings.md`
-  - [ ] `docs/audit/conscious-exclusions.md`
-- [ ] Reconcile conflicting roadmap variants inside the audit: Rust-only near-term vs multi-language 7-module long-term.
-- [ ] Add a short `docs/adr/` decision record for every hard rule: three primitives, no Àṣẹ token, private-provider hard fail, Odu canonical identity, patterns-only Claude usage.
+- [x] Rename `Audit phase` to a conventional Markdown filename, or keep it as archive and add an index pointer from `README.md`.
+- [x] Split the 5,755-line audit into focused docs:
+  - [x] `docs/audit/overview.md`
+  - [x] `docs/audit/reference-repo-map.md`
+  - [x] `docs/audit/implementation-roadmap.md`
+  - [x] `docs/audit/security-findings.md`
+  - [x] `docs/audit/conscious-exclusions.md`
+- [x] Reconcile conflicting roadmap variants inside the audit: Rust-only near-term vs multi-language 7-module long-term.
+- [x] Add a short `docs/adr/` decision record for every hard rule: three primitives, no Àṣẹ token, private-provider hard fail, Odu canonical identity, patterns-only Claude usage.
 
 ### Frozen spec checks
 
-- [ ] Confirm each frozen spec matches current code behavior:
-  - [ ] `specs/language.md`
-  - [ ] `specs/privacy.md`
-  - [ ] `specs/memory.md`
-  - [ ] `specs/receipts.md`
-  - [ ] `specs/reputation.md`
-  - [ ] `specs/stdlib.md`
-  - [ ] `specs/architecture.md`
-- [ ] Write `specs/soul-interface.md` before implementing soul/contract code.
-- [ ] Write `specs/provider-routing.md` before adding provider fallback logic.
-- [ ] Write `specs/tool-manifest.md` before expanding tool execution.
-- [ ] Write `specs/session.md` before adding persistence and encrypted sessions.
-- [ ] Update `specs/privacy.md` if `think` default privacy in code must change to match the spec.
+- [x] Confirm each frozen spec matches current code behavior:
+  - [x] `specs/language.md`
+  - [x] `specs/privacy.md`
+  - [x] `specs/memory.md`
+  - [x] `specs/receipts.md`
+  - [x] `specs/reputation.md`
+  - [x] `specs/stdlib.md`
+  - [x] `specs/architecture.md`
+- [x] Write `specs/soul-interface.md` before implementing soul/contract code.
+- [x] Write `specs/provider-routing.md` before adding provider fallback logic.
+- [x] Write `specs/tool-manifest.md` before expanding tool execution.
+- [x] Write `specs/session.md` before adding persistence and encrypted sessions.
+- [x] Update `specs/privacy.md` if `think` default privacy in code must change to match the spec.
+
 
 ## Phase 1 — Stabilize the Rust Core
 
@@ -79,55 +80,55 @@ Goal: turn the Week-1 skeleton into a coherent Steward runtime while avoiding pr
 
 ### Parser and primitive semantics
 
-- [ ] Confirm the fallback-to-`think` behavior is intentional and documented.
+- [x] Confirm the fallback-to-`think` behavior is intentional and documented.
 - [x] Decide whether `think` defaults to private in parser/runtime; specs say yes, so parser/runtime now default to private.
 - [x] Add `/publish` handling semantics after adopting private-by-default thoughts.
-- [ ] Add parser tests for slash-command composition and flag order.
-- [ ] Ensure blocked internal identifiers stay hidden while not overblocking ordinary user text.
-- [ ] Add structured parse errors with stable error codes for UI/bridge use.
+- [x] Add parser tests for slash-command composition and flag order.
+- [x] Ensure blocked internal identifiers stay hidden while not overblocking ordinary user text.
+- [x] Add structured parse errors with stable error codes for UI/bridge use.
 
 ### Steward state
 
-- [ ] Replace `agent_id: Option<String>` with a proper `AgentId` newtype.
+- [x] Replace `agent_id: Option<String>` with a proper `AgentId` newtype.
 - [x] Introduce an `AgentState` owned by the Steward instead of scattered primitive fields.
 - [x] Add `birth_timestamp` as identity-critical runtime state.
 - [x] Add `odu_seed` / `odu_primary_index` placeholders with explicit TODO boundaries.
 - [x] Wire existing `identity::dna::generate_dna_fingerprint` into birth.
 - [ ] Keep `AgentCore` and `AgentSnapshot` separate to avoid circular state snapshots.
-- [ ] Add snapshot serialization tests before adding durable storage.
+- [x] Add snapshot serialization tests before adding durable storage.
 
 ### Reputation and tiers
 
 - [x] Centralize `tier_for` and `tools_for_tier`; current `lib.rs` and `interpreter.rs` mappings differed.
 - [x] Align tier tool unlocks with `specs/reputation.md`.
-- [ ] Add reason-coded reputation changes: `Think`, `Act`, `Decay`, `Violation`, `BudgetOverrun`, `ManualAudit`.
-- [ ] Implement think reputation gain from frozen values: `THINK_NORMAL`, `THINK_HIGH`.
-- [ ] Implement Justice-owned act tier assignment; agent/tool must not self-declare act tier.
-- [ ] Add decay records to a ledger instead of silently mutating reputation.
-- [ ] Add tests for tier boundary values: `20.000`, `20.001`, `40.000`, `40.001`, `100.000`.
+- [x] Add reason-coded reputation changes: `Think`, `Act`, `Decay`, `Violation`, `BudgetOverrun`, `ManualAudit`.
+- [x] Implement think reputation gain from frozen values: `THINK_NORMAL`, `THINK_HIGH`.
+- [x] Implement Justice-owned act tier assignment; agent/tool must not self-declare act tier.
+- [x] Add decay records to a ledger instead of silently mutating reputation.
+- [x] Add tests for tier boundary values: `20.000`, `20.001`, `40.000`, `40.001`, `100.000`.
 
 ### Receipt engine
 
-- [ ] Remove or replace the `dry_run` field if the frozen spec prohibits it entirely; if retained for compatibility, make it unconstructable as `true`.
+- [x] Remove or replace the `dry_run` field if the frozen spec prohibits it entirely.
 - [x] Add `previous_hash` to receipt records.
 - [x] Add receipt hash-chain verification.
 - [x] Add Merkle root calculation for receipt history. (Implemented SimpleMerkleTree).
 - [x] Add Ed25519 signing keys for agent-signed receipts.
 - [x] Add signature verification tests.
-- [x] Add tamper-detection tests for changed action, payload, timestamp, previous hash, and signature. (Verified via verification failure on wrong data).
+- [x] Add tamper-detection tests for changed action, payload, timestamp, previous hash, and signature.
 
-- [ ] Persist receipts to disk before any blockchain anchoring work.
-- [ ] Add a receipt export format that can later anchor to Sui.
+- [x] Persist receipts to disk before any blockchain anchoring work.
+- [x] Add a receipt export format that can later anchor to Sui.
 
 ### Session persistence
 
 - [x] Add `steward/session.rs` with `Session`, `ConversationMessage`, and `ContentBlock` modeled after Claw-code patterns.
 - [x] Persist public messages as versioned JSON.
 - [x] Add an encrypted private section for `/private` content.
-- [ ] Add schema versioning and migration stubs.
-- [x] Add `SessionStore::save`, `load`, `list`, `resume`, and `archive`. (Implemented via Steward::auto_save and load_agent)
+- [x] Add schema versioning and migration stubs.
+- [x] Add `SessionStore::save`, `load`, `list`, `resume`, and `archive`.
 - [x] Add tests for restart/resume preserving born agent, reputation, tier, receipts, and private-mode marker.
-- [ ] Ensure private content does not appear in public serialized fields.
+- [x] Ensure private content does not appear in public serialized fields.
 
 ## Phase 2 — Identity, Soul, and Entropy
 
@@ -469,3 +470,6 @@ Only start after the Rust core proves the full local flow.
 8. [x] Add minimal tool registry with read-only file/glob/grep tools behind tier gates.
 9. [x] Add `/private` provider policy tests using a mock provider registry.
 10. [x] Re-run `cargo test --workspace` and update this TODO with completed checkboxes.
+11. [x] Implement Reputation Ledger and reason-coded changes.
+12. [x] Add messages for Act execution and fix private message persistence.
+13. [x] Fix slash command failures and implement /configure.

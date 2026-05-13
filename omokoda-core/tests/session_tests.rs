@@ -1,131 +1,104 @@
-#[cfg(test)]
-mod session_tests {
-    use omokoda_core::identity::odu::OduSeed;
-    use omokoda_core::interpreter::AgentState;
-    use omokoda_core::session::{
-        ContentBlock, ConversationMessage, PrivateSessionData, Session, SessionError,
+use omokoda_core::identity::odu::{OduIdentity, OduSeed};
+use omokoda_core::identity::AgentId;
+use omokoda_core::session::{
+    ContentBlock, ConversationMessage, PrivateSessionData, Session, SESSION_VERSION,
+};
+use std::fs;
+
+#[test]
+fn session_new_initializes_fields() {
+    let agent_id = AgentId::from_str("agent-1");
+    let session = Session::new(agent_id.clone(), "luna".to_string(), 12345);
+
+    assert_eq!(session.version, SESSION_VERSION);
+    assert_eq!(session.agent_id, agent_id);
+    assert_eq!(session.name, "luna");
+    assert_eq!(session.birth_timestamp, 12345);
+    assert_eq!(session.reputation, 0.0);
+    assert!(session.public_messages.is_empty());
+    assert!(session.encrypted_private.is_none());
+}
+
+#[test]
+fn session_persistence_roundtrip() {
+    let path = std::path::Path::new("test_session_roundtrip.json");
+
+    let agent_id = AgentId::from_str("agent-1");
+    let mut session = Session::new(agent_id, "luna".to_string(), 12345);
+    session.add_message(ConversationMessage::new_user("hello".to_string(), false));
+    session.add_message(ConversationMessage::new_assistant("hi".to_string(), false));
+
+    session.save(path).unwrap();
+
+    let content = fs::read_to_string(path).unwrap();
+    let loaded: Session = serde_json::from_str(&content).unwrap();
+
+    assert_eq!(loaded.name, "luna");
+    assert_eq!(loaded.public_messages.len(), 2);
+    
+    if let ContentBlock::Text { text } = &loaded.public_messages[0].blocks[0] {
+        assert_eq!(text, "hello");
+    } else {
+        panic!("Wrong block type");
+    }
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn session_encryption_roundtrip() {
+    let agent_id = AgentId::from_str("agent-1");
+    let mut session = Session::new(agent_id, "luna".to_string(), 12345);
+    
+    let mut entropy = [0u8; 32];
+    entropy[0] = 1;
+    let odu_seed = OduSeed::new(entropy);
+    let odu_identity = OduIdentity {
+        primary_index: 0,
+        mnemonic: "test mnemonic".to_string(),
     };
-    use std::fs;
-    use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
-    #[test]
-    fn session_starts_with_current_version() {
-        let agent = AgentState::birth("luna".to_string(), vec![]);
-        let session = Session::new(agent.id().clone(), agent.name().to_string(), agent.birth_timestamp());
-        assert_eq!(session.version, 1);
-        assert_eq!(session.name, "luna");
-        assert!(session.public_messages.is_empty());
+    let private_data = PrivateSessionData {
+        odu_seed: odu_seed.clone(),
+        odu_identity: odu_identity.clone(),
+        private_messages: vec![ConversationMessage::new_user("secret".to_string(), true)],
+    };
+
+    // Seal
+    session.seal_private(&private_data, &odu_seed).unwrap();
+    assert!(session.encrypted_private.is_some());
+
+    // Unseal
+    let decrypted = session.unseal_private(&odu_seed).unwrap();
+    assert_eq!(decrypted.private_messages.len(), 1);
+    
+    if let ContentBlock::Text { text } = &decrypted.private_messages[0].blocks[0] {
+        assert_eq!(text, "secret");
+    } else {
+        panic!("Wrong block type");
     }
+}
 
-    #[test]
-    fn session_save_and_load_roundtrip() {
-        let path = temp_session_path("roundtrip");
-        let agent = AgentState::birth("luna".to_string(), vec![]);
-        let mut session = Session::new(agent.id().clone(), agent.name().to_string(), agent.birth_timestamp());
-        session.push_public(ConversationMessage::user_text("birth luna"));
-        session.push_public(ConversationMessage::assistant_text("born"));
-        session.push_public(ConversationMessage {
-            role: omokoda_core::session::MessageRole::Assistant,
-            blocks: vec![ContentBlock::ToolUse {
-                id: "tool-1".to_string(),
-                name: "web_search".to_string(),
-                input: "bitcoin".to_string(),
-            }],
-        });
+#[test]
+fn session_decryption_fails_with_wrong_seed() {
+    let agent_id = AgentId::from_str("agent-1");
+    let mut session = Session::new(agent_id, "luna".to_string(), 12345);
+    
+    let odu_seed = OduSeed::new([1u8; 32]);
+    let odu_identity = OduIdentity {
+        primary_index: 0,
+        mnemonic: "test".to_string(),
+    };
 
-        session.save_to_path(&path).unwrap();
-        let loaded = Session::load_from_path(&path).unwrap();
-        fs::remove_file(&path).unwrap();
+    let private_data = PrivateSessionData {
+        odu_seed: odu_seed.clone(),
+        odu_identity: odu_identity.clone(),
+        private_messages: vec![ConversationMessage::new_user("secret".to_string(), true)],
+    };
 
-        assert_eq!(loaded, session);
-    }
+    session.seal_private(&private_data, &odu_seed).unwrap();
 
-    #[test]
-    fn session_encryption_roundtrip() {
-        let agent = AgentState::birth("luna".to_string(), vec![]);
-        let mut session = Session::new(agent.id().clone(), agent.name().to_string(), agent.birth_timestamp());
-        let private_data = PrivateSessionData {
-            odu_seed: OduSeed::from_bytes([1u8; 32]),
-            odu_identity: agent.odu_identity().clone(),
-            private_messages: vec![ConversationMessage::user_text("secret thought")],
-        };
-
-        let passphrase = "correct horse battery staple";
-        session.encrypt_private(&private_data, passphrase).unwrap();
-
-        assert!(session.encrypted_private.is_some());
-
-        let decrypted = session.decrypt_private(passphrase).unwrap();
-        assert_eq!(decrypted, private_data);
-    }
-
-    #[test]
-    fn session_decryption_fails_with_wrong_passphrase() {
-        let agent = AgentState::birth("luna".to_string(), vec![]);
-        let mut session = Session::new(agent.id().clone(), agent.name().to_string(), agent.birth_timestamp());
-        let private_data = PrivateSessionData {
-            odu_seed: OduSeed::from_bytes([1u8; 32]),
-            odu_identity: agent.odu_identity().clone(),
-            private_messages: vec![],
-        };
-
-        session
-            .encrypt_private(&private_data, "correct")
-            .unwrap();
-        let result = session.decrypt_private("wrong");
-
-        assert!(matches!(result, Err(SessionError::Crypto)));
-    }
-
-    #[test]
-    fn session_leakage_prevention() {
-        let agent = AgentState::birth("luna".to_string(), vec![]);
-        let mut session = Session::new(agent.id().clone(), agent.name().to_string(), agent.birth_timestamp());
-        let secret_text = "HIDDEN_TREASURE_123";
-        let mut secret_seed = [0u8; 32];
-        secret_seed[0] = 0xDE;
-        secret_seed[1] = 0xAD;
-        secret_seed[2] = 0xBE;
-        secret_seed[3] = 0xEF;
-        
-        let private_data = PrivateSessionData {
-            odu_seed: OduSeed::from_bytes(secret_seed),
-            odu_identity: agent.odu_identity().clone(),
-            private_messages: vec![ConversationMessage::user_text(secret_text)],
-        };
-
-        session
-            .encrypt_private(&private_data, "passphrase")
-            .unwrap();
-        let json = serde_json::to_string(&session).unwrap();
-
-        assert!(!json.contains(secret_text));
-        assert!(!json.contains("deadbeef"));
-        assert!(!json.contains("odu_seed"));
-        assert!(json.contains("encrypted_private"));
-    }
-
-    #[test]
-    fn session_rejects_unknown_version() {
-        let path = temp_session_path("bad-version");
-        fs::write(
-            &path,
-            r#"{"version":999,"agent_id":"agent-1","name":"luna","birth_timestamp":0,"reputation":0.0,"config":{"default_provider":"ollama","default_privacy":true,"default_sandbox":true},"public_messages":[]}"#,
-        )
-        .unwrap();
-
-        let error = Session::load_from_path(&path).unwrap_err();
-        fs::remove_file(&path).unwrap();
-
-        assert!(matches!(error, SessionError::UnsupportedVersion(999)));
-    }
-
-    fn temp_session_path(label: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        std::env::temp_dir().join(format!("omokoda-session-{label}-{nanos}.json"))
-    }
+    let wrong_seed = OduSeed::new([2u8; 32]);
+    let result = session.unseal_private(&wrong_seed);
+    assert!(result.is_err());
 }

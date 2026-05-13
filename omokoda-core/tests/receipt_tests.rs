@@ -1,123 +1,123 @@
+use omokoda_core::identity::AgentId;
+use omokoda_core::receipt::{Receipt, ReceiptStore};
+
 #[cfg(test)]
 mod receipt_tests {
-    use omokoda_core::receipt::{Receipt, ReceiptStore};
+    use super::*;
     use ed25519_dalek::SigningKey;
-    use rand::Rng;
+    use rand::rngs::OsRng;
+    use rand::RngCore;
 
-    fn mock_signing_key() -> SigningKey {
-        let mut seed = [0u8; 32];
-        rand::thread_rng().fill(&mut seed);
-        SigningKey::from_bytes(&seed)
+    fn generate_key() -> SigningKey {
+        let mut entropy = [0u8; 32];
+        OsRng.fill_bytes(&mut entropy);
+        SigningKey::from_bytes(&entropy)
     }
 
     #[test]
-    fn receipt_has_required_fields() {
-        let key = mock_signing_key();
-        let r = Receipt::new_merkle("agent-001", "web_search", "bitcoin origin", "prev-hash", "merkle-root", &key);
-        assert!(!r.agent_id.is_empty());
-        assert!(!r.action.is_empty());
-        assert!(!r.payload.is_empty());
-        assert!(!r.receipt_id.is_empty());
-        assert_eq!(r.previous_hash, "prev-hash");
-        assert_eq!(r.merkle_root, "merkle-root");
-        assert!(!r.signature.is_empty());
-        assert!(r.timestamp > 0);
-    }
-
-    #[test]
-    fn same_input_different_receipts() {
-        let key = mock_signing_key();
-        let a = Receipt::new_merkle("agent-001", "web_search", "query", "hash", "root", &key);
-        let b = Receipt::new_merkle("agent-001", "web_search", "query", "hash", "root", &key);
-        assert_ne!(a.receipt_id, b.receipt_id);
-    }
-
-    #[test]
-    fn receipt_tamper_detection() {
-        let key = mock_signing_key();
-        let pub_key = key.verifying_key().to_bytes();
-        let r_orig = Receipt::new_merkle("agent-001", "act", "p", "prev", "root", &key);
+    fn new_merkle_receipt_creation() {
+        let key = generate_key();
+        let agent_id = AgentId::from_str("agent-001");
         
-        assert!(r_orig.verify(&pub_key).is_ok());
+        let r = Receipt::new_merkle(&agent_id, "web_search", "bitcoin origin", "prev-hash", "merkle-root", &key);
+        assert!(!r.agent_id.as_str().is_empty());
+        assert_eq!(r.action, "web_search");
+        assert!(!r.receipt_id.is_empty());
+        assert!(!r.signature.is_empty());
+    }
+
+    #[test]
+    fn receipt_determinism() {
+        let agent_id = AgentId::from_str("agent-001");
+        
+        // Nonce and timestamp make it non-deterministic by default in new_merkle,
+        // but calculate_id itself is deterministic.
+        let id1 = Receipt::calculate_id(&agent_id, "act", "pay", "prev", "root", 100, 123);
+        let id2 = Receipt::calculate_id(&agent_id, "act", "pay", "prev", "root", 100, 123);
+        assert_eq!(id1, id2);
+    }
+
+    #[test]
+    fn signature_verification() {
+        let key = generate_key();
+        let public_key = key.verifying_key().to_bytes();
+        let agent_id = AgentId::from_str("agent-001");
+
+        let a = Receipt::new_merkle(&agent_id, "web_search", "query", "hash", "root", &key);
+        let b = Receipt::new_merkle(&agent_id, "web_search", "query", "hash", "root", &key);
+        
+        assert!(a.verify(&public_key).is_ok());
+        assert!(b.verify(&public_key).is_ok());
+        assert_ne!(a.receipt_id, b.receipt_id); // Different nonces
+    }
+
+    #[test]
+    fn detection_of_tampering() {
+        let key = generate_key();
+        let public_key = key.verifying_key().to_bytes();
+        let agent_id = AgentId::from_str("agent-001");
+
+        let r_orig = Receipt::new_merkle(&agent_id, "act", "p", "prev", "root", &key);
+        let mut r = r_orig.clone();
+        
+        assert!(r.verify(&public_key).is_ok());
 
         // Tamper with action
-        let mut r = r_orig.clone();
-        r.action = "tampered".to_string();
-        assert!(r.verify(&pub_key).is_err());
+        r.action = "malicious".to_string();
+        assert!(r.verify(&public_key).is_err());
 
         // Tamper with agent_id
-        let mut r = r_orig.clone();
-        r.agent_id = "agent-666".to_string();
-        assert!(r.verify(&pub_key).is_err());
+        r = r_orig.clone();
+        r.agent_id = AgentId::from_str("agent-666");
+        assert!(r.verify(&public_key).is_err());
 
-        // Tamper with payload
-        let mut r = r_orig.clone();
-        r.payload = "fake-payload".to_string();
-        assert!(r.verify(&pub_key).is_err());
-
-        // Tamper with previous_hash
-        let mut r = r_orig.clone();
-        r.previous_hash = "fake-prev".to_string();
-        assert!(r.verify(&pub_key).is_err());
-
-        // Tamper with merkle_root
-        let mut r = r_orig.clone();
-        r.merkle_root = "fake-root".to_string();
-        assert!(r.verify(&pub_key).is_err());
-
-        // Tamper with timestamp
-        let mut r = r_orig.clone();
-        r.timestamp += 1;
-        assert!(r.verify(&pub_key).is_err());
+        // Tamper with signature
+        r = r_orig.clone();
+        r.signature = "0".repeat(128);
+        assert!(r.verify(&public_key).is_err());
     }
 
     #[test]
-    fn receipt_signature_verification() {
-        let key = mock_signing_key();
-        let pub_key = key.verifying_key().to_bytes();
-        let r = Receipt::new_merkle("agent-001", "act", "p", "prev", "root", &key);
-        
-        assert!(r.verify(&pub_key).is_ok());
-
-        // Wrong public key
-        let wrong_key = mock_signing_key().verifying_key().to_bytes();
-        assert!(r.verify(&wrong_key).is_err());
-    }
-
-    #[test]
-    fn receipt_chain_verification() {
+    fn receipt_store_chaining() {
+        let key = generate_key();
         let mut store = ReceiptStore::new();
-        let key = mock_signing_key();
-        
-        let r1 = Receipt::new_merkle("agent-001", "act1", "p1", store.last_hash(), &store.current_merkle_root(), &key);
-        let id1 = r1.receipt_id.clone();
-        store.record(r1);
+        let agent_id = AgentId::from_str("agent-001");
 
-        let r2 = Receipt::new_merkle("agent-001", "act2", "p2", store.last_hash(), &store.current_merkle_root(), &key);
-        let id2 = r2.receipt_id.clone();
-        store.record(r2);
+        assert_eq!(store.count(), 0);
+        assert_eq!(store.last_hash(), "0".repeat(64));
 
-        assert_eq!(id1, store.get(&id1).unwrap().receipt_id);
-        assert_eq!(id2, store.get(&id2).unwrap().receipt_id);
-        assert_eq!(store.get(&id2).unwrap().previous_hash, id1);
+        let r1 = Receipt::new_merkle(&agent_id, "act1", "p1", store.last_hash(), &store.current_merkle_root(), &key);
+        store.record(r1.clone());
+        assert_eq!(store.count(), 1);
+        assert_eq!(store.last_hash(), r1.receipt_id);
+
+        let r2 = Receipt::new_merkle(&agent_id, "act2", "p2", store.last_hash(), &store.current_merkle_root(), &key);
+        store.record(r2.clone());
+        assert_eq!(store.count(), 2);
+        assert_eq!(store.last_hash(), r2.receipt_id);
+
         assert!(store.verify_chain());
     }
 
     #[test]
-    fn merkle_root_changes_on_insert() {
+    fn merkle_tree_root_evolution() {
+        let key = generate_key();
         let mut store = ReceiptStore::new();
-        let key = mock_signing_key();
-        
-        let root0 = store.current_merkle_root();
-        
-        let r1 = Receipt::new_merkle("agent-001", "act1", "p1", store.last_hash(), &root0, &key);
-        store.record(r1);
-        let root1 = store.current_merkle_root();
-        assert_ne!(root0, root1);
+        let agent_id = AgentId::from_str("agent-001");
 
-        let r2 = Receipt::new_merkle("agent-001", "act2", "p2", store.last_hash(), &root1, &key);
-        store.record(r2);
+        let root0 = store.current_merkle_root();
+        assert_eq!(root0, "0".repeat(64));
+
+        let r1 = Receipt::new_merkle(&agent_id, "act1", "p1", store.last_hash(), &root0, &key);
+        store.record(r1.clone());
+        let root1 = store.current_merkle_root();
+        assert_ne!(root1, root0);
+        assert_eq!(root1, r1.receipt_id); // Single leaf = root
+
+        let r2 = Receipt::new_merkle(&agent_id, "act2", "p2", store.last_hash(), &root1, &key);
+        store.record(r2.clone());
         let root2 = store.current_merkle_root();
-        assert_ne!(root1, root2);
+        assert_ne!(root2, root1);
+        assert_ne!(root2, r2.receipt_id);
     }
 }

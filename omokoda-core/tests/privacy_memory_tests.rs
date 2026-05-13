@@ -26,7 +26,7 @@ mod privacy_memory_tests {
         let mut steward = Steward::new();
         steward.set_mock_provider("mock thought".to_string());
         steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
-        let agent_id = steward.agent_state().unwrap().id().to_string();
+        let agent_id = steward.agent_state().unwrap().id().clone();
 
         // Private think while unlocked (born unlocked)
         steward.dispatch(parse(r#"think "private message""#).unwrap()[0].clone()).await.unwrap();

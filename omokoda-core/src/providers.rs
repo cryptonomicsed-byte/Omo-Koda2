@@ -62,7 +62,14 @@ impl ProviderRegistry {
         }
     }
 
+    pub async fn think(&self, _provider: &str, prompt: &str) -> Result<String, String> {
+        // Simplified for now: route based on default logic
+        // In the future, this can use the specific provider name
+        self.route_think(prompt, &[], false).await
+    }
+
     pub async fn route_think(
+
         &self,
         prompt: &str,
         history: &[ConversationMessage],

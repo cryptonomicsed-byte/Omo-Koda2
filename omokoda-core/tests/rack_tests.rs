@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod rack_tests {
     use omokoda_core::session::{Session, ConversationMessage, PrivateSessionData, ContentBlock, MessageRole};
-    use omokoda_core::interpreter::AgentId;
+    use omokoda_core::identity::AgentId;
     use omokoda_core::identity::odu::{OduSeed, OduIdentity};
 
     #[test]
@@ -9,7 +9,7 @@ mod rack_tests {
         let mut session = Session::new(AgentId::new("0123456789abcdefghij"), "luna".to_string(), 0);
         
         for i in 0..100 {
-            session.push_public(ConversationMessage::user_text(format!("msg {}", i)));
+            session.push_public(ConversationMessage::user_text(&format!("msg {}", i)));
         }
         assert_eq!(session.public_messages.len(), 100);
         
@@ -30,26 +30,19 @@ mod rack_tests {
     #[test]
     fn private_messages_evicts_and_summarizes_after_1000() {
         let mut private_data = PrivateSessionData {
-            odu_seed: OduSeed::from_bytes([0u8; 32]),
+            odu_seed: OduSeed::new([0u8; 32]),
             odu_identity: OduIdentity { primary_index: 0, mnemonic: "test".to_string() },
             private_messages: Vec::new(),
         };
 
         for i in 0..1000 {
-            private_data.push_private(ConversationMessage::user_text(format!("msg {}", i)));
+            private_data.push_private(ConversationMessage::user_text(&format!("msg {}", i)));
         }
         assert_eq!(private_data.private_messages.len(), 1000);
 
         // 1001st message should trigger eviction and summary
         private_data.push_private(ConversationMessage::user_text("msg 1001"));
 
-        // Should have 1000 + 1 - 200 + 1 (summary) = 802 messages? 
-        // Wait: drain(0..200) -> 801 left. Then insert(0, summary) -> 802 left.
-        // Wait, the 1001st message was ALREADY pushed.
-        // push_private:
-        // push(1001) -> len is 1001.
-        // drain(0..200) -> 801 left.
-        // insert(0, summary) -> 802 left.
         assert_eq!(private_data.private_messages.len(), 802);
 
         // The first message should be the summary

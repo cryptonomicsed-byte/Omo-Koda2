@@ -63,4 +63,9 @@ impl PetIdentity {
 
         Self { mask, mood }
     }
+
+    pub fn pet(&self) -> &str {
+        &self.mask
+    }
 }
+

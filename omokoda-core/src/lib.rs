@@ -8,7 +8,8 @@ pub mod justice;
 pub mod session;
 pub mod tools;
 
-pub use interpreter::{Steward, AgentState, ExecutionResult, AgentId};
+pub use identity::AgentId;
+pub use interpreter::{Steward, AgentState, ExecutionResult};
 pub use parser::{parse, Statement};
 pub use receipt::{Receipt, ReceiptStore};
 

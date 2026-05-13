@@ -49,7 +49,40 @@ impl JusticeEngine {
         }
     }
 
+    pub fn evaluate_action(
+        &self,
+        current_reputation: f64,
+        _tool: &str,
+        _params: &str,
+        output: &str,
+        is_success: bool,
+    ) -> (f64, ActQuality) {
+        use crate::reputation::{
+            reputation_gain, ACT_TIER_0, ACT_TIER_1, ACT_TIER_2, ACT_TIER_4,
+        };
+        let quality = self.evaluate_act(output, !is_success);
+
+        let base = match quality {
+            ActQuality::Failed => ACT_TIER_0,
+            ActQuality::Basic => ACT_TIER_0,
+            ActQuality::Useful => ACT_TIER_1,
+            ActQuality::HighValue => ACT_TIER_2,
+            ActQuality::Exceptional => ACT_TIER_4, // Map Exceptional to highest base
+        };
+
+        let gain = reputation_gain(base, current_reputation, quality.multiplier());
+        (current_reputation + gain, quality)
+    }
+
+    pub fn evaluate_think(&self, current_reputation: f64, high_value: bool) -> (f64, f64) {
+        use crate::reputation::{reputation_gain, THINK_HIGH, THINK_NORMAL};
+        let base = if high_value { THINK_HIGH } else { THINK_NORMAL };
+        let gain = reputation_gain(base, current_reputation, 1.0);
+        (current_reputation + gain, gain)
+    }
+
     pub fn check_ethics_violation(&self, reputation: f64) -> f64 {
+
         // -25% reputation for ethics violation
         reputation * 0.75
     }

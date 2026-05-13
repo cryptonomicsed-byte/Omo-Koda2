@@ -1,3 +1,4 @@
+use crate::identity::AgentId;
 use ed25519_dalek::{Signature, Signer, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -5,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Receipt {
-    pub agent_id: String,
+    pub agent_id: AgentId,
     pub action: String,
     pub payload: String,
     pub receipt_id: String,
@@ -18,7 +19,7 @@ pub struct Receipt {
 
 impl Receipt {
     pub fn new_merkle(
-        agent_id: &str,
+        agent_id: &AgentId,
         action: &str,
         params: &str,
         previous_hash: &str,
@@ -49,7 +50,7 @@ impl Receipt {
         let signature_hex = hex::encode(signature.to_bytes());
 
         Self {
-            agent_id: agent_id.to_string(),
+            agent_id: agent_id.clone(),
             action: action.to_string(),
             payload,
             receipt_id,
@@ -62,7 +63,7 @@ impl Receipt {
     }
 
     pub fn calculate_id(
-        agent_id: &str,
+        agent_id: &AgentId,
         action: &str,
         payload: &str,
         previous_hash: &str,
@@ -71,7 +72,7 @@ impl Receipt {
         nonce: u64,
     ) -> String {
         blake3_hash_hex(&[
-            agent_id.as_bytes(),
+            agent_id.as_str().as_bytes(),
             action.as_bytes(),
             payload.as_bytes(),
             previous_hash.as_bytes(),
@@ -153,6 +154,17 @@ impl ReceiptStore {
 
     pub fn count(&self) -> usize {
         self.receipts.len()
+    }
+
+    pub fn export_json(&self) -> Result<String, String> {
+        let mut sorted_receipts = Vec::new();
+        for id in &self.chain {
+            if let Some(r) = self.receipts.get(id) {
+                sorted_receipts.push(r);
+            }
+        }
+        serde_json::to_string_pretty(&sorted_receipts)
+            .map_err(|e| format!("failed to serialize receipts: {e}"))
     }
 
     pub fn verify_chain(&self) -> bool {

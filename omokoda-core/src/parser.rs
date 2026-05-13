@@ -27,23 +27,35 @@ pub enum Statement {
     },
 }
 
-#[derive(Debug)]
-pub struct ParseError(pub String);
+#[derive(Debug, PartialEq, Eq)]
+pub enum ParseErrorCode {
+    InvalidInput,
+    BlockedIdentifier,
+    RawKeyMaterial,
+    MissingArgument,
+    EmptyArgument,
+    UnknownCommand,
+    InputTooLong,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ParseError {
+    pub code: ParseErrorCode,
+    pub message: String,
+}
 
 impl std::fmt::Display for ParseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "ParseError: {}", self.0)
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{:?}] {}", self.code, self.message)
     }
 }
 
+impl std::error::Error for ParseError {}
+
+const MAX_INPUT: usize = 4096;
+
 const BLOCKED_IDENTIFIERS: &[&str] = &[
-    "metabolism",
-    "dopamine",
-    "synapse",
-    "ase",
-    "àṣẹ",
     "odu_vault",
-    "hermetic",
     "k_root",
     "k_0",
     "kdf",
@@ -69,26 +81,60 @@ const VALID_SLASH_COMMANDS: &[&str] = &[
     "seal",
 ];
 
+fn contains_blocked_identifiers(input: &str) -> bool {
+    let lower_input = input.to_lowercase();
+    for id in BLOCKED_IDENTIFIERS {
+        for (pos, _) in lower_input.match_indices(id) {
+            let before = if pos == 0 {
+                None
+            } else {
+                lower_input.as_bytes().get(pos - 1).map(|&b| b as char)
+            };
+            let after = lower_input.as_bytes().get(pos + id.len()).map(|&b| b as char);
+
+            let before_is_word = before.map_or(false, |c| c.is_alphanumeric() || c == '_');
+            let after_is_word = after.map_or(false, |c| c.is_alphanumeric() || c == '_');
+
+            // If it's a standalone word or part of a technical identifier (with _), block it.
+            // But we want to allow it if it's part of a DIFFERENT non-blocked word.
+            // For these technical IDs, we usually want to block them even if they are prefixes.
+            if !before_is_word && !after_is_word {
+                return true;
+            }
+            // For technical ones like k_root, we might want to block even if followed by chars.
+            if id.starts_with("k_") || id.contains('.') || id.contains('_') {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 pub fn parse(input: &str) -> Result<Vec<Statement>, ParseError> {
-    if input.len() > 4096 {
-        return Err(ParseError("input exceeds 4096 bytes".into()));
+    if input.len() > MAX_INPUT {
+        return Err(ParseError {
+            code: ParseErrorCode::InputTooLong,
+            message: format!("input exceeds max length of {} bytes", MAX_INPUT),
+        });
     }
 
-    let lower = input.to_lowercase();
-    for blocked in BLOCKED_IDENTIFIERS {
-        if lower.contains(blocked) {
-            return Err(ParseError(format!(
-                "internal identifier not allowed in input: {blocked}"
-            )));
-        }
+    if contains_blocked_identifiers(input) {
+        return Err(ParseError {
+            code: ParseErrorCode::BlockedIdentifier,
+            message: "input contains blocked internal identifiers".into(),
+        });
     }
 
     if contains_raw_key_material(input) {
-        return Err(ParseError("raw key material not allowed in input".into()));
+        return Err(ParseError {
+            code: ParseErrorCode::RawKeyMaterial,
+            message: "input contains potential raw key material".into(),
+        });
     }
 
-    let mut tokens = Tokenizer::new(input);
     let mut statements = Vec::new();
+    let mut tokens = Tokenizer::new(input);
+
     while !tokens.is_eof() {
         tokens.skip_whitespace();
         if tokens.is_eof() {
@@ -96,7 +142,6 @@ pub fn parse(input: &str) -> Result<Vec<Statement>, ParseError> {
         }
         statements.push(parse_statement(&mut tokens)?);
     }
-
     Ok(statements)
 }
 
@@ -114,16 +159,38 @@ fn parse_statement(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
             prompt: tokens.consume_rest_of_input_with_current_word(),
             private: true,
         }),
-        None => Err(ParseError("empty statement".into())),
+        None => Err(ParseError {
+            code: ParseErrorCode::EmptyArgument,
+            message: "empty statement".into(),
+        }),
     }
 }
 
+fn parse_slash_cmd(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
+    tokens.pos += 1; // skip '/'
+    let command = tokens.next_word().unwrap_or_default().trim().to_string();
+
+    if !VALID_SLASH_COMMANDS.contains(&command.as_str()) {
+        return Err(ParseError {
+            code: ParseErrorCode::UnknownCommand,
+            message: format!("unknown slash command: /{command}"),
+        });
+    }
+
+    let arg = tokens.next_word().filter(|s| !s.is_empty());
+    Ok(Statement::SlashCmd { command, arg })
+}
+
 fn parse_birth(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
-    let name = tokens
-        .next_quoted_string()
-        .ok_or_else(|| ParseError("birth requires a quoted name".into()))?;
+    let name = tokens.next_quoted_string().ok_or_else(|| ParseError {
+        code: ParseErrorCode::MissingArgument,
+        message: "birth requires a quoted name".into(),
+    })?;
     if name.is_empty() {
-        return Err(ParseError("birth name cannot be empty".into()));
+        return Err(ParseError {
+            code: ParseErrorCode::EmptyArgument,
+            message: "birth name cannot be empty".into(),
+        });
     }
 
     let mut metadata = Vec::new();
@@ -135,34 +202,58 @@ fn parse_birth(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
 }
 
 fn parse_think(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
-    let prompt = tokens
-        .next_quoted_string()
-        .ok_or_else(|| ParseError("think requires a quoted prompt".into()))?;
+    let prompt = tokens.next_quoted_string().ok_or_else(|| ParseError {
+        code: ParseErrorCode::MissingArgument,
+        message: "think requires a quoted prompt".into(),
+    })?;
     if prompt.is_empty() {
-        return Err(ParseError("think prompt cannot be empty".into()));
+        return Err(ParseError {
+            code: ParseErrorCode::EmptyArgument,
+            message: "think prompt cannot be empty".into(),
+        });
     }
 
-    let private = if tokens.next_flag("/publish") {
-        false
-    } else {
-        tokens.next_flag("/private");
-        true
-    };
+    let mut private = true;
+    while let Some(flag) = tokens.peek_word() {
+        if flag == "/publish" {
+            tokens.next_word();
+            private = false;
+        } else if flag == "/private" {
+            tokens.next_word();
+            private = true;
+        } else {
+            break;
+        }
+    }
     Ok(Statement::Think { prompt, private })
 }
 
 fn parse_act(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
-    let tool = tokens
-        .next_quoted_string()
-        .ok_or_else(|| ParseError("act requires a quoted tool name".into()))?;
+    let tool = tokens.next_quoted_string().ok_or_else(|| ParseError {
+        code: ParseErrorCode::MissingArgument,
+        message: "act requires a quoted tool name".into(),
+    })?;
     if tool.is_empty() {
-        return Err(ParseError("act tool cannot be empty".into()));
+        return Err(ParseError {
+            code: ParseErrorCode::EmptyArgument,
+            message: "act tool cannot be empty".into(),
+        });
     }
 
-    let params = tokens
-        .next_quoted_string()
-        .ok_or_else(|| ParseError("act requires a quoted params string".into()))?;
-    let sandbox = tokens.next_flag("/sandbox");
+    let params = tokens.next_quoted_string().ok_or_else(|| ParseError {
+        code: ParseErrorCode::MissingArgument,
+        message: "act requires a quoted params string".into(),
+    })?;
+
+    let mut sandbox = false;
+    while let Some(flag) = tokens.peek_word() {
+        if flag == "/sandbox" {
+            tokens.next_word();
+            sandbox = true;
+        } else {
+            break;
+        }
+    }
     Ok(Statement::Act {
         tool,
         params,
@@ -170,30 +261,15 @@ fn parse_act(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
     })
 }
 
-fn parse_slash_cmd(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
-    tokens.pos += 1;
-    let command = tokens.next_word().unwrap_or_default().trim().to_string();
-
-    if !VALID_SLASH_COMMANDS.contains(&command.as_str()) {
-        return Err(ParseError(format!("unknown slash command: /{command}")));
-    }
-
-    let arg = tokens.next_word().filter(|s| !s.is_empty());
-    Ok(Statement::SlashCmd { command, arg })
-}
-
 fn contains_raw_key_material(input: &str) -> bool {
     let hex_chars: HashSet<char> = "0123456789abcdefABCDEF".chars().collect();
     for word in input.split_whitespace() {
         let word = word.trim_matches('"');
-        // Split on common separators to catch patterns like k_root:deadbeef1234
         for segment in word.split([':', '=', ',']) {
             let mut s = segment;
-            // Strip 0x prefix before checking
             if s.starts_with("0x") || s.starts_with("0X") {
                 s = &s[2..];
             }
-            // 8+ contiguous hex chars = raw key material
             if s.len() >= 8 && s.chars().all(|c| hex_chars.contains(&c)) {
                 return true;
             }
@@ -226,6 +302,13 @@ impl<'a> Tokenizer<'a> {
         self.input[self.pos..].chars().next()
     }
 
+    fn peek_word(&mut self) -> Option<String> {
+        let old_pos = self.pos;
+        let word = self.next_word();
+        self.pos = old_pos;
+        word
+    }
+
     fn next_word(&mut self) -> Option<String> {
         self.skip_whitespace();
         let start = self.pos;
@@ -241,7 +324,7 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn consume_rest_of_input_with_current_word(&self) -> String {
-        self.input.trim().to_string()
+        self.input[self.pos..].trim().to_string()
     }
 
     fn next_quoted_string(&mut self) -> Option<String> {
@@ -290,15 +373,5 @@ impl<'a> Tokenizer<'a> {
         }
         self.pos = start;
         None
-    }
-
-    fn next_flag(&mut self, flag: &str) -> bool {
-        self.skip_whitespace();
-        if self.input[self.pos..].starts_with(flag) {
-            self.pos += flag.len();
-            true
-        } else {
-            false
-        }
     }
 }

@@ -6,6 +6,14 @@ pub struct MetadataPair {
     pub value: String,
 }
 
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct ThinkModifiers {
+    pub loop_enabled: bool,
+    pub max_iterations: Option<u32>,
+    pub priority: Option<String>,
+    pub sandbox: bool,
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     Birth {
@@ -15,6 +23,7 @@ pub enum Statement {
     Think {
         prompt: String,
         private: bool,
+        modifiers: ThinkModifiers,
     },
     Act {
         tool: String,
@@ -90,7 +99,10 @@ fn contains_blocked_identifiers(input: &str) -> bool {
             } else {
                 lower_input.as_bytes().get(pos - 1).map(|&b| b as char)
             };
-            let after = lower_input.as_bytes().get(pos + id.len()).map(|&b| b as char);
+            let after = lower_input
+                .as_bytes()
+                .get(pos + id.len())
+                .map(|&b| b as char);
 
             let before_is_word = before.map_or(false, |c| c.is_alphanumeric() || c == '_');
             let after_is_word = after.map_or(false, |c| c.is_alphanumeric() || c == '_');
@@ -158,6 +170,7 @@ fn parse_statement(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
         Some(_) => Ok(Statement::Think {
             prompt: tokens.consume_rest_of_input_with_current_word(),
             private: true,
+            modifiers: ThinkModifiers::default(),
         }),
         None => Err(ParseError {
             code: ParseErrorCode::EmptyArgument,
@@ -214,6 +227,7 @@ fn parse_think(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
     }
 
     let mut private = true;
+    let mut modifiers = ThinkModifiers::default();
     while let Some(flag) = tokens.peek_word() {
         if flag == "/publish" {
             tokens.next_word();
@@ -221,11 +235,54 @@ fn parse_think(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
         } else if flag == "/private" {
             tokens.next_word();
             private = true;
+        } else if flag == "/sandbox" {
+            tokens.next_word();
+            modifiers.sandbox = true;
+        } else if flag.contains(':') {
+            let raw = tokens.next_word().unwrap_or_default();
+            let (key, inline_value) = raw.split_once(':').unwrap_or((raw.as_str(), ""));
+            let value = if inline_value.is_empty() {
+                tokens.next_word().unwrap_or_default()
+            } else {
+                inline_value.to_string()
+            };
+
+            match key {
+                "loop" => {
+                    modifiers.loop_enabled = matches!(value.as_str(), "true" | "on" | "yes" | "1");
+                }
+                "max_iterations" => {
+                    let parsed = value.parse::<u32>().map_err(|_| ParseError {
+                        code: ParseErrorCode::InvalidInput,
+                        message: "max_iterations must be a positive integer".into(),
+                    })?;
+                    modifiers.max_iterations = Some(parsed);
+                }
+                "priority" => {
+                    if value.is_empty() {
+                        return Err(ParseError {
+                            code: ParseErrorCode::MissingArgument,
+                            message: "priority requires a value".into(),
+                        });
+                    }
+                    modifiers.priority = Some(value);
+                }
+                _ => {
+                    return Err(ParseError {
+                        code: ParseErrorCode::InvalidInput,
+                        message: format!("unknown think modifier: {key}"),
+                    });
+                }
+            }
         } else {
             break;
         }
     }
-    Ok(Statement::Think { prompt, private })
+    Ok(Statement::Think {
+        prompt,
+        private,
+        modifiers,
+    })
 }
 
 fn parse_act(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {

@@ -32,14 +32,15 @@ mod interpreter_tests {
     }
 
     #[tokio::test]
-    async fn think_does_not_produce_receipt() {
+    async fn think_produces_receipt() {
         let mut steward = Steward::new();
         steward.set_mock_provider("mock thought".to_string());
         steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
         
         let stmts = parse(r#"think "hello world""#).unwrap();
         let result = steward.dispatch(stmts[0].clone()).await.unwrap();
-        assert!(result.receipt.is_none());
+        assert!(result.receipt.is_some());
+        assert_eq!(result.receipt.unwrap().action, "think");
         assert_eq!(result.tool_output, Some("mock thought".to_string()));
     }
 
@@ -60,8 +61,11 @@ mod interpreter_tests {
             events.push(event);
         }
 
-        assert!(result.receipt.is_none());
+        assert!(result.receipt.is_some());
         assert!(events.iter().any(|e| matches!(e, TurnEvent::Started)));
+        assert!(events.iter().any(|e| matches!(e, TurnEvent::IntentCompiled(_))));
+        assert!(events.iter().any(|e| matches!(e, TurnEvent::PlanGenerated(_))));
+        assert!(events.iter().any(|e| matches!(e, TurnEvent::ReceiptGenerated(_))));
         assert!(events.iter().any(|e| matches!(e, TurnEvent::Finished)));
     }
 

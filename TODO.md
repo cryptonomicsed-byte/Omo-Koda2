@@ -13,15 +13,15 @@ Generated from the `Audit phase` deep dive plus local review of the current work
 
 ## Non-Negotiable Architecture Rules
 
-- [ ] Keep the public language forever limited to exactly three primitives: `birth`, `think`, `act`.
+- [x] Keep the public language forever limited to exactly three primitives: `birth`, `think`, `act`.
 - [ ] Treat all imported repo material as concepts and patterns only unless it is a clean first-party crate intentionally added as a dependency.
 - [ ] Do **not** copy raw Claude source into this project.
-- [ ] Do **not** import Swibe's public DSL surface; all rich capabilities must stay internal behind `birth`, `think`, and `act`.
+- [x] Do **not** import Swibe's public DSL surface; all rich capabilities must stay internal behind `birth`, `think`, and `act`.
 - [ ] Do **not** reintroduce an Àṣẹ token. Human-facing payment is SUI only; Dopamine and Synapse are internal/metabolic resources.
 - [ ] Keep Odu Ifá / Ọmọ Kọ́dà identity canonical. BIPỌ̀N39 may support mnemonic/encoding infrastructure, but it must not replace the Odu soul model.
 - [ ] Enforce `/private` inside the runtime, not the UI: local providers only, hard fail on timeout, no silent external fallback.
 - [ ] Every public `act` must eventually produce a receipt; receipt IDs, signatures, chain links, and audit roots must be verifiable.
-- [ ] Rust/Èṣù remains the mandatory gatekeeper. No module or tool bypasses the Steward.
+- [x] Rust/Èṣù remains the mandatory gatekeeper. No module or tool bypasses the Steward.
 
 - [x] Workspace builds and tests with `cargo test --workspace`.
 - [x] Resolved dual-runtime architectural debt: `lib.rs` is now a pure public API.
@@ -33,6 +33,8 @@ Generated from the `Audit phase` deep dive plus local review of the current work
 - [x] Hardened receipt engine: incremental Merkle Tree + Ed25519 signing.
 - [x] Implemented full Hermetic State: All 7 principles derived from OduSeed via HKDF.
 - [x] Removed decorative PersonalityVector: HermeticState is now the canonical behavioral model.
+- [x] Implemented Natural Think intent compilation behind `think`: 86-parameter Odu router, plan/tool/sub-agent IR, tier/cost/privacy/Justice validation, confirmation gates, and `intent_compiled` / `plan_generated` / `sub_agent_suggested` events.
+- [x] Added receipts for successful `think` outputs, including compiled-plan/refusal/confirmation paths, while keeping private prompt text sealed from receipt payloads.
 - [x] Parser grammar tests pass: 20 tests.
 - [x] Receipt tests pass: 5 tests.
 - [x] Interpreter skeleton tests pass: 16 tests.

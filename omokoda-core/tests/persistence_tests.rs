@@ -9,13 +9,13 @@ mod persistence_tests {
         let mut steward = Steward::new();
         steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
         
-        let agent_id = steward.agent_state().unwrap().id().to_string();
-        let path = PathBuf::from("sessions").join(format!("{}.json", agent_id));
+        let agent_id = steward.agent_state().unwrap().id();
+        let path = steward.agent_storage_path(agent_id);
         
         assert!(path.exists());
         
         // Cleanup
-        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
     #[tokio::test]
@@ -34,8 +34,8 @@ mod persistence_tests {
         assert_eq!(new_steward.agent_state().unwrap().dna_fingerprint(), dna);
         
         // Cleanup
-        let path = PathBuf::from("sessions").join(format!("{}.json", agent_id));
-        let _ = std::fs::remove_file(path);
+        let path = new_steward.agent_storage_path(&agent_id);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
     #[tokio::test]
@@ -53,8 +53,8 @@ mod persistence_tests {
         assert_eq!(new_steward.reputation(), 10.0);
         
         // Cleanup
-        let path = PathBuf::from("sessions").join(format!("{}.json", agent_id));
-        let _ = std::fs::remove_file(path);
+        let path = new_steward.agent_storage_path(&agent_id);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
     #[tokio::test]
@@ -66,7 +66,7 @@ mod persistence_tests {
         steward.dispatch(parse(r#"/seal mypass"#).unwrap()[0].clone()).await.unwrap();
 
         let agent_id = steward.agent_state().unwrap().id().clone();
-        let path = PathBuf::from("sessions").join(format!("{}.json", agent_id));
+        let path = steward.agent_storage_path(&agent_id);
         assert!(path.exists());
 
         let mut new_steward = Steward::new();
@@ -77,6 +77,6 @@ mod persistence_tests {
         new_steward.dispatch(parse(r#"/unlock mypass"#).unwrap()[0].clone()).await.unwrap();
         assert!(new_steward.agent_state().unwrap().private_data().is_some());
 
-        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 }

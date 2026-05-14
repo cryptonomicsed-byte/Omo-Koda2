@@ -445,8 +445,10 @@ pub fn derive_unlock_key(password: &str, agent_public_key: &[u8; 32]) -> Result<
 
 pub fn secure_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("failed to create session dir: {e}"))?;
-        set_strict_dir_permissions(parent)?;
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|e| format!("failed to create session dir: {e}"))?;
+            set_strict_dir_permissions(parent)?;
+        }
     }
     fs::write(path, bytes).map_err(|e| format!("failed to write session file: {e}"))?;
     set_strict_file_permissions(path)?;

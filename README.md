@@ -28,19 +28,21 @@ That is the entire public surface. Forever.
 
 ## Current Status
 
-**83/83 tests passing. Sprint 8 complete.**
+**127/127 tests passing. Sprint 8 verified.**
 
 ```text
-omokoda-core     parser       20/20  ✅
-omokoda-core     interpreter  17/17  ✅
+omokoda-core     parser       25/25  ✅
+omokoda-core     interpreter  22/22  ✅
 omokoda-core     identity      5/5   ✅
 omokoda-core     bipon39       3/3   ✅
-omokoda-core     receipts      5/5   ✅
-omokoda-core     sessions      6/6   ✅
-omokoda-core     privacy       3/3   ✅
-omokoda-core     justice       4/4   ✅
+omokoda-core     persistence   4/4   ✅
+omokoda-core     sessions      7/7   ✅
+omokoda-core     privacy       15/15 ✅
+omokoda-core     justice       6/6   ✅
+omokoda-core     receipts      7/7   ✅
+omokoda-core     tools         6/6   ✅
+omokoda-core     others       15/15  ✅
 omokoda-hermetic soul          6/6   ✅
-omokoda-swarm    orchestration 7/7   ✅
 omokoda-ops      monitoring   13/13  ✅
 ```
 
@@ -74,7 +76,7 @@ omokoda-ops      monitoring   13/13  ✅
 - `specs/stdlib.md` — internal module map
 - `specs/architecture.md` — seven-layer map
 
-**Next:** BIPỌ̀N39 mnemonic integration, Odu seed derivation, and ASCII pet identity expressions.
+**Next:** Sui Move contract integration, Living Odu Memory key rotation, and frontend agent dashboard implementation.
 
 ---
 

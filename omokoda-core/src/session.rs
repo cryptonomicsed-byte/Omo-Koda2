@@ -10,8 +10,14 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
+use zeroize::Zeroize;
 
 pub const SESSION_VERSION: u32 = 1;
+pub const ENCRYPTED_SESSION_VERSION: u32 = 1;
+pub const ARGON2_MEMORY_KB: u32 = 65536;
+pub const ARGON2_ITERATIONS: u32 = 3;
+pub const ARGON2_PARALLELISM: u32 = 1;
+pub const ARGON2_OUTPUT_LEN: u32 = 32;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Session {
@@ -22,7 +28,7 @@ pub struct Session {
     pub reputation: f64,
     pub config: SessionConfig,
     pub public_messages: Vec<ConversationMessage>,
-    pub encrypted_private: Option<EncryptedData>,
+    pub encrypted_private: Option<EncryptedSession>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -42,12 +48,74 @@ impl Default for SessionConfig {
     }
 }
 
+/// Versioned encrypted private session envelope.
+///
+/// Security invariants:
+/// - `private_ciphertext` is the only persisted representation of private messages and Odu private data.
+/// - `nonce` is generated randomly for every seal/rotation.
+/// - `salt` is public KDF salt; it is not a secret.
+/// - Argon2id parameters are persisted so future migrations can reject or upgrade old envelopes.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct EncryptedData {
-    pub ciphertext: Vec<u8>,
+pub struct EncryptedSession {
+    pub version: u32,
+    pub private_ciphertext: Vec<u8>,
     pub nonce: [u8; 12],
     pub salt: [u8; 16],
     pub key_version: u32,
+    pub kdf: KdfParams,
+}
+
+pub type EncryptedData = EncryptedSession;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct KdfParams {
+    pub algorithm: String,
+    pub memory_kb: u32,
+    pub iterations: u32,
+    pub parallelism: u32,
+    pub output_len: u32,
+}
+
+impl Default for KdfParams {
+    fn default() -> Self {
+        Self {
+            algorithm: "argon2id-v0x13".to_string(),
+            memory_kb: ARGON2_MEMORY_KB,
+            iterations: ARGON2_ITERATIONS,
+            parallelism: ARGON2_PARALLELISM,
+            output_len: ARGON2_OUTPUT_LEN,
+        }
+    }
+}
+
+/// Zeroizing wrapper for passphrase-derived unlock keys held by the Steward.
+#[derive(Clone, PartialEq, Eq)]
+pub struct SensitiveKey([u8; 32]);
+
+impl SensitiveKey {
+    pub fn new(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+
+    pub fn expose(&self) -> &[u8; 32] {
+        &self.0
+    }
+
+    pub fn zeroize_now(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+impl std::fmt::Debug for SensitiveKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SensitiveKey([redacted])")
+    }
+}
+
+impl Drop for SensitiveKey {
+    fn drop(&mut self) {
+        self.0.zeroize();
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -143,12 +211,13 @@ impl Session {
         key_version: u32,
     ) -> Result<(), String> {
         let salt = generate_salt(&self.agent_id, self.birth_timestamp);
-        let key = derive_session_key(odu_seed, &salt, password_key, key_version);
+        let mut key = derive_session_key(odu_seed, &salt, password_key, key_version);
 
-        let json = serde_json::to_string(private_data)
+        let mut json = serde_json::to_string(private_data)
             .map_err(|e| format!("failed to serialize private data: {e}"))?;
 
         let cipher = ChaCha20Poly1305::new(&key.into());
+        key.zeroize();
         let mut nonce_bytes = [0u8; 12];
         rand::thread_rng().fill(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
@@ -156,12 +225,15 @@ impl Session {
         let ciphertext = cipher
             .encrypt(nonce, json.as_bytes())
             .map_err(|e| format!("encryption failed: {e}"))?;
+        json.zeroize();
 
-        self.encrypted_private = Some(EncryptedData {
-            ciphertext,
+        self.encrypted_private = Some(EncryptedSession {
+            version: ENCRYPTED_SESSION_VERSION,
+            private_ciphertext: ciphertext,
             nonce: nonce_bytes,
             salt,
             key_version,
+            kdf: KdfParams::default(),
         });
 
         Ok(())
@@ -177,16 +249,18 @@ impl Session {
             .as_ref()
             .ok_or_else(|| "no encrypted private data found".to_string())?;
 
-        let key = derive_session_key(odu_seed, &data.salt, password_key, data.key_version);
+        let mut key = derive_session_key(odu_seed, &data.salt, password_key, data.key_version);
         let cipher = ChaCha20Poly1305::new(&key.into());
+        key.zeroize();
         let nonce = Nonce::from_slice(&data.nonce);
 
-        let plaintext = cipher
-            .decrypt(nonce, data.ciphertext.as_slice())
+        let mut plaintext = cipher
+            .decrypt(nonce, data.private_ciphertext.as_slice())
             .map_err(|e| format!("decryption failed: {e}"))?;
 
         let private_data: PrivateSessionData = serde_json::from_slice(&plaintext)
             .map_err(|e| format!("failed to deserialize private data: {e}"))?;
+        plaintext.zeroize();
 
         Ok(private_data)
     }
@@ -206,13 +280,27 @@ impl Session {
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| format!("failed to serialize session: {e}"))?;
-        fs::write(path, json).map_err(|e| format!("failed to write session file: {e}"))?;
+        secure_write(path, json.as_bytes())?;
         Ok(())
     }
 
     pub fn load_from_path(path: &Path) -> Result<Self, String> {
         let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
-        serde_json::from_str(&content).map_err(|e| e.to_string())
+        let session: Self = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+        session.migrate()
+    }
+
+    pub fn migrate(self) -> Result<Self, String> {
+        match self.version {
+            SESSION_VERSION => Ok(self),
+            other => Err(format!(
+                "unsupported session version {other}; expected {SESSION_VERSION}"
+            )),
+        }
+    }
+
+    pub fn export_json(&self) -> Result<String, String> {
+        serde_json::to_string_pretty(self).map_err(|e| format!("failed to export session: {e}"))
     }
 }
 
@@ -221,6 +309,41 @@ impl PrivateSessionData {
         self.private_messages.push(message);
         let engine = crate::memory::MemoryEngine::new();
         engine.compress(&mut self.private_messages, reputation);
+    }
+}
+
+impl Drop for PrivateSessionData {
+    fn drop(&mut self) {
+        self.odu_seed.0.zeroize();
+        self.odu_identity.mnemonic.zeroize();
+        for message in &mut self.private_messages {
+            message.zeroize_contents();
+        }
+        self.private_messages.clear();
+    }
+}
+
+impl ConversationMessage {
+    pub fn zeroize_contents(&mut self) {
+        for block in &mut self.blocks {
+            match block {
+                ContentBlock::Text { text } => text.zeroize(),
+                ContentBlock::ToolUse { id, name, input } => {
+                    id.zeroize();
+                    name.zeroize();
+                    input.zeroize();
+                }
+                ContentBlock::ToolResult {
+                    tool_use_id,
+                    output,
+                    is_error: _,
+                } => {
+                    tool_use_id.zeroize();
+                    output.zeroize();
+                }
+            }
+        }
+        self.blocks.clear();
     }
 }
 
@@ -252,10 +375,6 @@ impl ConversationMessage {
     }
 }
 
-const ARGON2_MEMORY_KB: u32 = 65536;
-const ARGON2_ITERATIONS: u32 = 3;
-const ARGON2_PARALLELISM: u32 = 1;
-const ARGON2_OUTPUT_LEN: u32 = 32;
 const SESSION_CHAIN_ID: &str = "omokoda-main";
 
 pub fn generate_salt(agent_id: &AgentId, birth_timestamp: u64) -> [u8; 16] {
@@ -269,6 +388,10 @@ pub fn generate_salt(agent_id: &AgentId, birth_timestamp: u64) -> [u8; 16] {
     salt
 }
 
+/// Derive the AEAD key with Argon2id using frozen session parameters.
+///
+/// The Odu seed participates in the KDF salt so ciphertext is bound to the born agent. The
+/// passphrase-derived `password_key` remains the ownership secret and must be zeroized by callers.
 fn derive_session_key(
     odu_seed: &OduSeed,
     salt: &[u8; 16],
@@ -295,6 +418,63 @@ fn derive_session_key(
         .hash_password_into(password_key, &combined_salt, &mut okm)
         .expect("Argon2 key derivation failed");
     okm
+}
+
+pub fn derive_unlock_key(password: &str, agent_public_key: &[u8; 32]) -> Result<SensitiveKey, String> {
+    let params = Params::new(
+        ARGON2_MEMORY_KB,
+        ARGON2_ITERATIONS,
+        ARGON2_PARALLELISM,
+        Some(ARGON2_OUTPUT_LEN as usize),
+    )
+    .map_err(|e| format!("invalid Argon2 parameters: {e}"))?;
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    let mut salt = [0u8; 32];
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(agent_public_key);
+    hasher.update(b"omokoda-unlock-key-v1");
+    salt.copy_from_slice(hasher.finalize().as_bytes());
+
+    let mut key = [0u8; 32];
+    argon2
+        .hash_password_into(password.as_bytes(), &salt, &mut key)
+        .map_err(|e| format!("unlock key derivation failed: {e}"))?;
+    salt.zeroize();
+    Ok(SensitiveKey::new(key))
+}
+
+pub fn secure_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("failed to create session dir: {e}"))?;
+        set_strict_dir_permissions(parent)?;
+    }
+    fs::write(path, bytes).map_err(|e| format!("failed to write session file: {e}"))?;
+    set_strict_file_permissions(path)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+pub fn set_strict_dir_permissions(path: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+        .map_err(|e| format!("failed to set session dir permissions: {e}"))
+}
+
+#[cfg(not(unix))]
+pub fn set_strict_dir_permissions(_path: &Path) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(unix)]
+pub fn set_strict_file_permissions(path: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+        .map_err(|e| format!("failed to set session file permissions: {e}"))
+}
+
+#[cfg(not(unix))]
+pub fn set_strict_file_permissions(_path: &Path) -> Result<(), String> {
+    Ok(())
 }
 
 fn current_unix_timestamp() -> u64 {

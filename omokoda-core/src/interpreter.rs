@@ -12,7 +12,10 @@ use crate::parser::{MetadataPair, Statement};
 use crate::providers::ProviderRegistry;
 use crate::receipt::{Receipt, ReceiptStore};
 use crate::reputation::{tier_for, ReputationChangeReason, ReputationEntry, ReputationLedger};
-use crate::session::{ContentBlock, ConversationMessage, MessageRole, PrivateSessionData, Session};
+use crate::session::{
+    derive_unlock_key, secure_write, ContentBlock, ConversationMessage, MessageRole,
+    PrivateSessionData, SensitiveKey, Session,
+};
 use crate::tools::ToolRegistry;
 use ed25519_dalek::SigningKey;
 use hkdf::Hkdf;
@@ -37,6 +40,7 @@ pub enum TurnEvent {
     IntentCompiled(IntentCompilation),
     PlanGenerated(IntentPlan),
     SubAgentSuggested(SubAgentSuggestion),
+    Audit(String),
     Token(String),
     ToolRequestDetected(String),
     ReceiptGenerated(Receipt),
@@ -237,11 +241,15 @@ pub struct Steward {
     #[serde(skip, default = "default_session_dir")]
     session_dir: PathBuf,
     #[serde(skip)]
-    unlock_key: Option<[u8; 32]>,
+    unlock_key: Option<SensitiveKey>,
 }
 
 fn default_session_dir() -> PathBuf {
-    PathBuf::from("sessions")
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".omokoda")
+        .join("sessions")
 }
 
 impl Default for Steward {
@@ -666,26 +674,22 @@ impl Steward {
                         }
                     }
                     "seal" => {
-                        let password = arg.ok_or_else(|| "seal requires a password".to_string())?;
+                        let password = normalize_secret_arg(
+                            arg.ok_or_else(|| "seal requires a password".to_string())?,
+                        );
                         let agent = self.ensure_born_mut()?;
 
                         let private_data = agent
                             .private_data
-                            .take()
+                            .as_ref()
                             .ok_or_else(|| "agent already sealed".to_string())?;
 
-                        // Deriving a "unlock key" from password for this session
-                        let mut key = [0u8; 32];
-                        let _ = pbkdf2::pbkdf2::<hmac::Hmac<sha2::Sha256>>(
-                            password.as_bytes(),
-                            &agent.public_key, // using public key as salt
-                            100,
-                            &mut key,
-                        );
+                        let key = derive_unlock_key(&password, &agent.public_key)?;
 
                         agent
                             .session
-                            .seal_private(&private_data, &agent.odu_seed, &key)?;
+                            .seal_private(private_data, &agent.odu_seed, key.expose())?;
+                        agent.private_data = None;
                         self.unlock_key = None;
                         self.auto_save();
 
@@ -696,26 +700,24 @@ impl Steward {
                         })
                     }
                     "unlock" => {
-                        let password =
-                            arg.ok_or_else(|| "unlock requires a password".to_string())?;
+                        let password = normalize_secret_arg(
+                            arg.ok_or_else(|| "unlock requires a password".to_string())?,
+                        );
                         let agent = self.ensure_born_mut()?;
 
                         if agent.private_data.is_some() {
                             return Err("agent already unlocked".to_string());
                         }
 
-                        let mut key = [0u8; 32];
-                        let _ = pbkdf2::pbkdf2::<hmac::Hmac<sha2::Sha256>>(
-                            password.as_bytes(),
-                            &agent.public_key,
-                            100,
-                            &mut key,
-                        );
+                        let key = derive_unlock_key(&password, &agent.public_key)?;
 
                         // Try to unseal
-                        let private_data = agent.session.unseal_private(&agent.odu_seed, &key)?;
+                        let private_data = agent
+                            .session
+                            .unseal_private(&agent.odu_seed, key.expose())?;
                         agent.private_data = Some(private_data);
                         self.unlock_key = Some(key);
+                        self.auto_save();
 
                         Ok(ExecutionResult {
                             receipt: None,
@@ -978,10 +980,14 @@ impl Steward {
                 .await;
         }
 
+        let audit_after_success = audit_event_for_success(&stmt);
         let result = self.dispatch(stmt).await;
 
         match &result {
             Ok(exec) => {
+                if let Some(audit) = audit_after_success {
+                    let _ = sink.send(TurnEvent::Audit(audit)).await;
+                }
                 if let Some(receipt) = exec.receipt.clone() {
                     let _ = sink.send(TurnEvent::ReceiptGenerated(receipt)).await;
                 }
@@ -1012,20 +1018,17 @@ impl Steward {
             let path = if let Some(p) = &self.persistence_path {
                 p.clone()
             } else {
-                if !self.session_dir.exists() {
-                    let _ = std::fs::create_dir_all(&self.session_dir);
-                }
-                self.session_dir.join(format!("{}.json", agent.id()))
+                self.agent_file_path(agent.id())
             };
 
             if let Ok(content) = serde_json::to_string_pretty(agent) {
-                let _ = std::fs::write(path, content);
+                let _ = secure_write(&path, content.as_bytes());
             }
         }
     }
 
     pub fn load_agent(&mut self, agent_id: &AgentId) -> Result<(), String> {
-        let path = self.session_dir.join(format!("{}.json", agent_id));
+        let path = self.resolve_agent_file_path(agent_id);
         let content = std::fs::read_to_string(&path)
             .map_err(|e| format!("failed to read agent file at {:?}: {e}", path))?;
         let agent: AgentState = serde_json::from_str(&content)
@@ -1041,6 +1044,23 @@ impl Steward {
         self.agent = Some(agent);
         self.persistence_path = Some(path);
         Ok(())
+    }
+
+    pub fn agent_storage_path(&self, agent_id: &AgentId) -> PathBuf {
+        self.agent_file_path(agent_id)
+    }
+
+    fn agent_file_path(&self, agent_id: &AgentId) -> PathBuf {
+        self.session_dir.join(agent_id.as_str()).join("agent.json")
+    }
+
+    fn resolve_agent_file_path(&self, agent_id: &AgentId) -> PathBuf {
+        let versioned = self.agent_file_path(agent_id);
+        if versioned.exists() {
+            versioned
+        } else {
+            self.session_dir.join(format!("{}.json", agent_id))
+        }
     }
 
     fn ensure_born(&self) -> Result<&AgentState, String> {
@@ -1123,4 +1143,20 @@ fn format_compilation_response(compilation: &IntentCompilation) -> String {
     }
 
     lines.join("\n")
+}
+
+fn normalize_secret_arg(arg: String) -> String {
+    arg.trim().trim_matches('"').to_string()
+}
+
+fn audit_event_for_success(stmt: &Statement) -> Option<String> {
+    match stmt {
+        Statement::SlashCmd { command, .. } if command == "seal" => {
+            Some("private_session_sealed".to_string())
+        }
+        Statement::SlashCmd { command, .. } if command == "unlock" => {
+            Some("private_session_unsealed".to_string())
+        }
+        _ => None,
+    }
 }

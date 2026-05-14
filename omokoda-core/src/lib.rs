@@ -19,6 +19,7 @@ pub use intent::{
 pub use interpreter::{AgentState, ExecutionResult, Steward};
 pub use parser::{parse, Statement};
 pub use receipt::{Receipt, ReceiptStore};
+pub use session::{EncryptedSession, SensitiveKey};
 
 #[derive(Debug, Clone)]
 pub enum Primitive {

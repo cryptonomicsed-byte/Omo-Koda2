@@ -42,6 +42,7 @@ module omokoda::garden {
 
     const E_NOT_AUTHORIZED: u64 = 0;
     const E_NOT_APPROVED: u64 = 1;
+    const E_NOT_LOCKED: u64 = 2;
 
     fun init(ctx: &mut TxContext) {
         transfer::share_object(AgentRegistry {
@@ -92,7 +93,7 @@ module omokoda::garden {
     /// Release funds to the agent if job is approved by witness.
     public entry fun settle_job(escrow: &mut Escrow, ctx: &mut TxContext) {
         assert!(escrow.witness_approved == true, E_NOT_APPROVED);
-        assert!(escrow.status == STATUS_LOCKED, 2);
+        assert!(escrow.status == STATUS_LOCKED, E_NOT_LOCKED);
 
         escrow.status = STATUS_RELEASED;
         
@@ -102,17 +103,19 @@ module omokoda::garden {
             amount: coin::value(&escrow.amount),
         });
 
-        let payment = coin::withdraw_all(&mut escrow.amount);
+        let amount_val = coin::value(&escrow.amount);
+        let payment = coin::take(coin::balance_mut(&mut escrow.amount), amount_val, ctx);
         transfer::public_transfer(payment, escrow.agent);
     }
 
     /// Refund human if job is cancelled or fails.
     public entry fun refund_job(escrow: &mut Escrow, ctx: &mut TxContext) {
         assert!(tx_context::sender(ctx) == escrow.human, E_NOT_AUTHORIZED);
-        assert!(escrow.status == STATUS_LOCKED, 2);
+        assert!(escrow.status == STATUS_LOCKED, E_NOT_LOCKED);
 
         escrow.status = STATUS_REFUNDED;
-        let payment = coin::withdraw_all(&mut escrow.amount);
+        let amount_val = coin::value(&escrow.amount);
+        let payment = coin::take(coin::balance_mut(&mut escrow.amount), amount_val, ctx);
         transfer::public_transfer(payment, escrow.human);
     }
 }

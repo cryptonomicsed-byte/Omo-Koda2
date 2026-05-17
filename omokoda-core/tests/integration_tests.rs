@@ -14,7 +14,7 @@ async fn full_private_e2e_flow() {
     steward.set_session_dir(session_dir.clone());
     steward.set_mock_provider("42 is the answer".to_string());
     steward
-        .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
+        .dispatch(parse(r#"birth "luna" provider:ollama"#).unwrap()[0].clone())
         .await
         .unwrap();
     let agent_id = steward.agent_state().unwrap().id().clone();

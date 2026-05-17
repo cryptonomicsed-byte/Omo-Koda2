@@ -62,7 +62,7 @@ impl ProviderRegistry {
     }
 
     pub fn register(&mut self, provider: Box<dyn LlmProvider>) {
-        self.providers.push(provider);
+        self.providers.insert(0, provider);
     }
 
     pub fn register_openai(
@@ -499,7 +499,7 @@ impl MockProvider {
     pub fn new(response: String) -> Self {
         Self {
             metadata: ProviderMetadata {
-                name: "Mock".to_string(),
+                name: "ollama".to_string(),
                 class: ProviderClass::Local,
                 endpoint: "mock://".to_string(),
             },

@@ -9,7 +9,7 @@ mod e2e_tests {
         let mut steward = Steward::new();
         steward.set_mock_provider("e2e thought".to_string());
 
-        let stmts = parse(r#"birth "koda" provider:mock sandbox:true"#).unwrap();
+        let stmts = parse(r#"birth "koda" provider:ollama sandbox:true"#).unwrap();
         steward.dispatch(stmts[0].clone()).await.unwrap();
         steward.set_reputation_for_test(50.0);
 

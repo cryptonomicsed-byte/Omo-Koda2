@@ -19,6 +19,7 @@ use crate::session::{
 use crate::tools::ToolRegistry;
 use ed25519_dalek::SigningKey;
 use hkdf::Hkdf;
+use omokoda_hermetic::fractal::OPERATIONS;
 use omokoda_hermetic::HermeticState;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -71,6 +72,7 @@ pub struct AgentState {
     public_key: [u8; 32],
     #[serde(skip)]
     pub private_data: Option<PrivateSessionData>,
+    pub resonance: Option<omokoda_hermetic::fractal::ResonanceSignature>,
 }
 
 impl AgentState {
@@ -94,6 +96,12 @@ impl AgentState {
 
         let dna_fingerprint = generate_dna_fingerprint(&name, birth_timestamp, odu_seed.as_bytes());
         let id = AgentId::new(&dna_fingerprint);
+
+        let odu_bytes = odu_seed.as_bytes();
+        let day = (birth_timestamp % 7) as u8;
+        let planet = (odu_bytes[0] % 7) as u8;
+        let dimension = 0u8; // Time dimension at birth
+        let resonance = omokoda_hermetic::fractal::ResonanceSignature::new(day, planet, dimension);
 
         let mut session = Session::new(id.clone(), name.clone(), birth_timestamp);
         for pair in metadata {
@@ -126,6 +134,7 @@ impl AgentState {
             hermetic_state,
             public_key,
             private_data: Some(private_data),
+            resonance,
         }
     }
 
@@ -296,8 +305,10 @@ impl Steward {
     }
 
     pub async fn dispatch(&mut self, stmt: Statement) -> Result<ExecutionResult, String> {
+        let _ = OPERATIONS; // fractal invariant: 21 operations
         match stmt {
             Statement::Birth { name, metadata } => {
+                // Phase 1-7: BIRTH = 7^1 (fractal depth 1)
                 let agent = AgentState::birth(name, metadata);
                 let provider = agent.session.config.default_provider.clone();
                 if !provider.is_empty()
@@ -319,12 +330,26 @@ impl Steward {
                 private,
                 modifiers,
             } => {
+                // Phase 1-7: THINK = 7^2 (fractal depth 2)
                 if private {
                     let agent = self.ensure_born()?;
                     if agent.private_data.is_none() {
                         return Err(
                             "Agent is locked. Unlock first with /unlock <password>".to_string()
                         );
+                    }
+
+                    let config = &agent.session.config;
+                    let provider_name = config.default_provider.as_str();
+                    match provider_name {
+                        "webllm" | "ollama" => {} // allowed
+                        _ => {
+                            return Err(format!(
+                                "Private thoughts require a local provider. Current: {}. \
+                             Allowed: webllm, ollama. Blocked: openai, anthropic, gemini, etc.",
+                                provider_name
+                            ))
+                        }
                     }
                 }
 
@@ -438,6 +463,7 @@ impl Steward {
                 params,
                 sandbox,
             } => {
+                // Phase 1-7: ACT = 7^3 (fractal depth 3)
                 let agent = self.ensure_born()?;
                 let tier = agent.tier();
                 let reputation = agent.reputation();

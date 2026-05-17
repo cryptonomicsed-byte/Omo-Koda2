@@ -50,16 +50,16 @@ mod slash_command_tests {
             .unwrap();
 
         let result = steward
-            .dispatch(parse("/configure provider:mock").unwrap()[0].clone())
+            .dispatch(parse("/configure provider:ollama").unwrap()[0].clone())
             .await
             .unwrap();
         assert!(result
             .tool_output
             .unwrap()
-            .contains("Configured provider to mock"));
+            .contains("Configured provider to ollama"));
 
         let agent = steward.agent_state().unwrap();
-        assert_eq!(agent.session().config.default_provider, "mock");
+        assert_eq!(agent.session().config.default_provider, "ollama");
     }
 
     #[tokio::test]

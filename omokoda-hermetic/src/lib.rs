@@ -1,3 +1,5 @@
+pub mod fractal;
+
 use hkdf::Hkdf;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;

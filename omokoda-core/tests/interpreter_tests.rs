@@ -148,7 +148,7 @@ mod interpreter_tests {
             .await
             .unwrap();
         steward
-            .dispatch(parse(r#"/configure provider:Mock"#).unwrap()[0].clone())
+            .dispatch(parse(r#"/configure provider:ollama"#).unwrap()[0].clone())
             .await
             .unwrap();
 
@@ -292,7 +292,7 @@ mod interpreter_tests {
         let test_file = "test_multi.txt";
         std::fs::write(test_file, "content").unwrap();
 
-        let input = r#"birth "luna" provider:mock
+        let input = r#"birth "luna" provider:ollama
 think "hello"
 act "read_file" "test_multi.txt""#;
         let stmts = parse(input).unwrap();
@@ -394,12 +394,12 @@ act "read_file" "test_multi.txt""#;
     async fn birth_with_metadata_configures_session() {
         let mut steward = Steward::new();
         steward.set_mock_provider("mock response".to_string());
-        let stmts = parse(r#"birth "luna" provider:mock privacy:false sandbox:false"#).unwrap();
+        let stmts = parse(r#"birth "luna" provider:ollama privacy:false sandbox:false"#).unwrap();
         steward.dispatch(stmts[0].clone()).await.unwrap();
 
         let agent = steward.agent_state().unwrap();
         let config = &agent.session().config;
-        assert_eq!(config.default_provider, "mock");
+        assert_eq!(config.default_provider, "ollama");
         assert!(!config.default_privacy);
         assert!(!config.default_sandbox);
     }

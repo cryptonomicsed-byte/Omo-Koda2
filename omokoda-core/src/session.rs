@@ -41,7 +41,7 @@ pub struct SessionConfig {
 impl Default for SessionConfig {
     fn default() -> Self {
         Self {
-            default_provider: "default".to_string(),
+            default_provider: "ollama".to_string(),
             default_privacy: true,
             default_sandbox: true,
         }

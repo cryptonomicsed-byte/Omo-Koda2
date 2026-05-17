@@ -32,7 +32,7 @@ mod privacy_tests {
         let mut registry = ProviderRegistry::new();
         registry.register(Box::new(MockProvider::new("mock response".to_string())));
 
-        let response = registry.think("mock", "hello", &[], false).await.unwrap();
+        let response = registry.think("ollama", "hello", &[], false).await.unwrap();
         assert_eq!(response, "mock response");
     }
 

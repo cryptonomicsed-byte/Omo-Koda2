@@ -1,6 +1,4 @@
-use hmac::Hmac;
-use pbkdf2::pbkdf2;
-use sha2::{Digest, Sha256, Sha512};
+use sha2::{Digest, Sha256};
 
 pub const ROOTS: [&str; 16] = [
     "esu", "sango", "ogun", "oya", "yemoja", "osun", "obatala", "orunmila", "egungun", "ori",
@@ -90,12 +88,28 @@ impl Bipon39 {
         Ok(indices)
     }
 
-    pub fn mnemonic_to_seed(mnemonic: &str, passphrase: &str) -> [u8; 64] {
-        let salt = format!("BIPỌ̀N39 seedỌ̀RÍ:{}", passphrase);
-        let mut seed = [0u8; 64];
-        pbkdf2::<Hmac<Sha512>>(mnemonic.as_bytes(), salt.as_bytes(), 2048, &mut seed)
-            .expect("PBKDF2 failed");
-        seed
+    pub fn mnemonic_to_seed(
+        mnemonic: &str,
+        agent_id: &str,
+        birth_timestamp: u64,
+        chain_id: &str,
+    ) -> [u8; 32] {
+        use argon2::{Algorithm, Argon2, Params, PasswordHasher, Version};
+
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(agent_id.as_bytes());
+        hasher.update(&birth_timestamp.to_le_bytes());
+        hasher.update(chain_id.as_bytes());
+        let salt = hasher.finalize();
+
+        let params = Params::new(65536, 3, 1, Some(32)).expect("invalid argon2 params");
+        let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+
+        let mut output = [0u8; 32];
+        argon2
+            .hash_password_into(mnemonic.as_bytes(), salt.as_bytes(), &mut output)
+            .expect("Argon2id failed");
+        output
     }
 
     pub fn get_odu_index(indices: &[u8]) -> u8 {

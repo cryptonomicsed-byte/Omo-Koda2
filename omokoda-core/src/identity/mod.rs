@@ -2,6 +2,8 @@ pub mod bipon39;
 pub mod dna;
 pub mod odu;
 pub mod pet;
+pub mod vault;
+pub mod wallet;
 
 use serde::{Deserialize, Serialize};
 

@@ -74,13 +74,26 @@ pub struct AgentState {
     pub private_data: Option<PrivateSessionData>,
     pub resonance: Option<omokoda_hermetic::fractal::ResonanceSignature>,
     pub synapse: f64,
+    #[serde(skip)]
+    pub k_root: [u8; 32],
+    pub act_counter: u64,
+    #[serde(skip)]
+    pub current_memory_key: [u8; 32],
 }
 
 impl AgentState {
     pub fn birth(name: String, metadata: Vec<MetadataPair>) -> Self {
+        use crate::identity::vault::SealVault;
+        use crate::memory::odu_keys::OduKeys;
+        use omokoda_hermetic::entropy::odu::OduEntropy;
+
         let birth_timestamp = current_unix_timestamp();
-        let mut entropy = [0u8; 32];
-        rand::thread_rng().fill(&mut entropy);
+        
+        // Layer A: SEAL vault forge
+        let k_root = SealVault::generate_internal_secret();
+        
+        // Identity derivation
+        let mut entropy = blake3::derive_key("omokoda:entropy_v1", &k_root);
 
         let mnemonic = Bipon39::entropy_to_mnemonic(&entropy);
         let indices = Bipon39::mnemonic_to_indices(&mnemonic).unwrap();
@@ -92,17 +105,25 @@ impl AgentState {
             mnemonic,
         };
         let receipts = ReceiptStore::new();
-        let hermetic_state = HermeticState::from_odu_seed(odu_seed.as_bytes());
+        
+        // Layer B: Hermetic Principle derivation via IfáScript entropy
+        let hermetic_seed = OduEntropy::generate_hermetic_seed(&indices);
+        let hermetic_state = HermeticState::from_odu_seed(&hermetic_seed);
+        
         let pet_identity = PetIdentity::derive(&odu_identity, &hermetic_state, 0);
 
         let dna_fingerprint = generate_dna_fingerprint(&name, birth_timestamp, odu_seed.as_bytes());
         let id = AgentId::new(&dna_fingerprint);
 
+        // Memory Key Chain initialization (K_0)
+        let chain_id = "testnet"; // Default for now
+        let k0 = OduKeys::derive_k0(&k_root, id.as_str(), birth_timestamp, chain_id);
+
         let odu_bytes = odu_seed.as_bytes();
         let day = (birth_timestamp % 7) as u8;
         let planet = (odu_bytes[0] % 7) as u8;
         let dimension = 0u8; // Time dimension at birth
-        let resonance = omokoda_hermetic::fractal::ResonanceSignature::new(day, planet, dimension);
+        let resonance = Some(omokoda_hermetic::fractal::ResonanceSignature::new(day, planet, dimension).unwrap());
 
         let mut session = Session::new(id.clone(), name.clone(), birth_timestamp);
         for pair in metadata {
@@ -115,8 +136,9 @@ impl AgentState {
             private_messages: Vec::new(),
         };
 
-        // Derive signing key
-        let signing_key = derive_signing_key(&odu_seed);
+        // Derive Sui-compatible Ed25519 signing key (m/44'/784'/0'/0'/0')
+        let signing_key = crate::identity::wallet::Wallet::derive_from_mnemonic(&odu_identity.mnemonic, "")
+            .expect("Failed to derive wallet key");
         let public_key = signing_key.verifying_key().to_bytes();
 
         Self {
@@ -137,6 +159,9 @@ impl AgentState {
             private_data: Some(private_data),
             resonance,
             synapse: 8_600_000.0,
+            k_root,
+            act_counter: 0,
+            current_memory_key: k0,
         }
     }
 
@@ -242,6 +267,26 @@ impl AgentState {
         self.pet_identity =
             PetIdentity::derive(&self.odu_identity, &self.hermetic_state, self.tier());
         self.session.reputation = self.reputation;
+    }
+
+    pub fn increment_act_counter(&mut self) {
+        self.act_counter += 1;
+        if self.act_counter % 100 == 0 {
+            self.rotate_memory_key();
+        }
+    }
+
+    fn rotate_memory_key(&mut self) {
+        use crate::memory::odu_keys::OduKeys;
+        let hermetic_seed = blake3::derive_key("omokoda:hermetic_seed", self.odu_seed.as_bytes());
+        
+        let epoch_nonce = [0u8; 32]; // Stub for now
+        self.current_memory_key = OduKeys::rotate_key(
+            &self.current_memory_key,
+            &hermetic_seed,
+            self.act_counter,
+            &epoch_nonce,
+        );
     }
 }
 
@@ -446,11 +491,12 @@ impl Steward {
                     );
                 let agent = self.ensure_born()?;
                 let hermetic_state = agent.hermetic_state().clone();
-                let (new_rep, _, hermetic_eval) =
+                let (new_rep, _, _hermetic_eval) =
                     self.justice
                         .evaluate_think(current_rep, high_value, &response, &hermetic_state);
 
                 let agent_mut = self.ensure_born_mut()?;
+
                 agent_mut.burn_synapse(1_000.0)?; // THINK burns 1000 synapses
                 agent_mut.add_message(ConversationMessage::new_user(prompt, private));
                 agent_mut.add_message(ConversationMessage::new_assistant(
@@ -528,7 +574,7 @@ impl Steward {
                 // Justice module: Reputation update
                 let current_rep = agent.reputation();
                 let hermetic_state = agent.hermetic_state().clone();
-                let (new_rep, _, hermetic_eval) = self.justice.evaluate_action(
+                let (new_rep, _, _hermetic_eval) = self.justice.evaluate_action(
                     current_rep,
                     &tool,
                     &params,
@@ -558,6 +604,7 @@ impl Steward {
                 let agent_mut = self.ensure_born_mut()?;
                 agent_mut.burn_synapse(5_000.0)?; // ACT burns 5000 synapses
                 agent_mut.update_reputation(new_rep, ReputationChangeReason::Act);
+                agent_mut.increment_act_counter();
 
                 // Receipt generation
                 let last_hash = agent_mut.receipts.last_hash().to_string();
@@ -910,7 +957,7 @@ impl Steward {
         let current_rep = self.reputation();
         let agent = self.ensure_born()?;
         let hermetic_state = agent.hermetic_state().clone();
-        let (new_rep, _, hermetic_eval) = self.justice.evaluate_action(
+        let (new_rep, _, _hermetic_eval) = self.justice.evaluate_action(
             current_rep,
             &call.tool,
             &call.params,
@@ -938,6 +985,7 @@ impl Steward {
 
         let agent_mut = self.ensure_born_mut()?;
         agent_mut.update_reputation(new_rep, ReputationChangeReason::Act);
+        agent_mut.increment_act_counter();
 
         let last_hash = agent_mut.receipts.last_hash().to_string();
         let merkle_root = agent_mut.receipts.current_merkle_root();

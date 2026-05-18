@@ -209,11 +209,8 @@ impl Tool for BashTool {
     }
     async fn execute(&self, params: &str, sandbox: bool) -> Result<String, String> {
         // P0 Security: Validate bash commands to prevent injection
-        let allowed_commands = ["git", "ls", "grep", "cat", "find", "cd"];
-        let command_base = params.split_whitespace().next().unwrap_or("");
-
-        if !allowed_commands.contains(&command_base) {
-            return Err(format!("Command '{}' is not allowed. Allowed: {:?}", command_base, allowed_commands));
+        if let Err(e) = crate::execution::bash_validation::validate_bash_command(params) {
+            return Err(format!("Security blocked: {}", e.reason));
         }
 
         if sandbox && params.contains("..") {

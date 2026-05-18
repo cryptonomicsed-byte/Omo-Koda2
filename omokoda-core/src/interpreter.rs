@@ -7,6 +7,7 @@ use crate::intent::{
     DirectActCall, IntentCompilation, IntentCompileContext, IntentCompiler, IntentPlan,
     SubAgentSuggestion,
 };
+use crate::justice::hermetic::{ActionProposal, ActionTarget};
 use crate::justice::JusticeEngine;
 use crate::parser::{MetadataPair, Statement};
 use crate::providers::ProviderRegistry;
@@ -17,6 +18,7 @@ use crate::session::{
     PrivateSessionData, SensitiveKey, Session,
 };
 use crate::tools::ToolRegistry;
+use crate::usage::TokenUsage;
 use ed25519_dalek::SigningKey;
 use hkdf::Hkdf;
 use omokoda_hermetic::fractal::OPERATIONS;
@@ -307,6 +309,10 @@ pub struct Steward {
     #[serde(skip, default = "JusticeEngine::new")]
     justice: JusticeEngine,
     #[serde(skip)]
+    permission_policy: crate::permissions::PermissionPolicy,
+    #[serde(skip)]
+    usage_tracker: crate::usage::UsageTracker,
+    #[serde(skip)]
     persistence_path: Option<PathBuf>,
     #[serde(skip, default = "default_session_dir")]
     session_dir: PathBuf,
@@ -335,6 +341,8 @@ impl Steward {
             tools: ToolRegistry::new(),
             providers: ProviderRegistry::new(),
             justice: JusticeEngine::new(),
+            permission_policy: crate::permissions::PermissionPolicy::new(crate::permissions::PermissionMode::WorkspaceWrite),
+            usage_tracker: crate::usage::UsageTracker::new(),
             persistence_path: None,
             session_dir: default_session_dir(),
             unlock_key: None,
@@ -497,7 +505,7 @@ impl Steward {
                 let agent_mut = self.ensure_born_mut()?;
 
                 agent_mut.burn_synapse(1_000.0)?; // THINK burns 1000 synapses
-                agent_mut.add_message(ConversationMessage::new_user(prompt, private));
+                agent_mut.add_message(ConversationMessage::new_user(prompt.clone(), private));
                 agent_mut.add_message(ConversationMessage::new_assistant(
                     response.clone(),
                     private,
@@ -515,7 +523,47 @@ impl Steward {
                     "router": compilation.router_fingerprint,
                 })
                 .to_string();
-                let receipt = self.record_receipt("think", &receipt_payload)?;
+
+                let receipt = {
+                    let agent_mut = self.ensure_born_mut()?;
+                    let last_hash = agent_mut.receipts.last_hash().to_string();
+                    let merkle_root = agent_mut.receipts.current_merkle_root();
+                    let signing_key = agent_mut.signing_key();
+                    let agent_id = agent_mut.id().clone();
+                    let receipt = Receipt::new_merkle(
+                        &agent_id,
+                        "think",
+                        &receipt_payload,
+                        &last_hash,
+                        &merkle_root,
+                        &signing_key,
+                    );
+                    agent_mut.receipts.record(receipt.clone());
+                    self.usage_tracker.record(TokenUsage::default());
+                    receipt
+                };
+
+                // Hermetic Gate: Think
+                {
+                    let agent_mut = self.ensure_born_mut()?;
+                    let agent_id = agent_mut.id().clone();
+                    let action_proposal = ActionProposal {
+                        tool_name: "think".to_string(),
+                        params: "".to_string(),
+                        description: format!("Thinking about: {}", prompt),
+                        target: ActionTarget::User,
+                    };
+                    let hermetic = crate::justice::hermetic::evaluate_and_receipt(
+                        &prompt,
+                        &action_proposal,
+                        &mut agent_mut.session,
+                        &mut agent_mut.receipts,
+                        &agent_id,
+                    )?;
+                    if !hermetic.is_allowed() {
+                        return Err(format!("Hermetic gate: {:?}", hermetic.decision));
+                    }
+                }
 
                 self.auto_save();
 
@@ -569,6 +617,12 @@ impl Steward {
                     .execute(&tool, &params, force_sandbox, tier)
                     .await
                     .map_err(|e| format!("Tool execution failed: {}", e))?;
+
+                // Permission Policy enforcement
+                let auth_result = self.permission_policy.authorize(&tool, &params, None);
+                if let crate::permissions::PermissionOutcome::Deny { reason } = auth_result {
+                    return Err(format!("Permission denied: {}", reason));
+                }
 
                 // Justice module: Reputation update
                 let current_rep = agent.reputation();
@@ -645,6 +699,29 @@ impl Steward {
                 });
 
                 self.auto_save();
+
+                // Hermetic Gate: Act
+                {
+                    let agent_mut = self.ensure_born_mut()?;
+                    let agent_id = agent_mut.id().clone();
+                    let action_proposal = ActionProposal {
+                        tool_name: tool.clone(),
+                        params: params.clone(),
+                        description: format!("Executing tool {}", tool),
+                        target: ActionTarget::System,
+                    };
+                    let hermetic = crate::justice::hermetic::evaluate_and_receipt(
+                        "User request to execute tool",
+                        &action_proposal,
+                        &mut agent_mut.session,
+                        &mut agent_mut.receipts,
+                        &agent_id,
+                    )?;
+                    if !hermetic.is_allowed() {
+                        return Err(format!("Hermetic gate: {:?}", hermetic.decision));
+                    }
+                }
+
                 Ok(ExecutionResult {
                     receipt: Some(receipt),
                     private_mode: false,
@@ -1026,8 +1103,14 @@ impl Steward {
         Ok((receipt, output))
     }
 
-    fn record_receipt(&mut self, action: &str, params: &str) -> Result<Receipt, String> {
-        let agent_mut = self.ensure_born_mut()?;
+    fn record_receipt(
+        &mut self,
+        agent_mut: &mut AgentState,
+        action: &str,
+        params: &str,
+        usage: crate::usage::TokenUsage,
+    ) -> Result<Receipt, String> {
+        self.usage_tracker.record(usage);
         let last_hash = agent_mut.receipts.last_hash().to_string();
         let merkle_root = agent_mut.receipts.current_merkle_root();
         let signing_key = agent_mut.signing_key();

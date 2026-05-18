@@ -126,7 +126,15 @@ pub struct ReceiptStore {
     merkle_tree: SimpleMerkleTree,
 }
 
+pub type ReceiptEngine = ReceiptStore;
+
 impl ReceiptStore {
+    pub fn write_receipt(&mut self, _receipt: ActReceipt) -> Result<(), String> {
+        // Stub: In a real implementation, this would persist the ActReceipt
+        // or integrate it into the Merkle chain.
+        Ok(())
+    }
+
     pub fn new() -> Self {
         Self {
             receipts: HashMap::new(),

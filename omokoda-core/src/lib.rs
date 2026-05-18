@@ -11,6 +11,9 @@ pub mod sandbox;
 pub mod session;
 pub mod tools;
 pub mod execution;
+pub mod permissions;
+pub mod usage;
+pub mod config;
 
 pub use identity::AgentId;
 pub use intent::{

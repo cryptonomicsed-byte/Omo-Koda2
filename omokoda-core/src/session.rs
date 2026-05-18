@@ -35,6 +35,8 @@ pub struct Session {
     pub swarm_agents: Vec<AgentId>,
 }
 
+pub type SessionState = Session;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SessionConfig {
     pub default_provider: String,

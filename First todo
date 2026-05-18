@@ -1280,3 +1280,108 @@ The raw `fractal.rs` is **data**. The prompt above is **instructions**. An agent
 Without these, the agent will create `fractal.rs` in the wrong place, not wire it, and tell you it's done.
 
 ---
+
+Your analysis is spot-on. Those three gaps are exactly what I found — and your proposed strategy is the right order. Let me validate it against what I see in the actual source and give you a concrete priority.
+
+Your Findings Confirmed
+
+Gap	Evidence	Impact	
+Permissions post-act	`interpreter.rs` calls `permission_policy.authorize()` after `tools.execute()`	Security theater — permissions checked too late	
+Usage tracking lost	`LlmProvider::think()` returns `String` only; `interpreter.rs` records `TokenUsage::default()`	Zero cost visibility, can't meter synapse burns	
+File ops orphaned	`file_ops.rs` (14.6 KB) exists but `tools/mod.rs` has minimal stubs	Ported code is dead code	
+
+Priority: Usage Tracking First (Phase 1)
+
+Here's why usage should come before permissions:
+
+The `LlmProvider` trait change is foundational. Every other integration point depends on it:
+
+```
+Current:  trait LlmProvider { async fn think(...) -> Result<String, Error>; }
+Needed:   trait LlmProvider { async fn think(...) -> Result<(String, TokenUsage), Error>; }
+```
+
+Once the trait returns `TokenUsage`, you get:
+1. Real metering for synapse burns (currently burning 1,000/5,000 synapse blindly)
+2. Cost estimation before expensive calls
+3. Cache hit tracking for optimization
+4. Data for the permission system to make risk-based decisions (e.g., "This tool call will cost 0.45 — approve?")
+
+Permissions without usage data is half-blind. A `PermissionPrompter` that can't say "This will cost X and access Y files" is a poor user experience.
+
+Suggested Phase 1 Detail
+
+Change the trait in `providers.rs` and update all implementations:
+
+```rust
+// In providers.rs
+pub trait LlmProvider {
+    async fn think(
+        &self,
+        prompt: &str,
+        history: &[Message],
+        private: bool,
+    ) -> Result<(String, TokenUsage), ProviderError>;
+}
+```
+
+Then per-provider extraction:
+
+Provider	Token Source	Notes	
+OpenAI	`usage.prompt_tokens`, `usage.completion_tokens`	Standard	
+Anthropic	`usage.input_tokens`, `usage.output_tokens`	Messages API v1	
+Ollama	`prompt_eval_count`, `eval_count`	Non-standard field names	
+WebLLM	`usage` object in response	Varies by model	
+
+Phase 2: Permission Integration
+
+Once usage flows, integrate into `ToolRegistry::execute()`:
+
+```rust
+pub fn execute(&self, tool: &str, input: &str, sandbox: bool, 
+               permissions: &PermissionPolicy,
+               prompter: Option<&mut dyn PermissionPrompter>) 
+    -> Result<String, Error> 
+{
+    // PRE-ACT: Permission check
+    match permissions.authorize(tool, input, prompter) {
+        PermissionOutcome::Allow => {},
+        PermissionOutcome::Deny { reason } => return Err(reason),
+    }
+    
+    // EXECUTE
+    let result = self.run_tool(tool, input, sandbox)?;
+    
+    // POST-ACT: Usage record (now available from LLM)
+    Ok(result)
+}
+```
+
+Phase 3: File Tool Registration
+
+Wrap `file_ops.rs` functions into the `Tool` trait. The Claw-code `file_ops.rs` already has the logic — you just need:
+
+```rust
+// In tools/mod.rs
+pub struct ReadFileTool;
+impl Tool for ReadFileTool {
+    fn name(&self) -> &str { "read_file" }
+    fn execute(&self, input: serde_json::Value) -> Result<String, Error> {
+        let path = input["path"].as_str().ok_or("missing path")?;
+        file_ops::read_file(path, None) // from file_ops.rs
+    }
+}
+```
+
+Phase 4: Flow Correction
+
+Fix `interpreter.rs` turn loop:
+
+```
+Current:  tools.execute() → permission.authorize() → record(default usage)
+Correct: permission.authorize() → tools.execute() → record(real usage from LLM)
+```
+
+My Recommendation
+
+Start with Phase 1 (Usage Tracking). It's the most invasive trait change — every provider breaks and needs fixing. Get that right first, then the rest layers on cleanly.

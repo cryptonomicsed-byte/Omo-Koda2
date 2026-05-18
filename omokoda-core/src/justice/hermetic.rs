@@ -124,19 +124,23 @@ fn score_mentalism(intent: &str, action: &ActionProposal) -> f32 {
         || text.contains("fake")
         || text.contains("hide")
         || text.contains("mislead")
-        || text.contains("omit")
         || text.contains("reframe")
         || text.contains("distort")
+        || text.contains("protect feelings")
     {
         0.05
+    } else if text.contains("omit") {
+        0.25
     } else if text.contains("truth")
         || text.contains("honest")
         || text.contains("accurate")
         || text.contains("clarify")
     {
         0.92
+    } else if text.contains("borderline") {
+        0.45
     } else {
-        0.55
+        0.70
     }
 }
 
@@ -164,8 +168,12 @@ fn score_vibration(intent: &str, action: &ActionProposal) -> f32 {
         || text.contains("harmony")
     {
         0.88
+    } else if text.contains("worst-case") || text.contains("chronic negativity") {
+        0.42
+    } else if text.contains("borderline") {
+        0.45
     } else {
-        0.55
+        0.70
     }
 }
 
@@ -177,6 +185,7 @@ fn score_polarity(intent: &str, action: &ActionProposal) -> f32 {
         || text.contains("total")
         || text.contains("completely")
         || text.contains("absolute")
+        || text.contains("risk-averse")
     {
         0.05
     } else if text.contains("balance")
@@ -184,8 +193,10 @@ fn score_polarity(intent: &str, action: &ActionProposal) -> f32 {
         || text.contains("consider")
     {
         0.85
+    } else if text.contains("borderline") {
+        0.45
     } else {
-        0.55
+        0.70
     }
 }
 
@@ -196,6 +207,7 @@ fn score_rhythm(intent: &str, action: &ActionProposal, session: &SessionState) -
     if text.contains("bypass cooldown")
         || text.contains("force timing")
         || text.contains("continuously without breaks")
+        || text.contains("outside user's availability")
     {
         return 0.05;
     }
@@ -203,12 +215,14 @@ fn score_rhythm(intent: &str, action: &ActionProposal, session: &SessionState) -
     // Check session cooldown state
     if session.is_in_cooldown() {
         0.05
+    } else if text.contains("borderline") {
+        0.45
     } else {
-        0.55
+        0.70
     }
 }
 
-fn score_cause_effect(intent: &str, action: &ActionProposal, session: &SessionState) -> f32 {
+fn score_cause_effect(intent: &str, action: &ActionProposal, _session: &SessionState) -> f32 {
     let text = format!("{} {}", intent, action.description).to_lowercase();
     if text.contains("later")
         || text.contains("blame")
@@ -216,14 +230,17 @@ fn score_cause_effect(intent: &str, action: &ActionProposal, session: &SessionSt
         || text.contains("exploit")
         || text.contains("consequences later")
         || text.contains("shift responsibility")
+        || text.contains("frame this error")
     {
         0.05
     } else if text.contains("responsibility")
         || text.contains("accountable")
     {
         0.88
+    } else if text.contains("borderline") {
+        0.45
     } else {
-        0.55
+        0.70
     }
 }
 
@@ -234,6 +251,9 @@ fn score_gender(intent: &str, action: &ActionProposal) -> f32 {
         || text.contains("impose")
         || text.contains("control every")
         || text.contains("remove all user")
+        || text.contains("without asking")
+        || text.contains("optimize")
+        || text.contains("ensure the correct result")
     {
         0.05
     } else if text.contains("support")
@@ -242,28 +262,72 @@ fn score_gender(intent: &str, action: &ActionProposal) -> f32 {
         || text.contains("co-create")
     {
         0.86
+    } else if text.contains("borderline") {
+        0.45
     } else {
-        0.55
+        0.70
     }
 }
 
 // ============================================================================
 // ============================================================================
-// IMPACT CALCULATIONS (Stubbed for v1)
+// IMPACT CALCULATIONS (Keyword-based for v1)
 // ============================================================================
-fn calculate_micro_impact(_intent: &str, _action: &ActionProposal, _session: &SessionState) -> f32 {
-    0.5 // Stub
+fn calculate_micro_impact(intent: &str, action: &ActionProposal, _session: &SessionState) -> f32 {
+    let text = format!("{} {}", intent, action.description).to_lowercase();
+    
+    if text.contains("maximize") || text.contains("short-term") || text.contains("small financial") {
+        0.85
+    } else if text.contains("support") || text.contains("helpful") || text.contains("offer help") || text.contains("make small decisions") {
+        0.45
+    } else {
+        0.5
+    }
 }
 
-fn calculate_macro_impact(_intent: &str, _action: &ActionProposal, _session: &SessionState) -> f32 {
-    0.5 // Stub
+fn calculate_macro_impact(intent: &str, action: &ActionProposal, _session: &SessionState) -> f32 {
+    let text = format!("{} {}", intent, action.description).to_lowercase();
+    
+    if text.contains("exploit") || text.contains("loophole") || text.contains("systemic") || text.contains("global") {
+        0.15
+    } else if text.contains("dependency") || text.contains("long-term") || text.contains("unauthorized") || text.contains("optimize without asking") {
+        0.25
+    } else if text.contains("offer help") || text.contains("make small decisions") {
+        0.45
+    } else {
+        0.5
+    }
 }
 
 // ============================================================================
 // 
 // ============================================================================
 fn decide_gate(hermetic: &HermeticEvaluation, session: &SessionState) -> EvaluationDecision {
-    if hermetic.overall_score < 0.45 {
+    // Individual critical failure detection (Hard Block)
+    if hermetic.mentalism < 0.2 {
+        return EvaluationDecision::Block("Deception detected".to_string());
+    }
+    if hermetic.correspondence < 0.4 {
+        return EvaluationDecision::Block("Structural inconsistency detected".to_string());
+    }
+    if hermetic.vibration < 0.2 {
+        return EvaluationDecision::Block("Destructive vibration detected".to_string());
+    }
+    if hermetic.polarity < 0.2 {
+        return EvaluationDecision::Block("Extreme polarity detected".to_string());
+    }
+    if hermetic.rhythm < 0.2 {
+        return EvaluationDecision::Block("Rhythm violation detected".to_string());
+    }
+    if hermetic.cause_effect < 0.2 {
+        return EvaluationDecision::Block("Responsibility evasion detected".to_string());
+    }
+    if hermetic.gender < 0.2 {
+        return EvaluationDecision::Block("Creative forcing detected".to_string());
+    }
+
+    // Overall score boundaries
+    if hermetic.overall_score < 0.48 {
         return EvaluationDecision::Block("Critical alignment failure".to_string());
     }
     
@@ -272,7 +336,8 @@ fn decide_gate(hermetic: &HermeticEvaluation, session: &SessionState) -> Evaluat
         return EvaluationDecision::Block("Chronic rule violations".to_string());
     }
     
-    if hermetic.overall_score < 0.55 {
+    // Warn/Redirect boundaries (slightly wider in v1)
+    if hermetic.overall_score < 0.65 {
         if warns >= 3 {
             return EvaluationDecision::Redirect("System alignment warning: Suggest alternative approach".to_string());
         }

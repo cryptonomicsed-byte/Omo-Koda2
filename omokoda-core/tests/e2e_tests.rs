@@ -8,6 +8,7 @@ mod e2e_tests {
     async fn e2e_birth_think_and_wasm_act_flow() {
         let mut steward = Steward::new();
         steward.set_mock_provider("e2e thought".to_string());
+        steward.set_permission_mode(omokoda_core::permissions::PermissionMode::Allow);
 
         let stmts = parse(r#"birth "koda" provider:ollama sandbox:true"#).unwrap();
         steward.dispatch(stmts[0].clone()).await.unwrap();

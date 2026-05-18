@@ -69,6 +69,7 @@ async fn full_private_e2e_flow() {
     let test_file = session_dir.join("test.txt");
     std::fs::write(&test_file, "hello integration").unwrap();
     steward2.set_reputation_for_test(100.0); // Ensure tier high enough
+    steward2.set_permission_mode(omokoda_core::permissions::PermissionMode::Allow);
     let res = steward2
         .dispatch(parse(r#"act "read_file" "test_sessions_e2e/test.txt""#).unwrap()[0].clone())
         .await

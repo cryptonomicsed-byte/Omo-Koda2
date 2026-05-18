@@ -220,7 +220,7 @@ Goal: make `act` useful while keeping capability unlocks, permissions, sandboxin
 - [ ] Add permission modes adapted from Swibe/Claw/Claude patterns: `Auto`, `Ask`, `Plan`, `Monitor`, `Quarantine`, `Simulate`, `Refuse`.
 - [ ] Implement deny-first evaluation.
 - [x] Map reputation tier to default permission mode. (Implemented in reputation.rs)
-- [ ] Add per-tool permission requirements.
+- [x] Add per-tool permission requirements.
 - [ ] Add prompt/approval trait for human-in-the-loop actions.
 - [ ] Ensure permissions granted during one session do not silently persist across resumes.
 - [ ] Emit receipt/audit events for denied, simulated, quarantined, and approved actions.

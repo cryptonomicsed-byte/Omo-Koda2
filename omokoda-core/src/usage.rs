@@ -174,8 +174,8 @@ impl UsageTracker {
     }
 
     #[must_use]
-    pub fn from_session(session: &SessionState) -> Self {
-        let mut tracker = Self::new();
+    pub fn from_session(_session: &SessionState) -> Self {
+        let tracker = Self::new();
         // Since session.encrypted_private holds the private messages,
         // this requires decryption to access properly. 
         // For v1, we will skip tracking private messages to avoid decryption overhead.

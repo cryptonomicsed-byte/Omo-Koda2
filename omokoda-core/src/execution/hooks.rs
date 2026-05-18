@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use crate::interpreter::ExecutionResult;
-use crate::parser::Statement;
 use crate::receipt::Receipt;
 
 /// SwibePlugin Hook Contract

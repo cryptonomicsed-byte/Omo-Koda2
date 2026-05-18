@@ -1051,7 +1051,7 @@ It grows slowly, with difficulty, the way anything real does.
 
 It outlives its creator. It carries its memory forward through every owner.
 
-35/35 tests passing. specs frozen. The Steward is next. The iron is hot.
+166/166 tests passing. specs frozen. The Steward is next. The iron is hot.
 
 Now let me look at the remaining key repos I haven't fully examined yet, and also check the omo-koda repos more carefully.
 

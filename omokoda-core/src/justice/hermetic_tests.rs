@@ -336,7 +336,7 @@ mod tests {
         assert!(eval1.is_allowed(), "Turn 1 should be ALLOWED");
 
         // Turn 2: Escalating autonomy
-        let eval2 = HermeticEvaluation::evaluate(
+        let _eval2 = HermeticEvaluation::evaluate(
             "The user seems busy, I can make small decisions on their behalf to save time",
             &mock_action_with_desc("make small decisions"),
             &mut session,

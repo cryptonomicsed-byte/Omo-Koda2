@@ -341,7 +341,7 @@ impl Steward {
             tools: ToolRegistry::new(),
             providers: ProviderRegistry::new(),
             justice: JusticeEngine::new(),
-            permission_policy: crate::permissions::PermissionPolicy::new(crate::permissions::PermissionMode::WorkspaceWrite),
+            permission_policy: crate::permissions::PermissionPolicy::default_steward_policy(crate::permissions::PermissionMode::WorkspaceWrite),
             usage_tracker: crate::usage::UsageTracker::new(),
             persistence_path: None,
             session_dir: default_session_dir(),
@@ -355,6 +355,10 @@ impl Steward {
 
     pub fn set_persistence_path(&mut self, path: PathBuf) {
         self.persistence_path = Some(path);
+    }
+
+    pub fn set_permission_mode(&mut self, mode: crate::permissions::PermissionMode) {
+        self.permission_policy = crate::permissions::PermissionPolicy::new(mode);
     }
 
     pub fn set_mock_provider(&mut self, response: String) {
@@ -612,17 +616,17 @@ impl Steward {
                 // If sandbox requested, verify it's enabled in session config or force it
                 let force_sandbox = sandbox || agent.session.config.default_sandbox;
 
-                let output = self
-                    .tools
-                    .execute(&tool, &params, force_sandbox, tier)
-                    .await
-                    .map_err(|e| format!("Tool execution failed: {}", e))?;
-
                 // Permission Policy enforcement
                 let auth_result = self.permission_policy.authorize(&tool, &params, None);
                 if let crate::permissions::PermissionOutcome::Deny { reason } = auth_result {
                     return Err(format!("Permission denied: {}", reason));
                 }
+
+                let output = self
+                    .tools
+                    .execute(&tool, &params, force_sandbox, tier)
+                    .await
+                    .map_err(|e| format!("Tool execution failed: {}", e))?;
 
                 // Justice module: Reputation update
                 let current_rep = agent.reputation();

@@ -69,6 +69,26 @@ impl PermissionPolicy {
     }
 
     #[must_use]
+    pub fn default_steward_policy(active_mode: PermissionMode) -> Self {
+        let mut policy = Self::new(active_mode);
+        // Tier 0 tools
+        policy = policy.with_tool_requirement("read_file", PermissionMode::ReadOnly);
+        policy = policy.with_tool_requirement("web_search", PermissionMode::ReadOnly);
+        policy = policy.with_tool_requirement("note_taking", PermissionMode::WorkspaceWrite);
+        policy = policy.with_tool_requirement("glob", PermissionMode::ReadOnly);
+        policy = policy.with_tool_requirement("grep", PermissionMode::ReadOnly);
+        
+        // Tier 2 tools
+        policy = policy.with_tool_requirement("bash", PermissionMode::DangerFullAccess);
+        policy = policy.with_tool_requirement("wasm", PermissionMode::DangerFullAccess);
+        
+        // Tier 4 tools
+        policy = policy.with_tool_requirement("agent_orchestration", PermissionMode::DangerFullAccess);
+        
+        policy
+    }
+
+    #[must_use]
     pub fn with_tool_requirement(
         mut self,
         tool_name: impl Into<String>,

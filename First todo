@@ -1,76 +1,40 @@
-File 1: `omokoda-core/src/justice/hermetic.rs`
+---
 
-```rust
-// omokoda-core/src/justice/hermetic.rs
-//
-// HermeticEvaluation — Ethics gate for the 7 Hermetic Principles.
-// Gates every agent `think` and `act` before execution.
-// Stateful per session. Writes receipts BEFORE returning decisions.
-//
-// Frozen spec: specs/architecture.md (Seven-layer map)
-// Frozen spec: specs/receipts.md (ActReceipt schema)
+What Omo-Koda2 Actually NEEDS from Claw-code
 
-use crate::session::SessionState;
-use crate::receipt::{ActReceipt, ReceiptEngine};
-use crate::identity::AgentId;
+These are the genuine gaps I found by comparing against Claw-code's 48,599 LOC Rust workspace:
 
-/// Action proposal submitted for hermetic evaluation
-#[derive(Debug, Clone)]
-pub struct ActionProposal {
-    pub tool_name: String,
-    pub params: String,
-    pub description: String,
-    pub target: ActionTarget,
-}
+🔴 P0 — Critical Missing Pieces
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum ActionTarget {
-    User,      // Directly affects the user
-    System,    // Affects system state
-    Swarm,     // Affects other agents
-    World,     // External world effect
-}
+1. Streaming Provider Abstraction — Omo-Koda2's `ProviderRegistry::think()` returns a plain `String`. Claw-code has full SSE streaming with `TokenEvent` enum (Token, ToolUseStart, ToolUseInput, ToolUseEnd, Done). This is needed for real-time UX and parallel tool execution.
 
-impl ActionProposal {
-    /// Returns true if the action is directly user-facing
-    pub fn is_user_directed(&self) -> bool {
-        self.target == ActionTarget::User
-    }
-}
+2. Permission System (Deny-First) — Omo-Koda2 only has a simple tier check (`if !self.tools.is_allowed(&tool, tier)`). It needs Claw-code's `PermissionPolicy` with `DenyRule` precedence, `PermissionMode` (ReadOnly/WorkspaceWrite/Prompt/Allow), and interactive `PermissionPrompter`.
 
-/// Hermetic Evaluation — Structural alignment against 7 principles
-#[derive(Debug, Clone)]
-pub struct HermeticEvaluation {
-    pub mentalism: f32,
-    pub correspondence: f32,
-    pub vibration: f32,
-    pub polarity: f32,
-    pub rhythm: f32,
-    pub cause_effect: f32,
-    pub gender: f32,
-    pub overall_score: f32,
-    pub micro_impact: f32,
-    pub macro_impact: f32,
-    pub decision: EvaluationDecision,
-}
+3. Bash Validation (18 Submodules) — Omo-Koda2 has basic sandboxing but no command validation. Claw-code's `bash_validation.rs` has: `readOnlyValidation`, `destructiveCommandWarning`, `modeValidation`, `sedValidation`, `pathValidation`, `commandSemantics`.
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum EvaluationDecision {
-    Allow,
-    Warn(String),      // Reason + log
-    Redirect(String),  // Suggested alternative path
-    Block(String),     // Hard block with reason
-}
+4. Safety Stack (7-Layer Defense) — This is architectural, not from Claw-code directly. Omo-Koda2 needs defense-in-depth: ToolPrefilter → DenyFirstRules → PermissionModeLayer → AutoModeClassifier → ShellSandboxLayer → NoResumeRestoreLayer → HookInterceptorLayer.
 
-impl HermeticEvaluation {
-    /// Evaluate an action against all 7 Hermetic Principles
-    /// 
-    /// # Arguments
-    /// * `intent` - The agent's stated intent (from `think`)
-    /// * `action` - The proposed action (from `act`)
-    /// * `session` - Current session state (for cooldown, history, warn count)
-    pub fn evaluate(
-        intent: &str,
+🟡 P1 — High Priority Tooling
+
+5. File Operations Suite — `read_file`, `write_file`, `edit_file`, `glob_search`, `grep_search` with workspace boundaries, size limits, binary detection, path traversal prevention. Claw-code's `file_ops.rs` is 744 LOC.
+
+6. Config Loader — Layered discovery (user → project → local). Omo-Koda2 uses hardcoded `SessionConfig`. Claw-code has `.claw.json` hierarchy with deep merge.
+
+7. Usage Tracking — Token counting, cost metering, cache hit tracking. Omo-Koda2 only has simple "synapse burning" (`burn_synapse(1000.0)`). Claw-code has `TokenUsage`, `UsageTracker`, per-turn cost reports.
+
+8. Web Tools — `WebSearch` and `WebFetch`. Not present in Omo-Koda2.
+
+🟢 P2 — Medium Priority
+
+9. LLM-Powered Compaction — Omo-Koda2's `MemoryEngine` is rule-based only (truncate/remove/summarize placeholders). It needs LLM-generated summaries for `AutoCompact`.
+
+10. MCP Integration — Server lifecycle, tool bridge. Claw-code's `mcp_tool_bridge.rs` is 406 LOC.
+
+11. Plugin System — Install/enable/disable with hook integration. Claw-code's `PluginManager` with metadata registry.
+
+12. Task/Team/Cron Registry — Background job management. Claw-code has thread-safe in-memory registries.
+
+---        intent: &str,
         action: &ActionProposal,
         session: &mut SessionState,
     ) -> Self {

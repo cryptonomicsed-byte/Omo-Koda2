@@ -87,7 +87,7 @@ mod tool_registry_tests {
             .execute("read_file", "../secrets.txt", false, 0, &policy, None)
             .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("no .. allowed"));
+        assert!(result.unwrap_err().contains("Boundary Violation"));
 
         let result = registry.execute("glob", "../**/*", false, 0, &policy, None).await;
         assert!(result.is_err());
@@ -101,6 +101,7 @@ mod tool_registry_tests {
             .execute("grep", &grep_input.to_string(), false, 0, &policy, None)
             .await;
         assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Boundary Violation"));
     }
 
     #[tokio::test]

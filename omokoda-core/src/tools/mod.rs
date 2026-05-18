@@ -1,9 +1,11 @@
 use async_trait::async_trait;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::sandbox::WasmSandbox;
+use crate::execution::permission_enforcer::{validate_path_boundary, enforce_mode};
+use crate::permissions::{PermissionMode, PermissionPolicy, PermissionOutcome, PermissionPrompter};
 
 pub mod sovereign;
 pub mod file_ops;
@@ -13,6 +15,7 @@ pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn required_tier(&self) -> u8;
+    fn is_write_operation(&self) -> bool;
     async fn execute(&self, params: &str, sandbox: bool) -> Result<String, String>;
 }
 
@@ -81,7 +84,12 @@ impl ToolRegistry {
             ));
         }
 
-        // Pre-act check: Permission Policy enforcement
+        // 1. Enforce mode (read-only)
+        if let Err(e) = enforce_mode(policy.active_mode(), name, tool.is_write_operation()) {
+            return Err(e.to_string());
+        }
+
+        // 2. Pre-act check: Permission Policy enforcement
         let auth_result = policy.authorize(name, params, prompter);
         if let crate::permissions::PermissionOutcome::Deny { reason } = auth_result {
             return Err(format!("Permission denied: {}", reason));
@@ -117,6 +125,9 @@ impl Tool for ReadFileTool {
     fn required_tier(&self) -> u8 {
         0
     }
+    fn is_write_operation(&self) -> bool {
+        false
+    }
     async fn execute(&self, params: &str, _sandbox: bool) -> Result<String, String> {
         // Support both raw path and JSON
         let (path, offset, limit) = if params.starts_with('{') {
@@ -129,8 +140,9 @@ impl Tool for ReadFileTool {
             (params.to_string(), None, None)
         };
 
-        if path.contains("..") || Path::new(&path).is_absolute() {
-            return Err("path must be relative and within workspace (no .. allowed)".to_string());
+        let workspace_root = std::env::current_dir().map_err(|e| e.to_string())?;
+        if let Err(e) = validate_path_boundary(&workspace_root, Path::new(&path)) {
+            return Err(e.to_string());
         }
 
         let output = file_ops::read_file(&path, offset, limit)
@@ -151,13 +163,17 @@ impl Tool for WriteFileTool {
     fn required_tier(&self) -> u8 {
         1 // Builder tier
     }
+    fn is_write_operation(&self) -> bool {
+        true
+    }
     async fn execute(&self, params: &str, _sandbox: bool) -> Result<String, String> {
         let v: serde_json::Value = serde_json::from_str(params).map_err(|e| e.to_string())?;
         let path = v["path"].as_str().ok_or("missing path")?;
         let content = v["content"].as_str().ok_or("missing content")?;
 
-        if path.contains("..") || Path::new(&path).is_absolute() {
-            return Err("path must be relative and within workspace (no .. allowed)".to_string());
+        let workspace_root = std::env::current_dir().map_err(|e| e.to_string())?;
+        if let Err(e) = validate_path_boundary(&workspace_root, Path::new(&path)) {
+            return Err(e.to_string());
         }
 
         let output = file_ops::write_file(path, content)
@@ -178,6 +194,9 @@ impl Tool for EditFileTool {
     fn required_tier(&self) -> u8 {
         1 // Builder tier
     }
+    fn is_write_operation(&self) -> bool {
+        true
+    }
     async fn execute(&self, params: &str, _sandbox: bool) -> Result<String, String> {
         let v: serde_json::Value = serde_json::from_str(params).map_err(|e| e.to_string())?;
         let path = v["path"].as_str().ok_or("missing path")?;
@@ -185,8 +204,9 @@ impl Tool for EditFileTool {
         let new_string = v["new_string"].as_str().ok_or("missing new_string")?;
         let replace_all = v["replace_all"].as_bool().unwrap_or(false);
 
-        if path.contains("..") || Path::new(&path).is_absolute() {
-            return Err("path must be relative and within workspace (no .. allowed)".to_string());
+        let workspace_root = std::env::current_dir().map_err(|e| e.to_string())?;
+        if let Err(e) = validate_path_boundary(&workspace_root, Path::new(&path)) {
+            return Err(e.to_string());
         }
 
         let output = file_ops::edit_file(path, old_string, new_string, replace_all)
@@ -206,6 +226,9 @@ impl Tool for BashTool {
     }
     fn required_tier(&self) -> u8 {
         2 // Creator tier
+    }
+    fn is_write_operation(&self) -> bool {
+        true
     }
     async fn execute(&self, params: &str, sandbox: bool) -> Result<String, String> {
         // P0 Security: Validate bash commands to prevent injection
@@ -270,6 +293,9 @@ impl Tool for WebSearchTool {
     fn required_tier(&self) -> u8 {
         0
     }
+    fn is_write_operation(&self) -> bool {
+        false
+    }
     async fn execute(&self, params: &str, _sandbox: bool) -> Result<String, String> {
         let client = reqwest::Client::new();
         let url = format!(
@@ -305,6 +331,9 @@ impl Tool for GlobTool {
     fn required_tier(&self) -> u8 {
         0
     }
+    fn is_write_operation(&self) -> bool {
+        false
+    }
     async fn execute(&self, params: &str, _sandbox: bool) -> Result<String, String> {
         let (pattern, path) = if params.starts_with('{') {
             let v: serde_json::Value = serde_json::from_str(params).map_err(|e| e.to_string())?;
@@ -315,11 +344,14 @@ impl Tool for GlobTool {
             (params.to_string(), None)
         };
 
-        if pattern.contains("..")
-            || Path::new(&pattern).is_absolute()
-            || path.as_ref().is_some_and(|p| p.contains("..") || Path::new(p).is_absolute())
-        {
-            return Err("path must be relative and within workspace (no .. allowed)".to_string());
+        let workspace_root = std::env::current_dir().map_err(|e| e.to_string())?;
+        if let Err(e) = validate_path_boundary(&workspace_root, Path::new(&pattern)) {
+            return Err(e.to_string());
+        }
+        if let Some(ref p) = path {
+            if let Err(e) = validate_path_boundary(&workspace_root, Path::new(p)) {
+                return Err(e.to_string());
+            }
         }
 
         let output = file_ops::glob_search(&pattern, path.as_deref())
@@ -340,15 +372,24 @@ impl Tool for GrepTool {
     fn required_tier(&self) -> u8 {
         0
     }
+    fn is_write_operation(&self) -> bool {
+        false
+    }
     async fn execute(&self, params: &str, _sandbox: bool) -> Result<String, String> {
         let input: file_ops::GrepSearchInput = serde_json::from_str(params).map_err(|e| {
             format!("grep requires JSON input: {}", e)
         })?;
 
-        if input.path.as_ref().is_some_and(|p| p.contains("..") || Path::new(p).is_absolute())
-            || input.glob.as_ref().is_some_and(|g| g.contains("..") || Path::new(g).is_absolute())
-        {
-            return Err("path must be relative and within workspace (no .. allowed)".to_string());
+        let workspace_root = std::env::current_dir().map_err(|e| e.to_string())?;
+        if let Some(ref p) = input.path {
+            if let Err(e) = validate_path_boundary(&workspace_root, Path::new(p)) {
+                return Err(e.to_string());
+            }
+        }
+        if let Some(ref g) = input.glob {
+            if let Err(e) = validate_path_boundary(&workspace_root, Path::new(g)) {
+                return Err(e.to_string());
+            }
         }
 
         let output = file_ops::grep_search(&input).map_err(|e| format!("grep search failed: {}", e))?;
@@ -368,6 +409,9 @@ impl Tool for WasmTool {
     fn required_tier(&self) -> u8 {
         2
     }
+    fn is_write_operation(&self) -> bool {
+        true
+    }
     async fn execute(&self, params: &str, sandbox: bool) -> Result<String, String> {
         let mut parts = params.split_whitespace();
         let module_path = parts
@@ -377,7 +421,8 @@ impl Tool for WasmTool {
             return Err("wasm tool requires module path".to_string());
         }
 
-        if module_path.starts_with('/') || module_path.contains("..") {
+        let workspace_root = std::env::current_dir().map_err(|e| e.to_string())?;
+        if let Err(_) = validate_path_boundary(&workspace_root, Path::new(module_path)) {
             return Err("module path must be relative and within workspace".to_string());
         }
 
@@ -399,6 +444,9 @@ impl Tool for AgentOrchestrationTool {
     }
     fn required_tier(&self) -> u8 {
         4
+    }
+    fn is_write_operation(&self) -> bool {
+        true
     }
     async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
         Ok("orchestration complete".to_string())

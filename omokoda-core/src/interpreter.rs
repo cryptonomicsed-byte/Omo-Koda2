@@ -384,7 +384,7 @@ impl Steward {
     }
 
     pub fn set_permission_mode(&mut self, mode: crate::permissions::PermissionMode) {
-        crate::permissions::PermissionPolicy::default_steward_policy(self.permission_policy.active_mode()) = crate::permissions::PermissionPolicy::new(mode);
+        self.permission_policy = crate::permissions::PermissionPolicy::default_steward_policy(mode);
     }
 
     pub fn set_mock_provider(&mut self, response: String) {

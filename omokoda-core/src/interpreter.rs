@@ -545,7 +545,8 @@ impl Steward {
 
                 let agent_mut = self.ensure_born_mut()?;
 
-                agent_mut.burn_synapse(1_000.0)?; // THINK burns 1000 synapses
+                let burn_amount = usage.compute_synapse_burn().max(1000.0);
+                agent_mut.burn_synapse(burn_amount)?; 
                 agent_mut.add_message(ConversationMessage::new_user(prompt.clone(), private));
                 agent_mut.add_message(ConversationMessage::new_assistant(
                     response.clone(),
@@ -710,7 +711,7 @@ impl Steward {
                     sandbox_mode: force_sandbox,
                 };
 
-                let output = self
+                let (output, tool_usage) = self
                     .tools
                     .execute(
                         &tool,
@@ -722,7 +723,7 @@ impl Steward {
                     .await
                     .map_err(|e| format!("Tool execution failed: {}", e))?;
 
-                // ... [Reputation update and hooks] ...
+                // Justice module: Reputation update
                 let current_rep = self.reputation();
                 let agent = self.ensure_born()?;
                 let hermetic_state = agent.hermetic_state().clone();
@@ -754,7 +755,8 @@ impl Steward {
                 }
 
                 let agent_mut = self.ensure_born_mut()?;
-                agent_mut.burn_synapse(5_000.0)?; // ACT burns 5000 synapses
+                let burn_amount = (5_000.0 + tool_usage.compute_synapse_burn()).max(5000.0);
+                agent_mut.burn_synapse(burn_amount)?; 
                 agent_mut.update_reputation(new_rep, ReputationChangeReason::Act);
                 agent_mut.increment_act_counter();
 
@@ -1149,7 +1151,7 @@ impl Steward {
             sandbox_mode: force_sandbox,
         };
 
-        let output = self
+        let (output, tool_usage) = self
             .tools
             .execute(
                 &call.tool,
@@ -1193,11 +1195,13 @@ impl Steward {
 
         {
             let agent_mut = self.ensure_born_mut()?;
+            let burn_amount = (5_000.0 + tool_usage.compute_synapse_burn()).max(5000.0);
+            agent_mut.burn_synapse(burn_amount)?; 
             agent_mut.update_reputation(new_rep, ReputationChangeReason::Act);
             agent_mut.increment_act_counter();
         }
 
-        let receipt = self.record_receipt(&call.tool, &call.params, TokenUsage::default())?;
+        let receipt = self.record_receipt(&call.tool, &call.params, tool_usage)?;
 
         let message_private = private_context || force_sandbox;
         let agent_mut = self.ensure_born_mut()?;

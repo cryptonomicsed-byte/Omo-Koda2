@@ -26,7 +26,11 @@ pub trait Tool: Send + Sync {
     fn description(&self) -> &str;
     fn required_tier(&self) -> u8;
     fn is_write_operation(&self) -> bool;
-    async fn execute(&self, params: &str, context: &ExecutionContext) -> Result<String, String>;
+    async fn execute(
+        &self,
+        params: &str,
+        context: &ExecutionContext,
+    ) -> Result<(String, crate::usage::TokenUsage), String>;
 }
 
 pub struct ToolRegistry {
@@ -78,7 +82,7 @@ impl ToolRegistry {
         context: ExecutionContext,
         policy: &crate::permissions::PermissionPolicy,
         prompter: Option<&mut dyn crate::permissions::PermissionPrompter>,
-    ) -> Result<String, String> {
+    ) -> Result<(String, crate::usage::TokenUsage), String> {
         let tool = self
             .tools
             .get(name)
@@ -137,7 +141,11 @@ impl Tool for ReadFileTool {
     fn is_write_operation(&self) -> bool {
         false
     }
-    async fn execute(&self, params: &str, context: &ExecutionContext) -> Result<String, String> {
+    async fn execute(
+        &self,
+        params: &str,
+        context: &ExecutionContext,
+    ) -> Result<(String, crate::usage::TokenUsage), String> {
         // Support both raw path and JSON
         let (path, offset, limit) = if params.starts_with('{') {
             let v: serde_json::Value = serde_json::from_str(params).map_err(|e| e.to_string())?;
@@ -156,7 +164,8 @@ impl Tool for ReadFileTool {
 
         let output = file_ops::read_file(&path, offset, limit)
             .map_err(|e| format!("failed to read file: {}", e))?;
-        serde_json::to_string(&output).map_err(|e| e.to_string())
+        let resp = serde_json::to_string(&output).map_err(|e| e.to_string())?;
+        Ok((resp, crate::usage::TokenUsage::default()))
     }
 }
 
@@ -175,7 +184,11 @@ impl Tool for WriteFileTool {
     fn is_write_operation(&self) -> bool {
         true
     }
-    async fn execute(&self, params: &str, context: &ExecutionContext) -> Result<String, String> {
+    async fn execute(
+        &self,
+        params: &str,
+        context: &ExecutionContext,
+    ) -> Result<(String, crate::usage::TokenUsage), String> {
         let v: serde_json::Value = serde_json::from_str(params).map_err(|e| e.to_string())?;
         let path = v["path"].as_str().ok_or("missing path")?;
         let content = v["content"].as_str().ok_or("missing content")?;
@@ -187,9 +200,10 @@ impl Tool for WriteFileTool {
 
         let output = file_ops::write_file(path, content)
             .map_err(|e| format!("failed to write file: {}", e))?;
-        serde_json::to_string(&output).map_err(|e| e.to_string())
+        let resp = serde_json::to_string(&output).map_err(|e| e.to_string())?;
+        Ok((resp, crate::usage::TokenUsage::default()))
     }
-    }
+}
 
 struct EditFileTool;
 #[async_trait]
@@ -206,7 +220,11 @@ impl Tool for EditFileTool {
     fn is_write_operation(&self) -> bool {
         true
     }
-    async fn execute(&self, params: &str, context: &ExecutionContext) -> Result<String, String> {
+    async fn execute(
+        &self,
+        params: &str,
+        context: &ExecutionContext,
+    ) -> Result<(String, crate::usage::TokenUsage), String> {
         let v: serde_json::Value = serde_json::from_str(params).map_err(|e| e.to_string())?;
         let path = v["path"].as_str().ok_or("missing path")?;
         let old_string = v["old_string"].as_str().ok_or("missing old_string")?;
@@ -220,7 +238,8 @@ impl Tool for EditFileTool {
 
         let output = file_ops::edit_file(path, old_string, new_string, replace_all)
             .map_err(|e| format!("failed to edit file: {}", e))?;
-        serde_json::to_string(&output).map_err(|e| e.to_string())
+        let resp = serde_json::to_string(&output).map_err(|e| e.to_string())?;
+        Ok((resp, crate::usage::TokenUsage::default()))
     }
 }
 
@@ -239,7 +258,11 @@ impl Tool for BashTool {
     fn is_write_operation(&self) -> bool {
         true
     }
-    async fn execute(&self, params: &str, context: &ExecutionContext) -> Result<String, String> {
+    async fn execute(
+        &self,
+        params: &str,
+        context: &ExecutionContext,
+    ) -> Result<(String, crate::usage::TokenUsage), String> {
         // P0 Security: Validate bash commands to prevent injection
         if let Err(e) = crate::execution::bash_validation::validate_bash_command(params) {
             return Err(format!("Security blocked: {}", e.reason));
@@ -281,7 +304,7 @@ impl Tool for BashTool {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
         if output.status.success() {
-            Ok(stdout)
+            Ok((stdout, crate::usage::TokenUsage::default()))
         } else {
             Err(format!(
                 "bash failed with status {}: {}",
@@ -306,7 +329,11 @@ impl Tool for WebSearchTool {
     fn is_write_operation(&self) -> bool {
         false
     }
-    async fn execute(&self, params: &str, _context: &ExecutionContext) -> Result<String, String> {
+    async fn execute(
+        &self,
+        params: &str,
+        _context: &ExecutionContext,
+    ) -> Result<(String, crate::usage::TokenUsage), String> {
         let client = reqwest::Client::new();
         let url = format!(
             "https://duckduckgo.com/lite/?q={}",
@@ -325,7 +352,8 @@ impl Tool for WebSearchTool {
             .map_err(|e| format!("failed to read web search body: {}", e))?;
 
         // Return first 2000 chars for now
-        Ok(body.chars().take(2000).collect())
+        let output = body.chars().take(2000).collect();
+        Ok((output, crate::usage::TokenUsage::default()))
     }
 }
 
@@ -344,7 +372,11 @@ impl Tool for GlobTool {
     fn is_write_operation(&self) -> bool {
         false
     }
-    async fn execute(&self, params: &str, context: &ExecutionContext) -> Result<String, String> {
+    async fn execute(
+        &self,
+        params: &str,
+        context: &ExecutionContext,
+    ) -> Result<(String, crate::usage::TokenUsage), String> {
         let (pattern, path) = if params.starts_with('{') {
             let v: serde_json::Value = serde_json::from_str(params).map_err(|e| e.to_string())?;
             let pattern = v["pattern"].as_str().ok_or("missing pattern")?.to_string();
@@ -366,7 +398,8 @@ impl Tool for GlobTool {
 
         let output = file_ops::glob_search(&pattern, path.as_deref())
             .map_err(|e| format!("glob search failed: {}", e))?;
-        serde_json::to_string(&output).map_err(|e| e.to_string())
+        let resp = serde_json::to_string(&output).map_err(|e| e.to_string())?;
+        Ok((resp, crate::usage::TokenUsage::default()))
     }
 }
 
@@ -385,7 +418,11 @@ impl Tool for GrepTool {
     fn is_write_operation(&self) -> bool {
         false
     }
-    async fn execute(&self, params: &str, context: &ExecutionContext) -> Result<String, String> {
+    async fn execute(
+        &self,
+        params: &str,
+        context: &ExecutionContext,
+    ) -> Result<(String, crate::usage::TokenUsage), String> {
         let input: file_ops::GrepSearchInput = serde_json::from_str(params).map_err(|e| {
             format!("grep requires JSON input: {}", e)
         })?;
@@ -403,7 +440,8 @@ impl Tool for GrepTool {
         }
 
         let output = file_ops::grep_search(&input).map_err(|e| format!("grep search failed: {}", e))?;
-        serde_json::to_string(&output).map_err(|e| e.to_string())
+        let resp = serde_json::to_string(&output).map_err(|e| e.to_string())?;
+        Ok((resp, crate::usage::TokenUsage::default()))
     }
 }
 
@@ -422,7 +460,11 @@ impl Tool for WasmTool {
     fn is_write_operation(&self) -> bool {
         true
     }
-    async fn execute(&self, params: &str, context: &ExecutionContext) -> Result<String, String> {
+    async fn execute(
+        &self,
+        params: &str,
+        context: &ExecutionContext,
+    ) -> Result<(String, crate::usage::TokenUsage), String> {
         let mut parts = params.split_whitespace();
         let module_path = parts
             .next()
@@ -439,7 +481,8 @@ impl Tool for WasmTool {
         let args: Vec<String> = parts.map(|s| s.to_string()).collect();
         let wasm_sandbox =
             WasmSandbox::new().map_err(|e| format!("failed to initialize wasm sandbox: {}", e))?;
-        wasm_sandbox.execute_module(Path::new(module_path), &args, context.sandbox_mode)
+        let output = wasm_sandbox.execute_module(Path::new(module_path), &args, context.sandbox_mode)?;
+        Ok((output, crate::usage::TokenUsage::default()))
     }
 }
 
@@ -458,7 +501,12 @@ impl Tool for AgentOrchestrationTool {
     fn is_write_operation(&self) -> bool {
         true
     }
-    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
-        Ok("orchestration complete".to_string())
+    async fn execute(
+        &self,
+        _params: &str,
+        _context: &ExecutionContext,
+    ) -> Result<(String, crate::usage::TokenUsage), String> {
+        Ok(("orchestration complete".to_string(), crate::usage::TokenUsage::default()))
     }
 }
+

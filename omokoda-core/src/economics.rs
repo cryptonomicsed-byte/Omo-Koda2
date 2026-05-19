@@ -55,12 +55,16 @@ pub fn compute_synapse_decay(synapse: f64, elapsed_secs: u64) -> f64 {
         return 0.0;
     }
     let elapsed_days = elapsed_secs as f64 / 86_400.0;
-    let normal_days = elapsed_days.min(EXTENDED_INACTIVITY_DAYS as f64);
-    let extended_days = (elapsed_days - EXTENDED_INACTIVITY_DAYS as f64).max(0.0);
+    
+    let decay = if elapsed_days <= EXTENDED_INACTIVITY_DAYS as f64 {
+        synapse * SYNAPSE_DAILY_DECAY_RATE * elapsed_days
+    } else {
+        let normal_portion = synapse * SYNAPSE_DAILY_DECAY_RATE * EXTENDED_INACTIVITY_DAYS as f64;
+        let extended_days = elapsed_days - EXTENDED_INACTIVITY_DAYS as f64;
+        let extended_portion = synapse * 0.15 * extended_days;
+        normal_portion + extended_portion
+    };
 
-    let decay = synapse * SYNAPSE_DAILY_DECAY_RATE * normal_days
-        + synapse * (EXTENDED_INACTIVITY_DAYS as f64 * SYNAPSE_DAILY_DECAY_RATE + extended_days * 0.15)
-            .min(synapse);
     decay.min(synapse)
 }
 

@@ -39,7 +39,7 @@ mod sandbox_tests {
         let policy = omokoda_core::permissions::PermissionPolicy::default_steward_policy(omokoda_core::permissions::PermissionMode::DangerFullAccess);
         let result = registry.execute("wasm", "test_simple.wasm", ctx, &policy, None).await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "WASM execution succeeded");
+        assert_eq!(result.unwrap().0, "WASM execution succeeded");
 
         fs::remove_file("test_simple.wasm").unwrap();
     }

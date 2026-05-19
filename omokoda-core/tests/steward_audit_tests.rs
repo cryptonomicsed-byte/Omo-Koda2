@@ -101,8 +101,9 @@ mod steward_audit_tests {
         let initial_synapse = steward.agent_state().unwrap().synapse();
         steward.dispatch(parse(r#"act "read_file" "steward_test_synapse_act.txt""#).unwrap()[0].clone()).await.unwrap();
         
-        assert!(steward.agent_state().unwrap().synapse() < initial_synapse);
-        assert_eq!(initial_synapse - steward.agent_state().unwrap().synapse(), 5000.0);
+        let diff = initial_synapse - steward.agent_state().unwrap().synapse();
+        assert!(diff >= 5100.0, "Burn amount {} should be at least 5100", diff);
+        assert!(diff < 5200.0, "Burn amount {} should not exceed 5200 (including minor decay)", diff);
         
         std::fs::remove_file(test_file).unwrap();
     }

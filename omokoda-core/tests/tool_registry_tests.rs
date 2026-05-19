@@ -24,7 +24,7 @@ mod tool_registry_tests {
         let result = registry
             .execute("read_file", test_file, ctx, &policy, None)
             .await
-            .unwrap();
+            .unwrap().0;
         assert!(result.contains("hello world"));
         assert!(result.contains("\"file\":"));
 
@@ -52,7 +52,7 @@ mod tool_registry_tests {
         let result = registry
             .execute("glob", "test_glob_dir/*.txt", ctx, &policy, None)
             .await
-            .unwrap();
+            .unwrap().0;
         assert!(result.contains("test_glob_dir/a.txt"));
         assert!(result.contains("test_glob_dir/b.txt"));
         assert!(result.contains("\"filenames\":"));
@@ -87,7 +87,7 @@ mod tool_registry_tests {
         let result = registry
             .execute("grep", &grep_input.to_string(), ctx, &policy, None)
             .await
-            .unwrap();
+            .unwrap().0;
         assert!(result.contains(":2:line 2 with target"));
         assert!(result.contains("\"content\":"));
 

@@ -87,6 +87,18 @@ impl TokenUsage {
     }
 
     #[must_use]
+    pub fn compute_synapse_burn(&self) -> f64 {
+        // Base metabolic cost in Synapses.
+        // 1 token ~= 1 Synapse (input), 5 Synapses (output)
+        // Fixed overhead of 100 synapses per turn.
+        100.0 
+            + (self.input_tokens as f64 * 1.0) 
+            + (self.output_tokens as f64 * 5.0)
+            + (self.cache_creation_input_tokens as f64 * 1.25)
+            + (self.cache_read_input_tokens as f64 * 0.1)
+    }
+
+    #[must_use]
     pub fn estimate_cost_usd(self) -> UsageCostEstimate {
         self.estimate_cost_usd_with_pricing(ModelPricing::default_sonnet_tier())
     }

@@ -11,8 +11,18 @@ mod tool_registry_tests {
         let test_file = "test_read_file.txt";
         fs::write(test_file, "hello world").unwrap();
 
+        let ctx = omokoda_core::tools::ExecutionContext {
+            agent_id: omokoda_core::identity::AgentId::from_str("agent-1"),
+            name: "luna".to_string(),
+            tier: 0,
+            reputation: 0.0,
+            odu_identity: omokoda_core::identity::odu::OduIdentity { primary_index: 0, mnemonic: "".into() },
+            workspace_root: std::env::current_dir().unwrap(),
+            sandbox_mode: false,
+        };
+
         let result = registry
-            .execute("read_file", test_file, false, 0, &policy, None)
+            .execute("read_file", test_file, ctx, &policy, None)
             .await
             .unwrap();
         assert!(result.contains("hello world"));
@@ -29,8 +39,18 @@ mod tool_registry_tests {
         fs::write("test_glob_dir/a.txt", "a").unwrap();
         fs::write("test_glob_dir/b.txt", "b").unwrap();
 
+        let ctx = omokoda_core::tools::ExecutionContext {
+            agent_id: omokoda_core::identity::AgentId::from_str("agent-1"),
+            name: "luna".to_string(),
+            tier: 0,
+            reputation: 0.0,
+            odu_identity: omokoda_core::identity::odu::OduIdentity { primary_index: 0, mnemonic: "".into() },
+            workspace_root: std::env::current_dir().unwrap(),
+            sandbox_mode: false,
+        };
+
         let result = registry
-            .execute("glob", "test_glob_dir/*.txt", false, 0, &policy, None)
+            .execute("glob", "test_glob_dir/*.txt", ctx, &policy, None)
             .await
             .unwrap();
         assert!(result.contains("test_glob_dir/a.txt"));
@@ -54,8 +74,18 @@ mod tool_registry_tests {
             "output_mode": "content"
         });
 
+        let ctx = omokoda_core::tools::ExecutionContext {
+            agent_id: omokoda_core::identity::AgentId::from_str("agent-1"),
+            name: "luna".to_string(),
+            tier: 0,
+            reputation: 0.0,
+            odu_identity: omokoda_core::identity::odu::OduIdentity { primary_index: 0, mnemonic: "".into() },
+            workspace_root: std::env::current_dir().unwrap(),
+            sandbox_mode: false,
+        };
+
         let result = registry
-            .execute("grep", &grep_input.to_string(), false, 0, &policy, None)
+            .execute("grep", &grep_input.to_string(), ctx, &policy, None)
             .await
             .unwrap();
         assert!(result.contains(":2:line 2 with target"));
@@ -68,13 +98,32 @@ mod tool_registry_tests {
     async fn tools_enforce_tier_gates() {
         let registry = ToolRegistry::new();
         let policy = PermissionPolicy::default_steward_policy(PermissionMode::DangerFullAccess);
+        let workspace = std::env::current_dir().unwrap();
 
         // bash requires Tier 2
-        let result = registry.execute("bash", "ls", false, 0, &policy, None).await;
+        let ctx0 = omokoda_core::tools::ExecutionContext {
+            agent_id: omokoda_core::identity::AgentId::from_str("agent-1"),
+            name: "luna".to_string(),
+            tier: 0,
+            reputation: 0.0,
+            odu_identity: omokoda_core::identity::odu::OduIdentity { primary_index: 0, mnemonic: "".into() },
+            workspace_root: workspace.clone(),
+            sandbox_mode: false,
+        };
+        let result = registry.execute("bash", "ls", ctx0, &policy, None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("requires tier 2"));
 
-        let result = registry.execute("bash", "ls", false, 2, &policy, None).await;
+        let ctx2 = omokoda_core::tools::ExecutionContext {
+            agent_id: omokoda_core::identity::AgentId::from_str("agent-1"),
+            name: "luna".to_string(),
+            tier: 2,
+            reputation: 0.0,
+            odu_identity: omokoda_core::identity::odu::OduIdentity { primary_index: 0, mnemonic: "".into() },
+            workspace_root: workspace,
+            sandbox_mode: false,
+        };
+        let result = registry.execute("bash", "ls", ctx2, &policy, None).await;
         assert!(result.is_ok());
     }
 
@@ -82,14 +131,23 @@ mod tool_registry_tests {
     async fn tools_block_path_traversal() {
         let registry = ToolRegistry::new();
         let policy = PermissionPolicy::default_steward_policy(PermissionMode::WorkspaceWrite);
+        let ctx = omokoda_core::tools::ExecutionContext {
+            agent_id: omokoda_core::identity::AgentId::from_str("agent-1"),
+            name: "luna".to_string(),
+            tier: 0,
+            reputation: 0.0,
+            odu_identity: omokoda_core::identity::odu::OduIdentity { primary_index: 0, mnemonic: "".into() },
+            workspace_root: std::env::current_dir().unwrap(),
+            sandbox_mode: false,
+        };
 
         let result = registry
-            .execute("read_file", "../secrets.txt", false, 0, &policy, None)
+            .execute("read_file", "../secrets.txt", ctx.clone(), &policy, None)
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Boundary Violation"));
 
-        let result = registry.execute("glob", "../**/*", false, 0, &policy, None).await;
+        let result = registry.execute("glob", "../**/*", ctx.clone(), &policy, None).await;
         assert!(result.is_err());
 
         let grep_input = serde_json::json!({
@@ -98,7 +156,7 @@ mod tool_registry_tests {
         });
 
         let result = registry
-            .execute("grep", &grep_input.to_string(), false, 0, &policy, None)
+            .execute("grep", &grep_input.to_string(), ctx, &policy, None)
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Boundary Violation"));
@@ -108,7 +166,16 @@ mod tool_registry_tests {
     async fn bash_sandbox_rejects_parent_traversal() {
         let registry = ToolRegistry::new();
         let policy = PermissionPolicy::default_steward_policy(PermissionMode::DangerFullAccess);
-        let result = registry.execute("bash", "cd ../ && ls", true, 2, &policy, None).await;
+        let ctx = omokoda_core::tools::ExecutionContext {
+            agent_id: omokoda_core::identity::AgentId::from_str("agent-1"),
+            name: "luna".to_string(),
+            tier: 2,
+            reputation: 0.0,
+            odu_identity: omokoda_core::identity::odu::OduIdentity { primary_index: 0, mnemonic: "".into() },
+            workspace_root: std::env::current_dir().unwrap(),
+            sandbox_mode: true,
+        };
+        let result = registry.execute("bash", "cd ../ && ls", ctx, &policy, None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("must not contain '..'"));
     }

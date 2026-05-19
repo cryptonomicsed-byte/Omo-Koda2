@@ -26,8 +26,18 @@ mod sandbox_tests {
         fs::write("test_simple.wasm", &wasm_bytes).unwrap();
         let registry = ToolRegistry::new();
 
+        let ctx = omokoda_core::tools::ExecutionContext {
+            agent_id: omokoda_core::identity::AgentId::from_str("agent-1"),
+            name: "luna".to_string(),
+            tier: 2,
+            reputation: 0.0,
+            odu_identity: omokoda_core::identity::odu::OduIdentity { primary_index: 0, mnemonic: "".into() },
+            workspace_root: std::env::current_dir().unwrap(),
+            sandbox_mode: true,
+        };
+
         let policy = omokoda_core::permissions::PermissionPolicy::default_steward_policy(omokoda_core::permissions::PermissionMode::DangerFullAccess);
-        let result = registry.execute("wasm", "test_simple.wasm", true, 2, &policy, None).await;
+        let result = registry.execute("wasm", "test_simple.wasm", ctx, &policy, None).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "WASM execution succeeded");
 
@@ -38,7 +48,17 @@ mod sandbox_tests {
     async fn wasm_tool_rejects_outside_workspace_paths() {
         let registry = ToolRegistry::new();
         let policy = omokoda_core::permissions::PermissionPolicy::default_steward_policy(omokoda_core::permissions::PermissionMode::DangerFullAccess);
-        let result = registry.execute("wasm", "../secret.wasm", true, 2, &policy, None).await;
+        let ctx = omokoda_core::tools::ExecutionContext {
+            agent_id: omokoda_core::identity::AgentId::from_str("agent-1"),
+            name: "luna".to_string(),
+            tier: 2,
+            reputation: 0.0,
+            odu_identity: omokoda_core::identity::odu::OduIdentity { primary_index: 0, mnemonic: "".into() },
+            workspace_root: std::env::current_dir().unwrap(),
+            sandbox_mode: true,
+        };
+
+        let result = registry.execute("wasm", "../secret.wasm", ctx, &policy, None).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()

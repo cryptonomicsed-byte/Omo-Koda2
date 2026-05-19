@@ -552,30 +552,8 @@ impl Steward {
 
                 agent_mut.update_reputation(new_rep, ReputationChangeReason::Think);
 
-                let receipt_payload = serde_json::json!({
-                    "primitive": "think",
-                    "class": compilation.class,
-                    "private": private,
-                    "allowed": compilation.validation.allowed,
-                    "requires_confirmation": compilation.validation.requires_confirmation,
-                    "steps": compilation.plan.steps.len(),
-                    "router": compilation.router_fingerprint,
-                })
-                .to_string();
-
-                let receipt = self.record_receipt("think", &receipt_payload, usage)?;
-
-                // Publish ThoughtSealed event
-                let event = SovereignEvent {
-                    event: Some(sovereign_event::Event::ThoughtSealed(ThoughtSealed {
-                        intent_hash: blake3::hash(prompt.as_bytes()).as_bytes().to_vec(),
-                        hermetic_score: 1.0, // TODO: Get actual score from justice/hermetic
-                    })),
-                };
-                let _ = self.event_bus.publish(event);
-
                 // Hermetic Gate: Think
-                {
+                let hermetic_score = {
                     let agent_mut = self.ensure_born_mut()?;
                     let agent_id = agent_mut.id().clone();
                     let action_proposal = ActionProposal {
@@ -594,7 +572,31 @@ impl Steward {
                     if !hermetic.is_allowed() {
                         return Err(format!("Hermetic gate: {:?}", hermetic.decision));
                     }
-                }
+                    hermetic.overall_score
+                };
+
+                let receipt_payload = serde_json::json!({
+                    "primitive": "think",
+                    "class": compilation.class,
+                    "private": private,
+                    "allowed": compilation.validation.allowed,
+                    "requires_confirmation": compilation.validation.requires_confirmation,
+                    "steps": compilation.plan.steps.len(),
+                    "router": compilation.router_fingerprint,
+                    "hermetic_score": hermetic_score,
+                })
+                .to_string();
+
+                let receipt = self.record_receipt("think", &receipt_payload, usage)?;
+
+                // Publish ThoughtSealed event
+                let event = SovereignEvent {
+                    event: Some(sovereign_event::Event::ThoughtSealed(ThoughtSealed {
+                        intent_hash: blake3::hash(prompt.as_bytes()).as_bytes().to_vec(),
+                        hermetic_score: hermetic_score,
+                    })),
+                };
+                let _ = self.event_bus.publish(event);
 
                 self.auto_save();
 
@@ -610,9 +612,24 @@ impl Steward {
                 sandbox,
             } => {
                 // Phase 1-7: ACT = 7^3 (fractal depth 3)
-                let agent = self.ensure_born()?;
-                let tier = agent.tier();
-                let reputation = agent.reputation();
+                let (agent_id, name, tier, reputation, odu_identity, default_sandbox) = {
+                    let agent = self.ensure_born()?;
+                    (
+                        agent.id().clone(),
+                        agent.name().to_string(),
+                        agent.tier(),
+                        agent.reputation(),
+                        agent.odu_identity().clone(),
+                        agent.session.config.default_sandbox,
+                    )
+                };
+
+                if !self.tools.is_allowed(&tool, tier) {
+                    return Err(format!(
+                        "Tool '{}' requires higher reputation (current tier: {})",
+                        tool, tier
+                    ));
+                }
 
                 // Justice HookRunner: Pre-act
                 let hook_ctx = crate::justice::HookContext {
@@ -627,28 +644,41 @@ impl Steward {
                         return Err(format!("Hook denied execution: {}", reason))
                     }
                     crate::justice::HookDecision::Warn(warning) => {
-                        // TODO: Emit warning event if sink is available
                         println!("Hook warning: {}", warning);
                     }
                     crate::justice::HookDecision::Allow => {}
                 }
 
-                if !self.tools.is_allowed(&tool, tier) {
-                    return Err(format!(
-                        "Tool '{}' requires higher reputation (current tier: {})",
-                        tool, tier
-                    ));
-                }
+                let action_proposal = ActionProposal {
+                    tool_name: tool.clone(),
+                    params: params.clone(),
+                    description: format!("Executing tool {}", tool),
+                    target: ActionTarget::System,
+                };
+                let hermetic_score = {
+                    let agent_mut = self.ensure_born_mut()?;
+                    let hermetic = crate::justice::hermetic::evaluate_and_receipt(
+                        "Direct tool execution",
+                        &action_proposal,
+                        &mut agent_mut.session,
+                        &mut agent_mut.receipts,
+                        &agent_id,
+                    )?;
+                    if !hermetic.is_allowed() {
+                        return Err(format!("Hermetic gate: {:?}", hermetic.decision));
+                    }
+                    hermetic.overall_score
+                };
 
                 // If sandbox requested, verify it's enabled in session config or force it
-                let force_sandbox = sandbox || agent.session.config.default_sandbox;
+                let force_sandbox = sandbox || default_sandbox;
 
                 let context = ExecutionContext {
-                    agent_id: agent.id().clone(),
-                    name: agent.name().to_string(),
+                    agent_id: agent_id.clone(),
+                    name: name.clone(),
                     tier,
                     reputation,
-                    odu_identity: agent.odu_identity().clone(),
+                    odu_identity: odu_identity.clone(),
                     workspace_root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
                     sandbox_mode: force_sandbox,
                 };
@@ -665,8 +695,9 @@ impl Steward {
                     .await
                     .map_err(|e| format!("Tool execution failed: {}", e))?;
 
-                // Justice module: Reputation update
-                let current_rep = agent.reputation();
+                // ... [Reputation update and hooks] ...
+                let current_rep = self.reputation();
+                let agent = self.ensure_born()?;
                 let hermetic_state = agent.hermetic_state().clone();
                 let (new_rep, _, _hermetic_eval) = self.justice.evaluate_action(
                     current_rep,
@@ -744,34 +775,12 @@ impl Steward {
                     event: Some(sovereign_event::Event::ActExecuted(ActExecuted {
                         tool: tool.clone(),
                         receipt_merkle: hex::decode(&receipt.merkle_root).unwrap_or_default(),
-                        f1_score: 1.0, // TODO: Get actual score
+                        f1_score: hermetic_score,
                     })),
                 };
                 let _ = self.event_bus.publish(event);
 
                 self.auto_save();
-
-                // Hermetic Gate: Act
-                {
-                    let agent_mut = self.ensure_born_mut()?;
-                    let agent_id = agent_mut.id().clone();
-                    let action_proposal = ActionProposal {
-                        tool_name: tool.clone(),
-                        params: params.clone(),
-                        description: format!("Executing tool {}", tool),
-                        target: ActionTarget::System,
-                    };
-                    let hermetic = crate::justice::hermetic::evaluate_and_receipt(
-                        "User request to execute tool",
-                        &action_proposal,
-                        &mut agent_mut.session,
-                        &mut agent_mut.receipts,
-                        &agent_id,
-                    )?;
-                    if !hermetic.is_allowed() {
-                        return Err(format!("Hermetic gate: {:?}", hermetic.decision));
-                    }
-                }
 
                 Ok(ExecutionResult {
                     receipt: Some(receipt),
@@ -1043,11 +1052,14 @@ impl Steward {
         call: &DirectActCall,
         private_context: bool,
     ) -> Result<(Receipt, String), String> {
-        let (tier, reputation, default_sandbox) = {
+        let (agent_id, name, tier, reputation, odu_identity, default_sandbox) = {
             let agent = self.ensure_born()?;
             (
+                agent.id().clone(),
+                agent.name().to_string(),
                 agent.tier(),
                 agent.reputation(),
+                agent.odu_identity().clone(),
                 agent.session.config.default_sandbox,
             )
         };
@@ -1076,15 +1088,36 @@ impl Steward {
             ));
         }
 
+        // Hermetic Gate: Act
+        let action_proposal = ActionProposal {
+            tool_name: call.tool.clone(),
+            params: call.params.clone(),
+            description: format!("Executing tool {}", call.tool),
+            target: ActionTarget::System,
+        };
+        let hermetic_score = {
+            let agent_mut = self.ensure_born_mut()?;
+            let hermetic = crate::justice::hermetic::evaluate_and_receipt(
+                "Direct tool execution",
+                &action_proposal,
+                &mut agent_mut.session,
+                &mut agent_mut.receipts,
+                &agent_id,
+            )?;
+            if !hermetic.is_allowed() {
+                return Err(format!("Hermetic gate: {:?}", hermetic.decision));
+            }
+            hermetic.overall_score
+        };
+
         let force_sandbox = call.sandbox || default_sandbox;
 
-        let agent = self.ensure_born()?;
         let context = ExecutionContext {
-            agent_id: agent.id().clone(),
-            name: agent.name().to_string(),
+            agent_id: agent_id.clone(),
+            name: name.clone(),
             tier,
             reputation,
-            odu_identity: agent.odu_identity().clone(),
+            odu_identity: odu_identity.clone(),
             workspace_root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             sandbox_mode: force_sandbox,
         };
@@ -1101,6 +1134,7 @@ impl Steward {
             .await
             .map_err(|e| format!("Tool execution failed: {}", e))?;
 
+        // ... [Reputation update and hooks] ...
         let current_rep = self.reputation();
         let agent = self.ensure_born()?;
         let hermetic_state = agent.hermetic_state().clone();
@@ -1167,7 +1201,7 @@ impl Steward {
             event: Some(sovereign_event::Event::ActExecuted(ActExecuted {
                 tool: call.tool.clone(),
                 receipt_merkle: hex::decode(&receipt.merkle_root).unwrap_or_default(),
-                f1_score: 1.0, // TODO: Get actual score
+                f1_score: hermetic_score,
             })),
         };
         let _ = self.event_bus.publish(event);

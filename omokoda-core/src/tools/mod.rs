@@ -5,11 +5,11 @@ use std::process::Command;
 
 use crate::sandbox::WasmSandbox;
 use crate::execution::permission_enforcer::{validate_path_boundary, enforce_mode};
-use crate::permissions::{PermissionMode, PermissionPolicy, PermissionOutcome, PermissionPrompter};
 
 pub mod sovereign;
 pub mod file_ops;
 
+#[derive(Debug, Clone)]
 pub struct ExecutionContext {
     pub agent_id: crate::identity::AgentId,
     pub name: String,

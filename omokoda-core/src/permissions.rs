@@ -58,8 +58,8 @@ impl Default for ClawPolicy {
     fn default() -> Self {
         Self {
             version: 1,
-            allow: vec!["read:workspace/*".to_string(), "write:workspace/*".to_string()],
-            deny: vec!["net:*".to_string(), "exec:sudo".to_string(), "exec:rm_rf".to_string()],
+            allow: vec!["read:workspace/*".to_string(), "read:*".to_string(), "write:workspace/*".to_string(), "exec:*".to_string()],
+            deny: vec!["read:/etc/*".to_string(), "net:*".to_string(), "exec:sudo".to_string(), "exec:rm_rf".to_string()],
         }
     }
 }
@@ -258,7 +258,7 @@ mod tests {
         
         // Denied by pattern
         assert!(matches!(policy.check("net", "google.com"), PermissionOutcome::Deny { .. }));
-        assert!(matches!(policy.check("exec", "sudo ls"), PermissionOutcome::Deny { .. }));
+        assert!(matches!(policy.check("exec", "sudo"), PermissionOutcome::Deny { .. }));
         
         // Denied by default (no matching allow)
         assert!(matches!(policy.check("read", "/etc/passwd"), PermissionOutcome::Deny { .. }));

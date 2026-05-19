@@ -48,9 +48,69 @@ pub enum PermissionOutcome {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClawPolicy {
+    pub version: u32,
+    pub allow: Vec<String>,
+    pub deny: Vec<String>,
+}
+
+impl Default for ClawPolicy {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            allow: vec!["read:workspace/*".to_string(), "write:workspace/*".to_string()],
+            deny: vec!["net:*".to_string(), "exec:sudo".to_string(), "exec:rm_rf".to_string()],
+        }
+    }
+}
+
+impl ClawPolicy {
+    pub fn from_yaml(yaml: &str) -> Result<Self, serde_yaml::Error> {
+        serde_yaml::from_str(yaml)
+    }
+
+    pub fn check(&self, action: &str, resource: &str) -> PermissionOutcome {
+        let target = format!("{}:{}", action, resource);
+        
+        // 1. Deny always wins
+        for pattern in &self.deny {
+            if self.match_pattern(pattern, &target) {
+                return PermissionOutcome::Deny {
+                    reason: format!("ClawPolicy: action '{}' is explicitly denied by pattern '{}'", target, pattern),
+                };
+            }
+        }
+
+        // 2. Check allow list
+        for pattern in &self.allow {
+            if self.match_pattern(pattern, &target) {
+                return PermissionOutcome::Allow;
+            }
+        }
+
+        PermissionOutcome::Deny {
+            reason: format!("ClawPolicy: no matching allow pattern for '{}'", target),
+        }
+    }
+
+    fn match_pattern(&self, pattern: &str, target: &str) -> bool {
+        if pattern == "*" {
+            return true;
+        }
+        if pattern.ends_with('*') {
+            let prefix = &pattern[..pattern.len() - 1];
+            return target.starts_with(prefix);
+        }
+        pattern == target
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PermissionPolicy {
     active_mode: PermissionMode,
     tool_requirements: BTreeMap<String, PermissionMode>,
+    #[serde(default)]
+    pub claw: ClawPolicy,
 }
 
 impl Default for PermissionPolicy {
@@ -65,6 +125,7 @@ impl PermissionPolicy {
         Self {
             active_mode,
             tool_requirements: BTreeMap::new(),
+            claw: ClawPolicy::default(),
         }
     }
 
@@ -119,6 +180,28 @@ impl PermissionPolicy {
         input: &str,
         mut prompter: Option<&mut dyn PermissionPrompter>,
     ) -> PermissionOutcome {
+        // 1. Check ClawPolicy (Granular Layer)
+        // Map tool_name to action type
+        let action = if tool_name.contains("read") || tool_name == "glob" || tool_name == "grep" {
+            "read"
+        } else if tool_name.contains("write") || tool_name == "note_taking" {
+            "write"
+        } else if tool_name == "bash" || tool_name == "wasm" {
+            "exec"
+        } else if tool_name == "web_search" || tool_name == "web_fetch" {
+            "net"
+        } else {
+            "tool"
+        };
+
+        let claw_outcome = self.claw.check(action, input);
+        if let PermissionOutcome::Deny { reason } = claw_outcome {
+            // Even if Claw denies, if we are in 'Allow' mode, we might want to bypass?
+            // No, 'Deny always wins' is a safer default for Claw.
+            return PermissionOutcome::Deny { reason };
+        }
+
+        // 2. Check Traditional Tier/Mode matrix
         let current_mode = self.active_mode();
         let required_mode = self.required_mode_for(tool_name);
         if current_mode == PermissionMode::Allow || current_mode >= required_mode {
@@ -158,5 +241,41 @@ impl PermissionPolicy {
                 current_mode.as_str()
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_claw_policy_defaults() {
+        let policy = ClawPolicy::default();
+        
+        // Allowed
+        assert_eq!(policy.check("read", "workspace/file.txt"), PermissionOutcome::Allow);
+        assert_eq!(policy.check("write", "workspace/note.txt"), PermissionOutcome::Allow);
+        
+        // Denied by pattern
+        assert!(matches!(policy.check("net", "google.com"), PermissionOutcome::Deny { .. }));
+        assert!(matches!(policy.check("exec", "sudo ls"), PermissionOutcome::Deny { .. }));
+        
+        // Denied by default (no matching allow)
+        assert!(matches!(policy.check("read", "/etc/passwd"), PermissionOutcome::Deny { .. }));
+    }
+
+    #[test]
+    fn test_claw_policy_wildcard() {
+        let yaml = r#"
+version: 1
+allow:
+  - "read:*"
+deny:
+  - "read:/etc/*"
+"#;
+        let policy = ClawPolicy::from_yaml(yaml).unwrap();
+        
+        assert_eq!(policy.check("read", "anything"), PermissionOutcome::Allow);
+        assert!(matches!(policy.check("read", "/etc/passwd"), PermissionOutcome::Deny { .. }));
     }
 }

@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package omokoda.v1;
+
+message AgentBorn {
+  string dna = 1;
+  repeated string mnemonic = 2;
+  uint32 odu = 3;
+}
+
+message ThoughtSealed {
+  bytes intent_hash = 1;
+  float hermetic_score = 2;
+}
+
+message ActExecuted {
+  string tool = 1;
+  bytes receipt_merkle = 2;
+  float f1_score = 3;
+}
+
+message TocMinted {
+  string agent = 1;
+  uint64 dopamine_burned = 2;
+  uint64 synapse_earned = 3;
+}
+
+message TierAdvanced {
+  string agent = 1;
+  uint32 old_tier = 2;
+  uint32 new_tier = 3;
+}
+
+message AuditPassed {
+  string receipt_id = 1;
+  bytes zangbeto_sig = 2;
+}
+
+message SabbathEntered {
+  repeated string agents_paused = 1;
+  uint32 queued_ops = 2;
+}
+
+message SovereignEvent {
+  oneof event {
+    AgentBorn agent_born = 1;
+    ThoughtSealed thought_sealed = 2;
+    ActExecuted act_executed = 3;
+    TocMinted toc_minted = 4;
+    TierAdvanced tier_advanced = 5;
+    AuditPassed audit_passed = 6;
+    SabbathEntered sabbath_entered = 7;
+  }
+}

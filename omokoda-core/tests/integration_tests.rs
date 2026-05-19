@@ -1,17 +1,33 @@
 use omokoda_core::interpreter::Steward;
 use omokoda_core::parser::parse;
 use omokoda_core::session::MessageRole;
+use std::path::PathBuf;
+
+macro_rules! test_steward {
+    ($name:expr) => {{
+        let mut path = std::env::current_dir().unwrap();
+        path.push("target");
+        path.push("test_sessions");
+        path.push($name);
+        if path.exists() {
+            let _ = std::fs::remove_dir_all(&path);
+        }
+        std::fs::create_dir_all(&path).unwrap();
+        Steward::new().with_session_dir(path)
+    }};
+}
 
 #[tokio::test]
 async fn full_private_e2e_flow() {
-    let mut steward = Steward::new();
-    let session_dir = std::env::current_dir().unwrap().join("test_sessions_e2e");
-    if !session_dir.exists() {
-        std::fs::create_dir_all(&session_dir).unwrap();
+    let session_dir = std::env::current_dir().unwrap().join("target").join("test_sessions").join("full_private_e2e_flow");
+    if session_dir.exists() {
+        let _ = std::fs::remove_dir_all(&session_dir);
     }
+    std::fs::create_dir_all(&session_dir).unwrap();
 
+    let mut steward = Steward::new().with_session_dir(session_dir.clone());
+    
     // 1. Birth
-    steward.set_session_dir(session_dir.clone());
     steward.set_mock_provider("42 is the answer".to_string());
     steward
         .dispatch(parse(r#"birth "luna" provider:ollama"#).unwrap()[0].clone())
@@ -40,8 +56,7 @@ async fn full_private_e2e_flow() {
     assert!(saved_json.contains("private_ciphertext"));
 
     // 4. Resume (new Steward)
-    let mut steward2 = Steward::new();
-    steward2.set_session_dir(session_dir.clone());
+    let mut steward2 = Steward::new().with_session_dir(session_dir.clone());
     steward2.set_mock_provider("42 is the answer".to_string());
     steward2.load_agent(&agent_id).unwrap();
     assert!(steward2.agent_state().unwrap().private_data().is_none());
@@ -71,7 +86,7 @@ async fn full_private_e2e_flow() {
     steward2.set_reputation_for_test(100.0); // Ensure tier high enough
     steward2.set_permission_mode(omokoda_core::permissions::PermissionMode::Allow);
     let res = steward2
-        .dispatch(parse(r#"act "read_file" "test_sessions_e2e/test.txt""#).unwrap()[0].clone())
+        .dispatch(parse(r#"act "read_file" "target/test_sessions/full_private_e2e_flow/test.txt""#).unwrap()[0].clone())
         .await
         .unwrap();
     assert!(res.receipt.is_some());
@@ -87,4 +102,20 @@ async fn full_private_e2e_flow() {
 
     // Cleanup
     let _ = std::fs::remove_dir_all(session_dir);
+}
+
+#[tokio::test]
+async fn multi_agent_storage_isolation() {
+    let mut steward1 = test_steward!("multi_agent_storage_isolation_1");
+    let mut steward2 = test_steward!("multi_agent_storage_isolation_2");
+
+    steward1.dispatch(parse(r#"birth "agent1""#).unwrap()[0].clone()).await.unwrap();
+    steward2.dispatch(parse(r#"birth "agent2""#).unwrap()[0].clone()).await.unwrap();
+
+    let id1 = steward1.agent_state().unwrap().id().clone();
+    let id2 = steward2.agent_state().unwrap().id().clone();
+
+    assert!(id1 != id2);
+    assert!(steward1.agent_storage_path(&id1).exists());
+    assert!(steward2.agent_storage_path(&id2).exists());
 }

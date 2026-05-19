@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use crate::tools::Tool;
+use crate::tools::{Tool, ExecutionContext};
 
 /// Sovereign Tier Tool List (18 Capabilities from OpenClaw)
 /// These tools require the highest reputation tier (Sovereign).
@@ -11,7 +11,7 @@ impl Tool for ApplyPatchTool {
     fn description(&self) -> &str { "Apply structured patches across multiple files" }
     fn required_tier(&self) -> u8 { 5 }
     fn is_write_operation(&self) -> bool { true }
-    async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
         Ok("Patch applied successfully".to_string())
     }
 }
@@ -23,7 +23,7 @@ impl Tool for ExecTool {
     fn description(&self) -> &str { "Run shell commands in the workspace" }
     fn required_tier(&self) -> u8 { 5 }
     fn is_write_operation(&self) -> bool { true }
-    async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
         Ok("Command executed".to_string())
     }
 }
@@ -35,7 +35,7 @@ impl Tool for ProcessTool {
     fn description(&self) -> &str { "Manage background execution sessions" }
     fn required_tier(&self) -> u8 { 5 }
     fn is_write_operation(&self) -> bool { true }
-    async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
         Ok("Process status retrieved".to_string())
     }
 }
@@ -47,7 +47,7 @@ impl Tool for WebSearchTool {
     fn description(&self) -> &str { "Search the web using sovereign-approved engines" }
     fn required_tier(&self) -> u8 { 5 }
     fn is_write_operation(&self) -> bool { true }
-    async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
         Ok("Search results retrieved".to_string())
     }
 }
@@ -59,7 +59,7 @@ impl Tool for WebFetchTool {
     fn description(&self) -> &str { "Fetch and extract readable content from a URL" }
     fn required_tier(&self) -> u8 { 5 }
     fn is_write_operation(&self) -> bool { true }
-    async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
         Ok("Content fetched".to_string())
     }
 }
@@ -71,7 +71,7 @@ impl Tool for BrowserTool {
     fn description(&self) -> &str { "Control the managed sovereign browser" }
     fn required_tier(&self) -> u8 { 5 }
     fn is_write_operation(&self) -> bool { true }
-    async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
         Ok("Browser action complete".to_string())
     }
 }
@@ -83,7 +83,7 @@ impl Tool for CanvasTool {
     fn description(&self) -> &str { "Drive the node Canvas (A2UI, present, eval)" }
     fn required_tier(&self) -> u8 { 5 }
     fn is_write_operation(&self) -> bool { true }
-    async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
         Ok("Canvas updated".to_string())
     }
 }
@@ -95,7 +95,7 @@ impl Tool for NodesTool {
     fn description(&self) -> &str { "Discover and target paired nodes" }
     fn required_tier(&self) -> u8 { 5 }
     fn is_write_operation(&self) -> bool { true }
-    async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
         Ok("Node operation complete".to_string())
     }
 }
@@ -107,7 +107,7 @@ impl Tool for ImageTool {
     fn description(&self) -> &str { "Analyze an image with vision models" }
     fn required_tier(&self) -> u8 { 5 }
     fn is_write_operation(&self) -> bool { true }
-    async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
         Ok("Image analysis complete".to_string())
     }
 }
@@ -119,7 +119,7 @@ impl Tool for MessageTool {
     fn description(&self) -> &str { "Send and manage cross-channel messages" }
     fn required_tier(&self) -> u8 { 5 }
     fn is_write_operation(&self) -> bool { true }
-    async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
         Ok("Message sent".to_string())
     }
 }
@@ -131,7 +131,7 @@ impl Tool for CronTool {
     fn description(&self) -> &str { "Manage gateway cron jobs and wakeups" }
     fn required_tier(&self) -> u8 { 5 }
     fn is_write_operation(&self) -> bool { true }
-    async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
         Ok("Cron job registered".to_string())
     }
 }
@@ -143,7 +143,7 @@ impl Tool for GatewayTool {
     fn description(&self) -> &str { "Manage the sovereign gateway process" }
     fn required_tier(&self) -> u8 { 5 }
     fn is_write_operation(&self) -> bool { true }
-    async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
         Ok("Gateway updated".to_string())
     }
 }
@@ -155,7 +155,7 @@ impl Tool for SessionsListTool {
     fn description(&self) -> &str { "List active agent sessions" }
     fn required_tier(&self) -> u8 { 5 }
     fn is_write_operation(&self) -> bool { true }
-    async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
         Ok("Session list retrieved".to_string())
     }
 }
@@ -167,7 +167,7 @@ impl Tool for SessionsHistoryTool {
     fn description(&self) -> &str { "Inspect session transcript history" }
     fn required_tier(&self) -> u8 { 5 }
     fn is_write_operation(&self) -> bool { true }
-    async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
         Ok("Session history retrieved".to_string())
     }
 }
@@ -179,7 +179,7 @@ impl Tool for SessionsSendTool {
     fn description(&self) -> &str { "Send message to another session" }
     fn required_tier(&self) -> u8 { 5 }
     fn is_write_operation(&self) -> bool { true }
-    async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
         Ok("Message routed".to_string())
     }
 }
@@ -191,7 +191,7 @@ impl Tool for SessionsSpawnTool {
     fn description(&self) -> &str { "Spawn a sub-agent session" }
     fn required_tier(&self) -> u8 { 5 }
     fn is_write_operation(&self) -> bool { true }
-    async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
         Ok("Sub-agent spawned".to_string())
     }
 }
@@ -203,7 +203,7 @@ impl Tool for SessionStatusTool {
     fn description(&self) -> &str { "Get status of an agent session" }
     fn required_tier(&self) -> u8 { 5 }
     fn is_write_operation(&self) -> bool { true }
-    async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
         Ok("Session status: Active".to_string())
     }
 }
@@ -215,7 +215,7 @@ impl Tool for AgentsListTool {
     fn description(&self) -> &str { "List available sovereign agent IDs" }
     fn required_tier(&self) -> u8 { 5 }
     fn is_write_operation(&self) -> bool { true }
-    async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
         Ok("Agent list retrieved".to_string())
     }
 }

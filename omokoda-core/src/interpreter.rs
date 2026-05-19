@@ -1,3 +1,6 @@
+use bipon39::PersonalityProfile;
+use crate::bus::events::{sovereign_event, ActExecuted, AgentBorn, SovereignEvent, ThoughtSealed};
+use crate::bus::SovereignEventBus;
 use crate::identity::bipon39::Bipon39;
 use crate::identity::dna::generate_dna_fingerprint;
 use crate::identity::odu::{OduIdentity, OduSeed};
@@ -17,7 +20,7 @@ use crate::session::{
     derive_unlock_key, secure_write, ContentBlock, ConversationMessage, MessageRole,
     PrivateSessionData, SensitiveKey, Session,
 };
-use crate::tools::ToolRegistry;
+use crate::tools::{ToolRegistry, ExecutionContext};
 use crate::usage::TokenUsage;
 use ed25519_dalek::SigningKey;
 use hkdf::Hkdf;
@@ -64,6 +67,7 @@ pub struct AgentState {
     odu_seed: OduSeed,
     odu_identity: OduIdentity,
     pet_identity: PetIdentity,
+    personality: PersonalityProfile,
     dna_fingerprint: String,
     reputation: f64,
     reputation_ledger: ReputationLedger,
@@ -87,11 +91,16 @@ impl AgentState {
         use crate::identity::vault::SealVault;
         use crate::memory::odu_keys::OduKeys;
         use omokoda_hermetic::entropy::odu::OduEntropy;
+        use ifascript::entropy::cast_cowrie_deterministic;
 
         let birth_timestamp = current_unix_timestamp();
         
-        // Layer A: SEAL vault forge
-        let k_root = SealVault::generate_internal_secret();
+        // Layer A: SEAL vault forge + IfáScript deterministic entropy
+        let initial_seed = blake3::hash(name.as_bytes()).into();
+        let phase = (birth_timestamp % 7) as u8;
+        let entropy_bytes = cast_cowrie_deterministic(initial_seed, phase);
+
+        let k_root = SealVault::generate_deterministic_secret(&name, &entropy_bytes);
         
         // Identity derivation
         let entropy = blake3::derive_key("omokoda:entropy_v1", &k_root);
@@ -103,8 +112,10 @@ impl AgentState {
         let odu_seed = OduSeed::new(entropy);
         let odu_identity = OduIdentity {
             primary_index,
-            mnemonic,
+            mnemonic: mnemonic.clone(),
         };
+        let personality = bipon39::personality_profile(&mnemonic)
+            .expect("Failed to derive personality profile");
         let receipts = ReceiptStore::new();
         
         // Layer B: Hermetic Principle derivation via IfáScript entropy
@@ -150,6 +161,7 @@ impl AgentState {
             odu_seed,
             odu_identity,
             pet_identity,
+            personality,
             dna_fingerprint,
             reputation: 0.0,
             reputation_ledger: ReputationLedger::new(),
@@ -192,6 +204,10 @@ impl AgentState {
 
     pub fn pet_identity(&self) -> &PetIdentity {
         &self.pet_identity
+    }
+
+    pub fn personality(&self) -> &PersonalityProfile {
+        &self.personality
     }
 
     pub fn reputation(&self) -> f64 {
@@ -318,6 +334,8 @@ pub struct Steward {
     session_dir: PathBuf,
     #[serde(skip)]
     unlock_key: Option<SensitiveKey>,
+    #[serde(skip, default = "SovereignEventBus::default")]
+    pub event_bus: SovereignEventBus,
 }
 
 fn default_session_dir() -> PathBuf {
@@ -346,11 +364,17 @@ impl Steward {
             persistence_path: None,
             session_dir: default_session_dir(),
             unlock_key: None,
+            event_bus: SovereignEventBus::default(),
         }
     }
 
     pub fn set_session_dir(&mut self, path: PathBuf) {
         self.session_dir = path;
+    }
+
+    pub fn with_session_dir(mut self, path: PathBuf) -> Self {
+        self.session_dir = path;
+        self
     }
 
     pub fn set_persistence_path(&mut self, path: PathBuf) {
@@ -390,8 +414,19 @@ impl Steward {
                 {
                     return Err(format!("unknown provider '{}' in birth metadata", provider));
                 }
-                self.agent = Some(agent);
+                self.agent = Some(agent.clone());
                 self.auto_save();
+
+                // Publish AgentBorn event
+                let event = SovereignEvent {
+                    event: Some(sovereign_event::Event::AgentBorn(AgentBorn {
+                        dna: agent.dna_fingerprint().to_string(),
+                        mnemonic: agent.odu_identity().mnemonic.split_whitespace().map(|s| s.to_string()).collect(),
+                        odu: agent.odu_identity().primary_index as u32,
+                    })),
+                };
+                let _ = self.event_bus.publish(event);
+
                 Ok(ExecutionResult {
                     receipt: None,
                     private_mode: false,
@@ -530,6 +565,15 @@ impl Steward {
 
                 let receipt = self.record_receipt("think", &receipt_payload, usage)?;
 
+                // Publish ThoughtSealed event
+                let event = SovereignEvent {
+                    event: Some(sovereign_event::Event::ThoughtSealed(ThoughtSealed {
+                        intent_hash: blake3::hash(prompt.as_bytes()).as_bytes().to_vec(),
+                        hermetic_score: 1.0, // TODO: Get actual score from justice/hermetic
+                    })),
+                };
+                let _ = self.event_bus.publish(event);
+
                 // Hermetic Gate: Think
                 {
                     let agent_mut = self.ensure_born_mut()?;
@@ -599,13 +643,22 @@ impl Steward {
                 // If sandbox requested, verify it's enabled in session config or force it
                 let force_sandbox = sandbox || agent.session.config.default_sandbox;
 
+                let context = ExecutionContext {
+                    agent_id: agent.id().clone(),
+                    name: agent.name().to_string(),
+                    tier,
+                    reputation,
+                    odu_identity: agent.odu_identity().clone(),
+                    workspace_root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+                    sandbox_mode: force_sandbox,
+                };
+
                 let output = self
                     .tools
                     .execute(
                         &tool,
                         &params,
-                        force_sandbox,
-                        tier,
+                        context,
                         &self.permission_policy,
                         None,
                     )
@@ -686,6 +739,16 @@ impl Steward {
                     timestamp: current_unix_timestamp(),
                 });
 
+                // Publish ActExecuted event
+                let event = SovereignEvent {
+                    event: Some(sovereign_event::Event::ActExecuted(ActExecuted {
+                        tool: tool.clone(),
+                        receipt_merkle: hex::decode(&receipt.merkle_root).unwrap_or_default(),
+                        f1_score: 1.0, // TODO: Get actual score
+                    })),
+                };
+                let _ = self.event_bus.publish(event);
+
                 self.auto_save();
 
                 // Hermetic Gate: Act
@@ -721,13 +784,15 @@ impl Steward {
                     "status" => {
                         let agent = self.ensure_born()?;
                         let status = format!(
-                            "Agent Name: {}\nAgent ID: {}\nTier: {}\nReputation: {:.3}\nDNA: {}\nPet: {}\nReceipts: {}\n",
+                            "Agent Name: {}\nAgent ID: {}\nTier: {}\nReputation: {:.3}\nDNA: {}\nPet: {}\nOrisha: {}\nProfile: {}\nReceipts: {}\n",
                             agent.name,
                             agent.id,
                             agent.tier(),
                             agent.reputation,
                             agent.dna_fingerprint,
                             agent.pet_identity.pet(),
+                            agent.personality.dominant_orisha.name(),
+                            agent.personality.personality_summary,
                             agent.receipts.count()
                         );
                         Ok(ExecutionResult {
@@ -1012,13 +1077,24 @@ impl Steward {
         }
 
         let force_sandbox = call.sandbox || default_sandbox;
+
+        let agent = self.ensure_born()?;
+        let context = ExecutionContext {
+            agent_id: agent.id().clone(),
+            name: agent.name().to_string(),
+            tier,
+            reputation,
+            odu_identity: agent.odu_identity().clone(),
+            workspace_root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            sandbox_mode: force_sandbox,
+        };
+
         let output = self
             .tools
             .execute(
                 &call.tool,
                 &call.params,
-                force_sandbox,
-                tier,
+                context,
                 &self.permission_policy,
                 None,
             )
@@ -1085,6 +1161,16 @@ impl Steward {
             is_private: message_private,
             timestamp: current_unix_timestamp(),
         });
+
+        // Publish ActExecuted event
+        let event = SovereignEvent {
+            event: Some(sovereign_event::Event::ActExecuted(ActExecuted {
+                tool: call.tool.clone(),
+                receipt_merkle: hex::decode(&receipt.merkle_root).unwrap_or_default(),
+                f1_score: 1.0, // TODO: Get actual score
+            })),
+        };
+        let _ = self.event_bus.publish(event);
 
         Ok((receipt, output))
     }

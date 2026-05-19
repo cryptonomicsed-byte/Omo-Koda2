@@ -31,8 +31,16 @@ walkdir = "2.3"
 regex = "1.5"
 zeroize = "1.8"
 thiserror = "1.0"
+prost = "0.14.3"
+prost-derive = "0.14.3"
+protobuf-codegen = "3.7.2"
+ifascript = { version = "0.1.0", path = "../../Ifascript" }
+serde_yaml = "0.9"
 
 [dev-dependencies]
 criterion = "0.5"
 httpmock = "0.6"
 wat = "1.0"
+
+[build-dependencies]
+prost-build = "0.14.3"

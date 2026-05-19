@@ -2,10 +2,31 @@
 mod steward_audit_tests {
     use omokoda_core::interpreter::Steward;
     use omokoda_core::parser::parse;
+    use std::path::PathBuf;
+
+    fn test_session_dir(test_name: &str, cleanup: bool) -> PathBuf {
+        let mut path = std::env::current_dir().unwrap();
+        path.push("target");
+        path.push("test_sessions");
+        path.push(test_name);
+        if cleanup && path.exists() {
+            let _ = std::fs::remove_dir_all(&path);
+        }
+        if !path.exists() {
+            std::fs::create_dir_all(&path).unwrap();
+        }
+        path
+    }
+
+    macro_rules! test_steward {
+        ($name:expr) => {{
+            Steward::new().with_session_dir(test_session_dir($name, true))
+        }};
+    }
 
     #[tokio::test]
     async fn birth_initializes_all_four_domains() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("birth_initializes_all_four_domains");
         steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
         let agent = steward.agent_state().unwrap();
 
@@ -28,7 +49,7 @@ mod steward_audit_tests {
 
     #[tokio::test]
     async fn think_burns_synapse() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("think_burns_synapse");
         steward.set_mock_provider("think response".to_string());
         steward.dispatch(parse(r#"birth "luna" provider:ollama"#).unwrap()[0].clone()).await.unwrap();
         
@@ -42,7 +63,7 @@ mod steward_audit_tests {
     #[tokio::test]
     async fn think_private_never_routes_external() {
         use omokoda_core::providers::MockProvider;
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("think_private_never_routes_external");
         // Register an external-looking provider
         steward.register_provider(Box::new(MockProvider::new_external("openai", "response".to_string())));
 
@@ -56,7 +77,7 @@ mod steward_audit_tests {
 
     #[tokio::test]
     async fn act_produces_receipt() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("act_produces_receipt");
         steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
         
         let test_file = "steward_test_act.txt";
@@ -71,7 +92,7 @@ mod steward_audit_tests {
 
     #[tokio::test]
     async fn act_burns_synapse() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("act_burns_synapse");
         steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
         
         let test_file = "steward_test_synapse_act.txt";
@@ -88,7 +109,7 @@ mod steward_audit_tests {
 
     #[tokio::test]
     async fn act_rejected_below_required_tier() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("act_rejected_below_required_tier");
         steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
         
         // Tier 4 tool on Tier 0 agent
@@ -99,7 +120,7 @@ mod steward_audit_tests {
 
     #[tokio::test]
     async fn act_advances_reputation() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("act_advances_reputation");
         steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
         
         let test_file = "steward_test_rep.txt";
@@ -114,7 +135,7 @@ mod steward_audit_tests {
 
     #[tokio::test]
     async fn multi_statement_executes_in_order() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("multi_statement_executes_in_order");
         steward.set_mock_provider("think output".to_string());
         
         let test_file = "steward_test_multi.txt";
@@ -140,12 +161,14 @@ act "read_file" "steward_test_multi.txt""#).unwrap();
 
     #[tokio::test]
     async fn steward_state_persists_between_statements() {
-        let mut steward = Steward::new();
+        let name = "steward_state_persists_between_statements";
+        let session_dir = test_session_dir(name, true);
+        let mut steward = Steward::new().with_session_dir(session_dir.clone());
         steward.dispatch(parse(r#"birth "luna""#).unwrap()[0].clone()).await.unwrap();
         
         let agent_id = steward.agent_state().unwrap().id().clone();
         
-        let mut steward2 = Steward::new();
+        let mut steward2 = Steward::new().with_session_dir(test_session_dir(name, false));
         steward2.load_agent(&agent_id).unwrap();
         assert_eq!(steward2.agent_state().unwrap().name(), "luna");
     }

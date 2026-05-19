@@ -3,10 +3,25 @@ mod justice_tests {
     use omokoda_core::interpreter::Steward;
     use omokoda_core::justice::{ActQuality, JusticeEngine};
     use omokoda_core::parser::parse;
+    use std::path::PathBuf;
+
+    macro_rules! test_steward {
+        ($name:expr) => {{
+            let mut path = std::env::current_dir().unwrap();
+            path.push("target");
+            path.push("test_sessions");
+            path.push($name);
+            if path.exists() {
+                let _ = std::fs::remove_dir_all(&path);
+            }
+            std::fs::create_dir_all(&path).unwrap();
+            Steward::new().with_session_dir(path)
+        }};
+    }
 
     #[tokio::test]
     async fn slashing_ethics_reduces_reputation_by_25_percent() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("slashing_ethics_reduces_reputation_by_25_percent");
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
@@ -20,7 +35,7 @@ mod justice_tests {
 
     #[tokio::test]
     async fn slashing_budget_reduces_reputation_by_10_percent() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("slashing_budget_reduces_reputation_by_10_percent");
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
@@ -42,7 +57,7 @@ mod justice_tests {
 
     #[tokio::test]
     async fn quality_evaluation_useful_increases_reputation_more_than_basic() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("quality_evaluation_useful_increases_reputation_more_than_basic");
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
@@ -108,7 +123,7 @@ mod justice_tests {
     #[tokio::test]
     async fn steward_act_respects_hook_denial() {
         use omokoda_core::justice::ReputationGate;
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("steward_act_respects_hook_denial");
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await

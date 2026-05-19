@@ -3,10 +3,25 @@ mod interpreter_tests {
     use omokoda_core::interpreter::{Steward, TurnEvent};
     use omokoda_core::parser::parse;
     use omokoda_core::reputation::{tier_for, tool_allowed, tools_for_tier};
+    use std::path::PathBuf;
+
+    macro_rules! test_steward {
+        ($name:expr) => {{
+            let mut path = std::env::current_dir().unwrap();
+            path.push("target");
+            path.push("test_sessions");
+            path.push($name);
+            if path.exists() {
+                let _ = std::fs::remove_dir_all(&path);
+            }
+            std::fs::create_dir_all(&path).unwrap();
+            Steward::new().with_session_dir(path)
+        }};
+    }
 
     #[tokio::test]
     async fn birth_creates_agent_at_tier_zero() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("birth_creates_agent_at_tier_zero");
         let stmts = parse(r#"birth "luna""#).unwrap();
         steward.dispatch(stmts[0].clone()).await.unwrap();
         assert_eq!(steward.reputation(), 0.000);
@@ -15,7 +30,7 @@ mod interpreter_tests {
 
     #[tokio::test]
     async fn birth_initializes_structured_agent_state() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("birth_initializes_structured_agent_state");
         let stmts = parse(r#"birth "luna""#).unwrap();
         steward.dispatch(stmts[0].clone()).await.unwrap();
 
@@ -33,7 +48,7 @@ mod interpreter_tests {
 
     #[tokio::test]
     async fn think_produces_receipt() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("think_produces_receipt");
         steward.set_mock_provider("mock thought".to_string());
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
@@ -51,7 +66,7 @@ mod interpreter_tests {
     async fn think_dispatch_with_event_sink_emits_cycle_events() {
         use tokio::sync::mpsc;
 
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("think_dispatch_with_event_sink_emits_cycle_events");
         steward.set_mock_provider("mock thought".to_string());
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
@@ -85,7 +100,7 @@ mod interpreter_tests {
     async fn act_dispatch_with_event_sink_emits_receipt_event() {
         use tokio::sync::mpsc;
 
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("act_dispatch_with_event_sink_emits_receipt_event");
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
@@ -111,7 +126,7 @@ mod interpreter_tests {
 
     #[tokio::test]
     async fn think_private_sets_private_mode() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("think_private_sets_private_mode");
         steward.set_mock_provider("mock thought".to_string());
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
@@ -125,7 +140,7 @@ mod interpreter_tests {
 
     #[tokio::test]
     async fn think_publish_sets_public_mode() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("think_publish_sets_public_mode");
         steward.set_mock_provider("mock thought".to_string());
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
@@ -141,7 +156,7 @@ mod interpreter_tests {
     async fn steward_can_register_a_provider() {
         use omokoda_core::providers::MockProvider;
 
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("steward_can_register_a_provider");
         steward.register_provider(Box::new(MockProvider::new("mock thought".to_string())));
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
@@ -159,7 +174,7 @@ mod interpreter_tests {
 
     #[tokio::test]
     async fn configure_rejects_unknown_provider() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("configure_rejects_unknown_provider");
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
@@ -174,7 +189,7 @@ mod interpreter_tests {
 
     #[tokio::test]
     async fn act_produces_receipt() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("act_produces_receipt");
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
@@ -195,7 +210,7 @@ mod interpreter_tests {
 
     #[tokio::test]
     async fn act_increases_reputation_via_dynamic_formula() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("act_increases_reputation_via_dynamic_formula");
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
@@ -218,7 +233,7 @@ mod interpreter_tests {
 
     #[tokio::test]
     async fn reputation_gain_decreases_as_rep_grows() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("reputation_gain_decreases_as_rep_grows");
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
@@ -245,7 +260,7 @@ mod interpreter_tests {
 
     #[tokio::test]
     async fn act_rejected_for_tool_above_current_tier() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("act_rejected_for_tool_above_current_tier");
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
@@ -258,7 +273,7 @@ mod interpreter_tests {
 
     #[tokio::test]
     async fn reputation_decay_on_inactivity() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("reputation_decay_on_inactivity");
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
@@ -273,7 +288,7 @@ mod interpreter_tests {
 
     #[tokio::test]
     async fn reputation_cannot_go_below_zero() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("reputation_cannot_go_below_zero");
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
@@ -286,7 +301,7 @@ mod interpreter_tests {
 
     #[tokio::test]
     async fn multi_statement_executes_in_order() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("multi_statement_executes_in_order");
         steward.set_mock_provider("done".to_string());
 
         let test_file = "test_multi.txt";
@@ -307,7 +322,7 @@ act "read_file" "test_multi.txt""#;
 
     #[tokio::test]
     async fn steward_state_persists_between_dispatches() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("steward_state_persists_between_dispatches");
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
@@ -352,7 +367,7 @@ act "read_file" "test_multi.txt""#;
 
     #[tokio::test]
     async fn act_returns_tool_output() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("act_returns_tool_output");
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
@@ -394,7 +409,7 @@ act "read_file" "test_multi.txt""#;
 
     #[tokio::test]
     async fn birth_with_metadata_configures_session() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("birth_with_metadata_configures_session");
         steward.set_mock_provider("mock response".to_string());
         let stmts = parse(r#"birth "luna" provider:ollama privacy:false sandbox:false"#).unwrap();
         steward.dispatch(stmts[0].clone()).await.unwrap();
@@ -408,7 +423,7 @@ act "read_file" "test_multi.txt""#;
 
     #[tokio::test]
     async fn slash_seal_and_unlock_preserves_private_memory() {
-        let mut steward = Steward::new();
+        let mut steward = test_steward!("slash_seal_and_unlock_preserves_private_memory");
         steward.set_mock_provider("mock thought".to_string());
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
@@ -438,5 +453,29 @@ act "read_file" "test_multi.txt""#;
             .await
             .unwrap();
         assert!(steward.agent_state().unwrap().private_data().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_sovereign_event_bus_emits_birth_event() {
+        use omokoda_core::bus::events::sovereign_event;
+        use omokoda_core::Statement;
+
+        let mut steward = test_steward!("test_sovereign_event_bus_emits_birth_event");
+        let mut receiver = steward.event_bus.subscribe();
+
+        let stmt = Statement::Birth {
+            name: "test-agent".to_string(),
+            metadata: vec![],
+        };
+
+        steward.dispatch(stmt).await.unwrap();
+
+        let event = receiver.recv().await.unwrap();
+        if let Some(sovereign_event::Event::AgentBorn(born)) = event.event {
+            assert_eq!(born.dna.len(), 86);
+            assert_eq!(born.mnemonic.len(), 33);
+        } else {
+            panic!("Expected AgentBorn event");
+        }
     }
 }

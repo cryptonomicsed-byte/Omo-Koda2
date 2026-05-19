@@ -492,7 +492,11 @@ pub fn secure_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
             set_strict_dir_permissions(parent)?;
         }
     }
-    fs::write(path, bytes).map_err(|e| format!("failed to write session file: {e}"))?;
+    std::fs::write(path, bytes).map_err(|e| format!("failed to write session file: {e}"))?;
+    std::fs::File::open(path)
+        .map_err(|e| format!("failed to open file for sync: {e}"))?
+        .sync_all()
+        .map_err(|e| format!("failed to sync file: {e}"))?;
     set_strict_file_permissions(path)?;
     Ok(())
 }

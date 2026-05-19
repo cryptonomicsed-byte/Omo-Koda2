@@ -10,13 +10,23 @@ use crate::permissions::{PermissionMode, PermissionPolicy, PermissionOutcome, Pe
 pub mod sovereign;
 pub mod file_ops;
 
+pub struct ExecutionContext {
+    pub agent_id: crate::identity::AgentId,
+    pub name: String,
+    pub tier: u8,
+    pub reputation: f64,
+    pub odu_identity: crate::identity::odu::OduIdentity,
+    pub workspace_root: PathBuf,
+    pub sandbox_mode: bool,
+}
+
 #[async_trait]
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn required_tier(&self) -> u8;
     fn is_write_operation(&self) -> bool;
-    async fn execute(&self, params: &str, sandbox: bool) -> Result<String, String>;
+    async fn execute(&self, params: &str, context: &ExecutionContext) -> Result<String, String>;
 }
 
 pub struct ToolRegistry {
@@ -65,8 +75,7 @@ impl ToolRegistry {
         &self,
         name: &str,
         params: &str,
-        sandbox: bool,
-        current_tier: u8,
+        context: ExecutionContext,
         policy: &crate::permissions::PermissionPolicy,
         prompter: Option<&mut dyn crate::permissions::PermissionPrompter>,
     ) -> Result<String, String> {
@@ -75,12 +84,12 @@ impl ToolRegistry {
             .get(name)
             .ok_or_else(|| format!("tool not found: {}", name))?;
 
-        if current_tier < tool.required_tier() {
+        if context.tier < tool.required_tier() {
             return Err(format!(
                 "tool '{}' requires tier {}, current tier is {}",
                 name,
                 tool.required_tier(),
-                current_tier
+                context.tier
             ));
         }
 
@@ -95,7 +104,7 @@ impl ToolRegistry {
             return Err(format!("Permission denied: {}", reason));
         }
 
-        tool.execute(params, sandbox).await
+        tool.execute(params, &context).await
     }
 }
 
@@ -128,7 +137,7 @@ impl Tool for ReadFileTool {
     fn is_write_operation(&self) -> bool {
         false
     }
-    async fn execute(&self, params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, params: &str, context: &ExecutionContext) -> Result<String, String> {
         // Support both raw path and JSON
         let (path, offset, limit) = if params.starts_with('{') {
             let v: serde_json::Value = serde_json::from_str(params).map_err(|e| e.to_string())?;
@@ -140,8 +149,8 @@ impl Tool for ReadFileTool {
             (params.to_string(), None, None)
         };
 
-        let workspace_root = std::env::current_dir().map_err(|e| e.to_string())?;
-        if let Err(e) = validate_path_boundary(&workspace_root, Path::new(&path)) {
+        let workspace_root = &context.workspace_root;
+        if let Err(e) = validate_path_boundary(workspace_root, Path::new(&path)) {
             return Err(e.to_string());
         }
 
@@ -166,13 +175,13 @@ impl Tool for WriteFileTool {
     fn is_write_operation(&self) -> bool {
         true
     }
-    async fn execute(&self, params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, params: &str, context: &ExecutionContext) -> Result<String, String> {
         let v: serde_json::Value = serde_json::from_str(params).map_err(|e| e.to_string())?;
         let path = v["path"].as_str().ok_or("missing path")?;
         let content = v["content"].as_str().ok_or("missing content")?;
 
-        let workspace_root = std::env::current_dir().map_err(|e| e.to_string())?;
-        if let Err(e) = validate_path_boundary(&workspace_root, Path::new(&path)) {
+        let workspace_root = &context.workspace_root;
+        if let Err(e) = validate_path_boundary(workspace_root, Path::new(&path)) {
             return Err(e.to_string());
         }
 
@@ -180,7 +189,7 @@ impl Tool for WriteFileTool {
             .map_err(|e| format!("failed to write file: {}", e))?;
         serde_json::to_string(&output).map_err(|e| e.to_string())
     }
-}
+    }
 
 struct EditFileTool;
 #[async_trait]
@@ -197,15 +206,15 @@ impl Tool for EditFileTool {
     fn is_write_operation(&self) -> bool {
         true
     }
-    async fn execute(&self, params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, params: &str, context: &ExecutionContext) -> Result<String, String> {
         let v: serde_json::Value = serde_json::from_str(params).map_err(|e| e.to_string())?;
         let path = v["path"].as_str().ok_or("missing path")?;
         let old_string = v["old_string"].as_str().ok_or("missing old_string")?;
         let new_string = v["new_string"].as_str().ok_or("missing new_string")?;
         let replace_all = v["replace_all"].as_bool().unwrap_or(false);
 
-        let workspace_root = std::env::current_dir().map_err(|e| e.to_string())?;
-        if let Err(e) = validate_path_boundary(&workspace_root, Path::new(&path)) {
+        let workspace_root = &context.workspace_root;
+        if let Err(e) = validate_path_boundary(workspace_root, Path::new(&path)) {
             return Err(e.to_string());
         }
 
@@ -230,18 +239,19 @@ impl Tool for BashTool {
     fn is_write_operation(&self) -> bool {
         true
     }
-    async fn execute(&self, params: &str, sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, params: &str, context: &ExecutionContext) -> Result<String, String> {
         // P0 Security: Validate bash commands to prevent injection
         if let Err(e) = crate::execution::bash_validation::validate_bash_command(params) {
             return Err(format!("Security blocked: {}", e.reason));
         }
 
+        let sandbox = context.sandbox_mode;
+
         if sandbox && params.contains("..") {
             return Err("sandboxed bash commands must not contain '..'".to_string());
         }
 
-        let workspace_root = std::env::current_dir()
-            .map_err(|e| format!("failed to determine workspace root: {}", e))?;
+        let workspace_root = &context.workspace_root;
         let mut cmd = if sandbox {
             let mut c = Command::new("unshare");
             c.args([
@@ -254,12 +264,12 @@ impl Tool for BashTool {
                 "-c",
                 params,
             ]);
-            c.current_dir(&workspace_root);
+            c.current_dir(workspace_root);
             c
         } else {
             let mut c = Command::new("bash");
             c.args(["-c", params]);
-            c.current_dir(&workspace_root);
+            c.current_dir(workspace_root);
             c
         };
 
@@ -296,7 +306,7 @@ impl Tool for WebSearchTool {
     fn is_write_operation(&self) -> bool {
         false
     }
-    async fn execute(&self, params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, params: &str, _context: &ExecutionContext) -> Result<String, String> {
         let client = reqwest::Client::new();
         let url = format!(
             "https://duckduckgo.com/lite/?q={}",
@@ -334,7 +344,7 @@ impl Tool for GlobTool {
     fn is_write_operation(&self) -> bool {
         false
     }
-    async fn execute(&self, params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, params: &str, context: &ExecutionContext) -> Result<String, String> {
         let (pattern, path) = if params.starts_with('{') {
             let v: serde_json::Value = serde_json::from_str(params).map_err(|e| e.to_string())?;
             let pattern = v["pattern"].as_str().ok_or("missing pattern")?.to_string();
@@ -344,12 +354,12 @@ impl Tool for GlobTool {
             (params.to_string(), None)
         };
 
-        let workspace_root = std::env::current_dir().map_err(|e| e.to_string())?;
-        if let Err(e) = validate_path_boundary(&workspace_root, Path::new(&pattern)) {
+        let workspace_root = &context.workspace_root;
+        if let Err(e) = validate_path_boundary(workspace_root, Path::new(&pattern)) {
             return Err(e.to_string());
         }
         if let Some(ref p) = path {
-            if let Err(e) = validate_path_boundary(&workspace_root, Path::new(p)) {
+            if let Err(e) = validate_path_boundary(workspace_root, Path::new(p)) {
                 return Err(e.to_string());
             }
         }
@@ -375,19 +385,19 @@ impl Tool for GrepTool {
     fn is_write_operation(&self) -> bool {
         false
     }
-    async fn execute(&self, params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, params: &str, context: &ExecutionContext) -> Result<String, String> {
         let input: file_ops::GrepSearchInput = serde_json::from_str(params).map_err(|e| {
             format!("grep requires JSON input: {}", e)
         })?;
 
-        let workspace_root = std::env::current_dir().map_err(|e| e.to_string())?;
+        let workspace_root = &context.workspace_root;
         if let Some(ref p) = input.path {
-            if let Err(e) = validate_path_boundary(&workspace_root, Path::new(p)) {
+            if let Err(e) = validate_path_boundary(workspace_root, Path::new(p)) {
                 return Err(e.to_string());
             }
         }
         if let Some(ref g) = input.glob {
-            if let Err(e) = validate_path_boundary(&workspace_root, Path::new(g)) {
+            if let Err(e) = validate_path_boundary(workspace_root, Path::new(g)) {
                 return Err(e.to_string());
             }
         }
@@ -412,7 +422,7 @@ impl Tool for WasmTool {
     fn is_write_operation(&self) -> bool {
         true
     }
-    async fn execute(&self, params: &str, sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, params: &str, context: &ExecutionContext) -> Result<String, String> {
         let mut parts = params.split_whitespace();
         let module_path = parts
             .next()
@@ -421,15 +431,15 @@ impl Tool for WasmTool {
             return Err("wasm tool requires module path".to_string());
         }
 
-        let workspace_root = std::env::current_dir().map_err(|e| e.to_string())?;
-        if let Err(_) = validate_path_boundary(&workspace_root, Path::new(module_path)) {
+        let workspace_root = &context.workspace_root;
+        if let Err(_) = validate_path_boundary(workspace_root, Path::new(module_path)) {
             return Err("module path must be relative and within workspace".to_string());
         }
 
         let args: Vec<String> = parts.map(|s| s.to_string()).collect();
         let wasm_sandbox =
             WasmSandbox::new().map_err(|e| format!("failed to initialize wasm sandbox: {}", e))?;
-        wasm_sandbox.execute_module(Path::new(module_path), &args, sandbox)
+        wasm_sandbox.execute_module(Path::new(module_path), &args, context.sandbox_mode)
     }
 }
 
@@ -448,7 +458,7 @@ impl Tool for AgentOrchestrationTool {
     fn is_write_operation(&self) -> bool {
         true
     }
-    async fn execute(&self, _params: &str, _sandbox: bool) -> Result<String, String> {
+    async fn execute(&self, _params: &str, _context: &ExecutionContext) -> Result<String, String> {
         Ok("orchestration complete".to_string())
     }
 }

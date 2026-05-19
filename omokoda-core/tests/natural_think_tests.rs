@@ -1,10 +1,25 @@
 use omokoda_core::interpreter::{Steward, TurnEvent};
 use omokoda_core::justice::{Hook, HookContext, HookDecision};
 use omokoda_core::parser::parse;
+use std::path::PathBuf;
+
+macro_rules! test_steward {
+    ($name:expr) => {{
+        let mut path = std::env::current_dir().unwrap();
+        path.push("target");
+        path.push("test_sessions");
+        path.push($name);
+        if path.exists() {
+            let _ = std::fs::remove_dir_all(&path);
+        }
+        std::fs::create_dir_all(&path).unwrap();
+        Steward::new().with_session_dir(path)
+    }};
+}
 
 #[tokio::test]
 async fn natural_think_compiles_monitoring_to_confirmed_sub_agent_plan() {
-    let mut steward = Steward::new();
+    let mut steward = test_steward!("natural_think_compiles_monitoring_to_confirmed_sub_agent_plan");
     steward.set_mock_provider("mock thought".to_string());
     steward
         .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
@@ -52,7 +67,7 @@ async fn natural_think_compiles_monitoring_to_confirmed_sub_agent_plan() {
 
 #[tokio::test]
 async fn natural_think_can_execute_safe_direct_act_and_receipt_every_output() {
-    let mut steward = Steward::new();
+    let mut steward = test_steward!("natural_think_can_execute_safe_direct_act_and_receipt_every_output");
     steward
         .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
         .await
@@ -75,7 +90,7 @@ async fn natural_think_can_execute_safe_direct_act_and_receipt_every_output() {
 
 #[tokio::test]
 async fn natural_think_private_mode_blocks_external_capable_direct_tools() {
-    let mut steward = Steward::new();
+    let mut steward = test_steward!("natural_think_private_mode_blocks_external_capable_direct_tools");
     steward.set_mock_provider("private reasoning".to_string());
     steward
         .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
@@ -100,7 +115,7 @@ async fn natural_think_private_mode_blocks_external_capable_direct_tools() {
 
 #[tokio::test]
 async fn natural_think_ethics_validation_refuses_harmful_intent_with_receipt() {
-    let mut steward = Steward::new();
+    let mut steward = test_steward!("natural_think_ethics_validation_refuses_harmful_intent_with_receipt");
     steward.set_mock_provider("should not be needed".to_string());
     steward
         .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
@@ -118,7 +133,7 @@ async fn natural_think_ethics_validation_refuses_harmful_intent_with_receipt() {
 
 #[tokio::test]
 async fn natural_think_cost_budget_clamps_iterations_by_tier() {
-    let mut steward = Steward::new();
+    let mut steward = test_steward!("natural_think_cost_budget_clamps_iterations_by_tier");
     steward.set_mock_provider("mock thought".to_string());
     steward
         .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
@@ -160,7 +175,7 @@ impl Hook for DenyThinkCompileHook {
 
 #[tokio::test]
 async fn natural_think_justice_pre_hook_is_gatekeeper_and_still_receipts() {
-    let mut steward = Steward::new();
+    let mut steward = test_steward!("natural_think_justice_pre_hook_is_gatekeeper_and_still_receipts");
     steward.set_mock_provider("should not pass".to_string());
     steward.add_pre_hook(Box::new(DenyThinkCompileHook));
     steward

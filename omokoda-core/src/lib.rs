@@ -1,3 +1,4 @@
+pub mod bus;
 pub mod identity;
 pub mod intent;
 pub mod interpreter;

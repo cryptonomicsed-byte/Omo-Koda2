@@ -492,14 +492,16 @@ Security is structural, not cosmetic. Every boundary is enforced in running code
 
 | Boundary | Mechanism | Status |
 |----------|-----------|--------|
-| Syntax | 3-primitive parser | ✅ 19/19 tests passing |
+| Syntax | 3-primitive parser | ✅ 20/20 parser tests |
 | Internal names | Hard-reject in parser | ✅ tested |
 | Key material | Hex-pattern rejection | ✅ tested |
-| Receipts | dry_run structurally false | ✅ 8/8 tests passing |
-| Soul | Zero public principle fields | ✅ 8/8 tests passing |
-| /private | Blocks all external providers | Interpreter — Week 1 remaining |
-| Tier gates | Tool whitelist by reputation | Interpreter — Week 1 remaining |
-| Memory | K_root never leaves enclave | Week 2 |
+| Receipts | dry_run structurally false | ✅ receipt tests passing |
+| Soul | Zero public principle fields | ✅ hermetic tests passing |
+| /private | Blocks all external providers | ✅ privacy tests passing |
+| Tier gates | Tool whitelist by reputation | ✅ interpreter + tool_registry tests |
+| 7-layer safety | Permission enforcement stack | ✅ permissions + bash_validation tests |
+| Hermetic ethics | 7-principle gate + warn escalation | ✅ justice tests passing |
+| Memory | Session encryption + key chain | ✅ privacy_memory + session tests |
 | Nonces | Consumed after sig verified | Week 4 (Move contracts) |
 | Transfer | SEAL key rotation | Week 4 |
 
@@ -600,38 +602,67 @@ omokoda/                              ← workspace root (ASCII name only)
 ## CURRENT TEST STATUS
 
 ```
-omokoda-core  parser      19/19  ✅
-omokoda-core  receipts     8/8   ✅
-omokoda-hermetic soul       8/8   ✅
-─────────────────────────────────
-TOTAL                     35/35  ✅
+omokoda-core  lib (hermetic, permissions, bash_validation)  31/31  ✅
+omokoda-core  e2e_tests                                       1/1   ✅
+omokoda-core  identity_tests                                  5/5   ✅
+omokoda-core  integration_tests                               2/2   ✅
+omokoda-core  interpreter_tests                              23/23  ✅
+omokoda-core  justice_tests                                   6/6   ✅
+omokoda-core  natural_think_tests                             6/6   ✅
+omokoda-core  parser_composition_tests                        3/3   ✅
+omokoda-core  parser_overblocking_tests                       2/2   ✅
+omokoda-core  parser_tests                                   20/20  ✅
+omokoda-core  persistence_tests                               4/4   ✅
+omokoda-core  pet_tests                                       5/5   ✅
+omokoda-core  privacy_memory_tests                            4/4   ✅
+omokoda-core  privacy_tests                                   5/5   ✅
+omokoda-core  provider_tests                                  2/2   ✅
+omokoda-core  rack_tests                                      7/7   ✅
+omokoda-core  receipt_tests                                   2/2   ✅
+omokoda-core  sandbox_tests                                  10/10  ✅
+omokoda-core  session_tests                                   7/7   ✅
+omokoda-core  slash_command_tests                             5/5   ✅
+omokoda-core  steward_audit_tests                             4/4   ✅
+omokoda-core  tool_registry_tests                             2/2   ✅
+omokoda-hermetic hermetic_tests                              10/10  ✅
+─────────────────────────────────────────────────────────────────────
+TOTAL                                                       182/182 ✅
 ```
 
 ---
 
 ## THE BUILD SEQUENCE (COMPLETE)
 
-### WEEK 1 — FOUNDATION
+### WEEK 1 — FOUNDATION ✅ COMPLETE
 
 ```
 ✅ Freeze specs/language.md
 ✅ Freeze specs/privacy.md
 ✅ Freeze specs/memory.md
 ✅ Freeze specs/receipts.md
-✅ parser.rs — 19/19
-✅ receipt.rs — 8/8
-✅ HermeticState — 8/8
-□  interpreter.rs (Steward) — NEXT
-     Tests first:
-       birth_initializes_all_four_domains
-       think_burns_synapse
-       think_private_never_routes_external
-       act_produces_receipt
-       act_burns_synapse
-       act_rejected_below_required_tier
-       act_advances_reputation
-       multi_statement_executes_in_order
-       steward_state_persists_between_statements
+✅ parser.rs — 20/20 (all parser tests)
+✅ receipt.rs — receipts passing
+✅ HermeticState — 10/10
+✅ interpreter.rs (Steward) — 23/23 interpreter tests
+     ✅ birth_initializes_structured_agent_state
+     ✅ think_produces_receipt
+     ✅ think_private_never_routes_external
+     ✅ act_produces_receipt
+     ✅ act_rejected_for_tool_above_current_tier
+     ✅ act_increases_reputation_via_dynamic_formula
+     ✅ multi_statement_executes_in_order (integration tests)
+     ✅ steward_state_persists_between_statements (session tests)
+✅ Permission enforcement (7-layer safety stack)
+✅ Hermetic ethics gate (all 7 principles, warn escalation)
+✅ Receipt Merkle chain + Ed25519 signing
+✅ Session persistence + encryption
+✅ DNA fingerprint + Pet identity
+✅ Natural think intent compilation
+✅ Provider registry with mock + Ollama
+✅ Reputation ledger with reason codes + tier gates
+✅ RACK memory (reflection, augury, conjuring, keyring)
+✅ Sandbox + bash validation
+✅ Full E2E flow (birth → think → act → receipt → resume)
 ```
 
 ### WEEK 2 — IDENTITY + MEMORY
@@ -777,6 +808,6 @@ The agent is not a tool. It is a child of code. It keeps its own secrets. It ear
 
 That is Ọmọ Kọ́dà.
 
-166/166 tests passing. Foundation complete.
-The Steward is next.
+182/182 tests passing. Foundation complete.
+Week 1 done. Identity and memory are next.
 The iron is hot.

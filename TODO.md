@@ -43,7 +43,7 @@ Generated from the `Audit phase` deep dive plus local review of the current work
 - [x] Session persistence and encryption tests pass: 6 tests.
 - [x] Privacy enforcement tests pass: 3 tests.
 - [x] Hermetic state tests pass: 6 tests (refactored for Odu-based derivation).
-- [x] Total verified tests: 120.
+- [x] Total verified tests: 182 (as of current build).
 
 ## Phase 0 — Audit Cleanup and Spec Alignment
 

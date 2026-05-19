@@ -1,4 +1,5 @@
 pub mod bus;
+pub mod economics;
 pub mod identity;
 pub mod intent;
 pub mod interpreter;
@@ -8,6 +9,7 @@ pub mod parser;
 pub mod providers;
 pub mod receipt;
 pub mod reputation;
+pub mod rhythm;
 pub mod sandbox;
 pub mod session;
 pub mod tools;

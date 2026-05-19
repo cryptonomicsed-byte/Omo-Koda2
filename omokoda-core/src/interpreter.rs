@@ -1054,6 +1054,7 @@ impl Steward {
 
         if !compilation.direct_act_calls.is_empty() {
             let mut outputs = Vec::new();
+            let mut total_usage = TokenUsage::default();
             for call in &compilation.direct_act_calls {
                 if call.high_risk {
                     return Ok((format_compilation_response(compilation), TokenUsage::default()));
@@ -1067,7 +1068,7 @@ impl Steward {
             let mut response = format_compilation_response(compilation);
             response.push_str("\n\nExecuted direct act calls:\n");
             response.push_str(&outputs.join("\n"));
-            return Ok((response, TokenUsage::default()));
+            return Ok((response, total_usage));
         }
 
         self.providers

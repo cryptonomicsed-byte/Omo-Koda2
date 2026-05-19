@@ -2,5 +2,6 @@
 members = [
     "omokoda-core",
     "omokoda-hermetic",
+    "omokoda-cli",
 ]
 resolver = "2"

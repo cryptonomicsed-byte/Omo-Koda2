@@ -79,6 +79,7 @@ pub struct AgentState {
     pub private_data: Option<PrivateSessionData>,
     pub resonance: Option<omokoda_hermetic::fractal::ResonanceSignature>,
     pub synapse: f64,
+    pub last_active_timestamp: u64,
     #[serde(skip)]
     pub k_root: [u8; 32],
     pub act_counter: u64,
@@ -172,6 +173,7 @@ impl AgentState {
             private_data: Some(private_data),
             resonance,
             synapse: 8_600_000.0,
+            last_active_timestamp: birth_timestamp,
             k_root,
             act_counter: 0,
             current_memory_key: k0,
@@ -612,6 +614,19 @@ impl Steward {
                 sandbox,
             } => {
                 // Phase 1-7: ACT = 7^3 (fractal depth 3)
+
+                // Apply synapse decay for elapsed inactivity before any act
+                {
+                    let now = current_unix_timestamp();
+                    let agent_mut = self.ensure_born_mut()?;
+                    let elapsed = now.saturating_sub(agent_mut.last_active_timestamp);
+                    if elapsed > 0 {
+                        let decay = crate::economics::compute_synapse_decay(agent_mut.synapse, elapsed);
+                        agent_mut.synapse = (agent_mut.synapse - decay).max(0.0);
+                        agent_mut.last_active_timestamp = now;
+                    }
+                }
+
                 let (agent_id, name, tier, reputation, odu_identity, default_sandbox) = {
                     let agent = self.ensure_born()?;
                     (
@@ -629,6 +644,18 @@ impl Steward {
                         "Tool '{}' requires higher reputation (current tier: {})",
                         tool, tier
                     ));
+                }
+
+                // Sabbath guard: queue irreversible actions on UTC Saturday
+                let reversibility = crate::rhythm::RhythmGate::classify_reversibility(&tool);
+                let rhythm_decision =
+                    crate::rhythm::RhythmGate::check(&tool, reversibility, 0);
+                if let crate::rhythm::RhythmDecision::QueuedForSabbathEnd { reason } = rhythm_decision {
+                    return Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(format!("[SABBATH QUEUE] {}", reason)),
+                    });
                 }
 
                 // Justice HookRunner: Pre-act

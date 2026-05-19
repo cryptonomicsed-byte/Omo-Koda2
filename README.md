@@ -47,18 +47,19 @@ A daily resonance engine that modulates agent behavior based on the time-stream,
 Ọmọ Kọ́dà maintains a rigorous testing standard across its multi-language ecosystem.
 
 **Current Audit Status:** `PASSED` ✅
-*   **Total Verified Tests**: `168`
-*   **Rust (Core & Hermetic)**: `149` tests
+*   **Total Verified Tests**: `203`
+*   **Rust (Core & Hermetic)**: `182` tests
 *   **Go (Ops & Monitoring)**: `13` tests
-*   **Elixir (Swarm Coordination)**: `6` tests
+*   **Elixir (Swarm Coordination)**: `8` tests
 *   **E2E Flow**: `Verified` (Birth → Think → Act)
 
 ### Core Invariants Verified
 1.  **Identity Anchor**: DNA fingerprints are deterministic and permanent.
 2.  **Sealed Memory**: Private thoughts never leak to external providers.
 3.  **Immutable Receipts**: Every `act` generates a cryptographically signed receipt.
-4.  **Tier Enforcement**: Reputation strictly controls tool access.
-5.  **Workspace Integrity**: Boundary validation ensures all operations stay within the defined environment, actively preventing directory traversal and unauthorized external access.
+4.  **Hermetic Gate**: Pre-execution ethics evaluation for all `think` and `act` primitives.
+5.  **Tier Enforcement**: Reputation strictly controls tool access.
+6.  **Workspace Integrity**: Boundary validation ensures all operations stay within the defined environment, actively preventing directory traversal and unauthorized external access.
 
 ---
 

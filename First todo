@@ -1,3 +1,17 @@
+# First Todo — Gap Analysis & Implementation Notes — COMPLETED ✅
+
+> **Status**: All P0 and P1 items from this analysis have been implemented.
+> - ✅ Streaming Provider Abstraction — `providers/streaming.rs`
+> - ✅ Permission System (Deny-First) — `execution/permission_enforcer.rs`
+> - ✅ Bash Validation (18 patterns) — `execution/bash_validation.rs`
+> - ✅ Safety Stack (7-Layer Defense) — `execution/hooks.rs` + justice module
+> - ✅ File Operations Suite — `tools/file_ops.rs`
+> - ✅ Config Loader — `config.rs`
+> - ✅ Usage Tracking — `usage.rs`
+> - ✅ HermeticEvaluation — `justice/hermetic.rs` (all tests pass)
+>
+> This document is preserved as the original implementation roadmap.
+
 ---
 
 What Omo-Koda2 Actually NEEDS from Claw-code

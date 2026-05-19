@@ -72,7 +72,3 @@ These are used for architectural patterns and ideas only (no direct code copy).
 **TypeScript** = The human interface layer
 
 All other languages serve specialized roles under Rust control.
-
----
-
-This file is now ready for commit. Would you like any adjustments before we add it to the repo?

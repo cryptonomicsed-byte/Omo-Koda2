@@ -3,7 +3,6 @@ use crate::tools::{Tool, ExecutionContext};
 
 /// Sovereign Tier Tool List (18 Capabilities from OpenClaw)
 /// These tools require the highest reputation tier (Sovereign).
-
 pub struct ApplyPatchTool;
 #[async_trait]
 impl Tool for ApplyPatchTool {

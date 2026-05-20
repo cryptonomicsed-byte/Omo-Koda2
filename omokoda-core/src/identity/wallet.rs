@@ -36,7 +36,7 @@ impl Wallet {
 
         // Derivation path: m/44'/784'/0'/0'/0'
         // Every step is hardened for Ed25519 as per SLIP-0010.
-        let path = [44 | 0x8000_0000, 784 | 0x8000_0000, 0 | 0x8000_0000, 0 | 0x8000_0000, 0 | 0x8000_0000];
+        let path = [44 | 0x8000_0000, 784 | 0x8000_0000, 0x8000_0000, 0x8000_0000, 0x8000_0000];
         
         let (mut kl, mut kr) = (il, ir);
         for &index in &path {

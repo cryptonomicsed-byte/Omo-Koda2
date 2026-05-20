@@ -51,9 +51,9 @@ fn hash_bytes(data: &[u8]) -> [u8; 32] {
         state ^= b as u64;
         state = state.wrapping_mul(1099511628211);
     }
-    for i in 0..32 {
+    for (i, slot) in output.iter_mut().enumerate() {
         state = state.wrapping_mul(1099511628211).wrapping_add(i as u64);
-        output[i] = (state >> 32) as u8 ^ (state & 0xFF) as u8;
+        *slot = (state >> 32) as u8 ^ (state & 0xFF) as u8;
     }
     output
 }

@@ -19,13 +19,14 @@ pub trait SwibePlugin: Send + Sync {
     async fn on_settle(&self, result: &ExecutionResult);
 }
 
+#[derive(Default)]
 pub struct HookManager {
     plugins: Vec<Box<dyn SwibePlugin>>,
 }
 
 impl HookManager {
     pub fn new() -> Self {
-        Self { plugins: Vec::new() }
+        Self::default()
     }
 
     pub fn register(&mut self, plugin: Box<dyn SwibePlugin>) {

@@ -22,7 +22,7 @@ defmodule OmokodaSwarm.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:jason, "~> 1.4"}
+      {:jason, github: "michalmuskala/jason", tag: "v1.4.4"}
     ]
   end
 end

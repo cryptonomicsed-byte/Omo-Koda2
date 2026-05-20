@@ -1,5 +1,11 @@
 pub struct MemoryEngine;
 
+impl Default for MemoryEngine {
+    fn default() -> Self {
+        Self
+    }
+}
+
 impl MemoryEngine {
     pub fn new() -> Self {
         Self

@@ -290,7 +290,7 @@ impl AgentState {
 
     pub fn increment_act_counter(&mut self) {
         self.act_counter += 1;
-        if self.act_counter % 100 == 0 {
+        if self.act_counter.is_multiple_of(100) {
             self.rotate_memory_key();
         }
     }
@@ -595,7 +595,7 @@ impl Steward {
                 let event = SovereignEvent {
                     event: Some(sovereign_event::Event::ThoughtSealed(ThoughtSealed {
                         intent_hash: blake3::hash(prompt.as_bytes()).as_bytes().to_vec(),
-                        hermetic_score: hermetic_score,
+                        hermetic_score,
                     })),
                 };
                 let _ = self.event_bus.publish(event);

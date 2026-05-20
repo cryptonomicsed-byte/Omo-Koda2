@@ -6,10 +6,7 @@ pub struct DenyFirstRules;
 impl DenyFirstRules {
     /// Checks if a tool is explicitly blacklisted regardless of permission mode.
     pub fn is_blacklisted(tool_name: &str) -> bool {
-        match tool_name {
-            "rm_rf" | "sudo" | "dd_wipe" | "fork_bomb" => true,
-            _ => false,
-        }
+        matches!(tool_name, "rm_rf" | "sudo" | "dd_wipe" | "fork_bomb")
     }
 
     /// Evaluates if the action is inherently denied.

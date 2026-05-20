@@ -7,6 +7,7 @@ defmodule OmokodaSwarm.Application do
   def start(_type, _args) do
     children = [
       {Registry, keys: :unique, name: OmokodaSwarm.Registry},
+      OmokodaSwarm.TelemetryHub,
       OmokodaSwarm.SwarmSupervisor,
       OmokodaSwarm.Coordinator
     ]

@@ -9,7 +9,7 @@ use rustyline::{error::ReadlineError, DefaultEditor};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "aether", version, about = "Ọmọ Kọ́dà sovereign agent CLI")]
+#[command(name = "omokoda", version, about = "Ọmọ Kọ́dà sovereign agent CLI")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
@@ -307,9 +307,9 @@ async fn session_resume(id: &str) -> Result<()> {
 }
 
 fn agent_prompt(steward: &Steward) -> String {
-    if let Some(agent) = steward.agent_state() {
+    if let Some(agent) = steward.agent_core() {
         format!("{}> ", agent.name().cyan())
     } else {
-        "aether> ".to_string()
+        "omokoda> ".to_string()
     }
 }

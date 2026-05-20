@@ -28,6 +28,7 @@ mod e2e_tests {
         let stmts = parse(r#"birth "koda" provider:ollama sandbox:true"#).unwrap();
         steward.dispatch(stmts[0].clone()).await.unwrap();
         steward.set_reputation_for_test(50.0);
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
 
         let think_stmts = parse(r#"think "what is two plus two?""#).unwrap();
         let think_result = steward.dispatch(think_stmts[0].clone()).await.unwrap();

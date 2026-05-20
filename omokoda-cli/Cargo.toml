@@ -2,10 +2,10 @@
 name = "omokoda-cli"
 version = "0.1.0"
 edition = "2021"
-default-run = "aether"
+default-run = "omokoda"
 
 [[bin]]
-name = "aether"
+name = "omokoda"
 path = "src/main.rs"
 
 [dependencies]

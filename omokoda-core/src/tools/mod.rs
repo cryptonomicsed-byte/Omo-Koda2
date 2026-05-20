@@ -8,6 +8,8 @@ use crate::sandbox::WasmSandbox;
 
 pub mod file_ops;
 pub mod sovereign;
+pub mod structured_output;
+pub mod todo;
 pub mod tool_definitions;
 
 #[derive(Debug, Clone)]
@@ -145,6 +147,11 @@ impl ToolRegistry {
         registry.register(Box::new(sovereign::SessionStatusTool));
         registry.register(Box::new(sovereign::AgentsListTool));
 
+        // Claw pattern tools
+        registry.register(Box::new(todo::WriteTodoTool));
+        registry.register(Box::new(todo::ReadTodoTool));
+        registry.register(Box::new(structured_output::StructuredOutputTool));
+
         registry
     }
 
@@ -279,6 +286,113 @@ impl Default for ToolRegistry {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Result from a tool search query
+#[derive(Debug, Clone)]
+pub struct ToolSearchResult {
+    pub name: String,
+    pub description: String,
+    pub required_tier: u8,
+    pub score: f32,
+}
+
+impl ToolRegistry {
+    /// Fuzzy search for tools by name/description.
+    ///
+    /// Supports:
+    ///   `"select:name1,name2"` — exact match by name
+    ///   `"+required_term other terms"` — require terms starting with `+`
+    ///   `"search terms"` — fuzzy match against name and description
+    pub fn search(&self, query: &str, tier_filter: u8) -> Vec<ToolSearchResult> {
+        // Handle "select:" prefix for exact picks
+        if let Some(names) = query.strip_prefix("select:") {
+            return names
+                .split(',')
+                .filter_map(|name| {
+                    let name = name.trim();
+                    self.tools
+                        .get(name)
+                        .filter(|t| t.required_tier() <= tier_filter)
+                        .map(|t| ToolSearchResult {
+                            name: t.name().to_string(),
+                            description: t.description().to_string(),
+                            required_tier: t.required_tier(),
+                            score: 1.0,
+                        })
+                })
+                .collect();
+        }
+
+        let query_tokens = canonical_tokens(query);
+        let required_tokens: Vec<&str> = query_tokens
+            .iter()
+            .filter(|t| t.starts_with('+'))
+            .map(|t| &t[1..])
+            .collect();
+        let optional_tokens: Vec<&str> = query_tokens
+            .iter()
+            .filter(|t| !t.starts_with('+'))
+            .map(|t| t.as_str())
+            .collect();
+
+        let mut results: Vec<ToolSearchResult> = self
+            .tools
+            .values()
+            .filter(|t| t.required_tier() <= tier_filter)
+            .filter_map(|t| {
+                let tool_tokens =
+                    canonical_tokens(&format!("{} {}", t.name(), t.description()));
+
+                // All required tokens must be present
+                if !required_tokens
+                    .iter()
+                    .all(|rt| tool_tokens.iter().any(|tt| tt.contains(rt)))
+                {
+                    return None;
+                }
+
+                // Score based on optional token matches
+                let score = if optional_tokens.is_empty() {
+                    0.5 // Return all tools if no query
+                } else {
+                    let matches = optional_tokens
+                        .iter()
+                        .filter(|ot| tool_tokens.iter().any(|tt| tt.contains(*ot)))
+                        .count();
+                    if matches == 0 {
+                        return None;
+                    }
+                    matches as f32 / optional_tokens.len() as f32
+                };
+
+                Some(ToolSearchResult {
+                    name: t.name().to_string(),
+                    description: t.description().to_string(),
+                    required_tier: t.required_tier(),
+                    score,
+                })
+            })
+            .collect();
+
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        results
+    }
+}
+
+/// Normalize a string into search tokens.
+/// Strips "tool" suffix, lowercases, removes non-alphanumeric, splits on delimiters.
+pub fn canonical_tokens(s: &str) -> Vec<String> {
+    s.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric() && c != '+')
+        .filter(|s| !s.is_empty() && s.len() > 1)
+        .map(|s| s.trim_end_matches("tool").to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 impl std::fmt::Debug for ToolRegistry {

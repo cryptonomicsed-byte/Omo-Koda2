@@ -1095,10 +1095,17 @@ impl Steward {
                 };
 
                 // 2. Set Cooldown after successful execution
+                // 3. Set Cooldown & Burn Synapse
+                let cost = crate::usage::estimate_tool_cost(&tool);
+                {
+                    let agent_mut = self.ensure_born_mut()?;
+                    agent_mut.burn_synapse(cost).map_err(|e| format!("Budget failure: {}", e))?;
+                }
+
                 let cooldown_duration = match tool.as_str() {
                     "bash" | "wasm" | "exec" => 60,
                     "write_file" | "edit_file" | "apply_patch" => 10,
-                    _ => 5,
+                    _ => 0,
                 };
                 self.rhythm_tracker.set(&tool, cooldown_duration);
 
@@ -1607,13 +1614,21 @@ impl Steward {
             }
         };
 
-        // 3. Set Cooldown
-        let cooldown_duration = match call.tool.as_str() {
+        let tool = call.tool.clone();
+        // 3. Set Cooldown & Burn Synapse
+        let cost = crate::usage::estimate_tool_cost(&tool);
+        {
+            let agent_mut = self.ensure_born_mut()?;
+            agent_mut.burn_synapse(cost).map_err(|e| format!("Budget failure: {}", e))?;
+        }
+
+        let cooldown_duration = match tool.as_str() {
             "bash" | "wasm" | "exec" => 60,
             "write_file" | "edit_file" | "apply_patch" => 10,
-            _ => 5,
+            _ => 0,
         };
-        self.rhythm_tracker.set(&call.tool, cooldown_duration);
+        self.rhythm_tracker.set(&tool, cooldown_duration);
+
 
         // Justice module: Reputation update
         let current_rep = self.reputation();

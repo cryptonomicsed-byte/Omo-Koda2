@@ -188,8 +188,6 @@ impl UsageTracker {
     #[must_use]
     pub fn from_session(_session: &SessionState) -> Self {
         let tracker = Self::new();
-        // Since session.encrypted_private holds the private messages,
-        // this requires decryption to access properly.
         // For v1, we will skip tracking private messages to avoid decryption overhead.
         tracker
     }
@@ -216,5 +214,15 @@ impl UsageTracker {
     #[must_use]
     pub fn turns(&self) -> u32 {
         self.turns
+    }
+}
+
+pub fn estimate_tool_cost(tool: &str) -> f64 {
+    match tool {
+        "bash" | "wasm" | "exec" => 5000.0,
+        "write_file" | "edit_file" | "apply_patch" => 2000.0,
+        "read_file" | "glob" | "grep" => 1000.0,
+        "web_search" | "web_fetch" => 3000.0,
+        _ => 500.0,
     }
 }

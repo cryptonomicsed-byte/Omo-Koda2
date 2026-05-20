@@ -14,6 +14,61 @@ pub struct ConfigEntry {
     pub path: PathBuf,
 }
 
+/// Feature flags controlling emergent agent behaviors
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FeatureFlags {
+    /// Auto-compact session when message count exceeds threshold (default: true)
+    pub auto_compact: bool,
+    /// Message count threshold to trigger compaction (default: 50)
+    pub compact_threshold: usize,
+    /// Keep N most recent messages after compaction (default: 10)
+    pub compact_keep_recent: usize,
+    /// Auto-save memory to Living Odu after each think (default: true)
+    pub auto_memory: bool,
+    /// Enable hook pipeline for pre/post tool execution (default: true)
+    pub hooks_enabled: bool,
+    /// Auto-generate receipts for all acts (default: true)
+    pub auto_receipts: bool,
+    /// Maximum agentic loop iterations for think_agentic (default: 25)
+    pub max_agentic_turns: u32,
+}
+
+impl Default for FeatureFlags {
+    fn default() -> Self {
+        Self {
+            auto_compact: true,
+            compact_threshold: 50,
+            compact_keep_recent: 10,
+            auto_memory: true,
+            hooks_enabled: true,
+            auto_receipts: true,
+            max_agentic_turns: 25,
+        }
+    }
+}
+
+/// Full agent configuration with layered settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentConfig {
+    pub source: ConfigSource,
+    pub feature_flags: FeatureFlags,
+    pub default_provider: String,
+    pub default_privacy: bool,
+    pub default_sandbox: bool,
+}
+
+impl Default for AgentConfig {
+    fn default() -> Self {
+        Self {
+            source: ConfigSource::User,
+            feature_flags: FeatureFlags::default(),
+            default_provider: "ollama".to_string(),
+            default_privacy: true,
+            default_sandbox: true,
+        }
+    }
+}
+
 pub struct ConfigLoader {
     cwd: PathBuf,
     config_home: PathBuf,
@@ -57,4 +112,63 @@ impl ConfigLoader {
             },
         ]
     }
+
+    /// Load and merge all config sources, with Local > Project > User priority
+    #[must_use]
+    pub fn load_merged(&self) -> AgentConfig {
+        let entries = self.discover();
+        let mut config = AgentConfig::default();
+
+        // Load in order: User, then Project, then Local (each overrides previous)
+        for entry in &entries {
+            if let Ok(content) = std::fs::read_to_string(&entry.path) {
+                if let Ok(partial) = serde_json::from_str::<serde_json::Value>(&content) {
+                    config = merge_config(config, partial, entry.source.clone());
+                }
+            }
+        }
+        config
+    }
+}
+
+fn merge_config(
+    mut base: AgentConfig,
+    overlay: serde_json::Value,
+    source: ConfigSource,
+) -> AgentConfig {
+    base.source = source;
+    if let Some(v) = overlay["default_provider"].as_str() {
+        base.default_provider = v.to_string();
+    }
+    if let Some(v) = overlay["default_privacy"].as_bool() {
+        base.default_privacy = v;
+    }
+    if let Some(v) = overlay["default_sandbox"].as_bool() {
+        base.default_sandbox = v;
+    }
+    // Feature flags
+    if let Some(ff) = overlay.get("feature_flags") {
+        if let Some(v) = ff["auto_compact"].as_bool() {
+            base.feature_flags.auto_compact = v;
+        }
+        if let Some(v) = ff["compact_threshold"].as_u64() {
+            base.feature_flags.compact_threshold = v as usize;
+        }
+        if let Some(v) = ff["compact_keep_recent"].as_u64() {
+            base.feature_flags.compact_keep_recent = v as usize;
+        }
+        if let Some(v) = ff["auto_memory"].as_bool() {
+            base.feature_flags.auto_memory = v;
+        }
+        if let Some(v) = ff["hooks_enabled"].as_bool() {
+            base.feature_flags.hooks_enabled = v;
+        }
+        if let Some(v) = ff["auto_receipts"].as_bool() {
+            base.feature_flags.auto_receipts = v;
+        }
+        if let Some(v) = ff["max_agentic_turns"].as_u64() {
+            base.feature_flags.max_agentic_turns = v as u32;
+        }
+    }
+    base
 }

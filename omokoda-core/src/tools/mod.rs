@@ -8,6 +8,7 @@ use crate::sandbox::WasmSandbox;
 
 pub mod file_ops;
 pub mod sovereign;
+pub mod tool_definitions;
 
 #[derive(Debug, Clone)]
 pub struct ExecutionContext {
@@ -255,6 +256,22 @@ impl ToolRegistry {
         }
 
         Ok((output, usage))
+    }
+}
+
+pub struct ToolSummary {
+    pub name: String,
+    pub description: String,
+    pub params_schema: Option<std::collections::HashMap<String, crate::tools::tool_definitions::ToolProperty>>,
+}
+
+impl ToolRegistry {
+    pub fn get_definition(&self, name: &str) -> Option<ToolSummary> {
+        self.tools.get(name).map(|t| ToolSummary {
+            name: t.name().to_string(),
+            description: t.description().to_string(),
+            params_schema: None, // Tools can override this later
+        })
     }
 }
 

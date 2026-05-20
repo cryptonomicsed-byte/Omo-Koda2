@@ -1884,6 +1884,279 @@ impl Steward {
             .as_mut()
             .ok_or_else(|| "agent must be born first".to_string())
     }
+
+    /// Agentic think: LLM can request tools, get results, continue reasoning (up to max_turns)
+    pub async fn think_agentic(
+        &mut self,
+        prompt: String,
+        private: bool,
+        max_turns: u32,
+    ) -> Result<ExecutionResult, String> {
+        use crate::tools::tool_definitions::{LlmResponse, ToolDefinition, ToolInputSchema, ToolProperty};
+        use crate::session::{ContentBlock, ConversationMessage, MessageRole};
+
+        let max_turns = max_turns.clamp(1, 25);
+
+        // 1. Safety checks (same as regular think)
+        if private {
+            let agent = self.ensure_born()?;
+            if agent.private_data.is_none() {
+                return Err("Agent is locked. Unlock first with /unlock <password>".to_string());
+            }
+            let provider_name = agent.session().config.default_provider.clone();
+            match provider_name.as_str() {
+                "webllm" | "ollama" => {}
+                _ => {
+                    return Err(format!(
+                        "Private thoughts require a local provider. Current: {}. Allowed: webllm, ollama.",
+                        provider_name
+                    ))
+                }
+            }
+        }
+
+        // 2. Build tool definitions from available tools
+        let tool_definitions: Vec<ToolDefinition> = {
+            let agent = self.ensure_born()?;
+            let exec_ctx = crate::tools::ExecutionContext {
+                agent_id: agent.id().clone(),
+                name: agent.name().to_string(),
+                tier: agent.tier(),
+                reputation: agent.reputation(),
+                odu_identity: agent.snapshot.odu_identity.clone(),
+                workspace_root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+                sandbox_mode: agent.snapshot.session.config.default_sandbox,
+            };
+            self.tools
+                .list_available(&exec_ctx, &self.permission_policy)
+                .into_iter()
+                .filter_map(|name| {
+                    self.tools.get_definition(&name).map(|def| ToolDefinition {
+                        name: name.clone(),
+                        description: def.description.clone(),
+                        input_schema: ToolInputSchema {
+                            type_: "object".to_string(),
+                            properties: def.params_schema.unwrap_or_else(|| {
+                                let mut m = std::collections::HashMap::new();
+                                m.insert(
+                                    "input".to_string(),
+                                    ToolProperty {
+                                        type_: "string".to_string(),
+                                        description: Some("Tool input".to_string()),
+                                        enum_values: None,
+                                    },
+                                );
+                                m
+                            }),
+                            required: vec![],
+                        },
+                    })
+                })
+                .collect()
+        };
+
+        // 3. Initialize conversation
+        let provider_name = self.ensure_born()?.session().config.default_provider.clone();
+        let mut messages: Vec<ConversationMessage> = {
+            let agent = self.ensure_born()?;
+            agent.snapshot.session.public_messages.clone()
+        };
+        messages.push(ConversationMessage::new_user(prompt.clone(), private));
+
+        let mut total_usage = crate::usage::TokenUsage::default();
+        #[allow(unused_assignments)]
+        let mut final_response = String::new();
+        let mut turn_count = 0u32;
+
+        // 4. THE LOOP
+        loop {
+            if turn_count >= max_turns {
+                return Err(format!(
+                    "think_agentic: max_turns ({}) reached without final response",
+                    max_turns
+                ));
+            }
+            turn_count += 1;
+
+            // 4a. Budget check
+            {
+                let agent = self.ensure_born()?;
+                if agent.synapse() < 100.0 {
+                    return Err("insufficient synapse budget".to_string());
+                }
+            }
+
+            // 4b. Call provider with current messages + tools
+            let response = self
+                .providers
+                .complete_with_tools(&provider_name, &messages, &tool_definitions, private)
+                .await
+                .map_err(|e| format!("Provider error on turn {}: {}", turn_count, e))?;
+
+            let turn_usage = response.usage();
+            total_usage.input_tokens += turn_usage.input_tokens;
+            total_usage.output_tokens += turn_usage.output_tokens;
+
+            // Burn synapse for this turn
+            {
+                let burn = turn_usage.compute_synapse_burn().max(1000.0);
+                self.ensure_born_mut()?.burn_synapse(burn)?;
+            }
+
+            match response {
+                LlmResponse::Text { content, .. } => {
+                    // LLM is done — record final response
+                    final_response = content.clone();
+                    messages.push(ConversationMessage::new_assistant(content, private));
+                    break;
+                }
+                LlmResponse::ToolUse {
+                    text_prefix,
+                    calls,
+                    ..
+                } => {
+                    // Add assistant message with tool use blocks
+                    let mut blocks = Vec::new();
+                    if let Some(text) = &text_prefix {
+                        if !text.is_empty() {
+                            blocks.push(ContentBlock::Text { text: text.clone() });
+                        }
+                    }
+                    for call in &calls {
+                        blocks.push(ContentBlock::ToolUse {
+                            id: call.id.clone(),
+                            name: call.name.clone(),
+                            input: call.input.clone(),
+                        });
+                    }
+                    messages.push(ConversationMessage {
+                        role: MessageRole::Assistant,
+                        blocks,
+                        is_private: private,
+                        timestamp: current_unix_timestamp(),
+                    });
+
+                    // Execute each tool call
+                    let mut tool_result_blocks = Vec::new();
+                    for call in &calls {
+                        let tool_result = self
+                            .execute_tool_call_for_agentic(&call.name, &call.input, private)
+                            .await;
+                        let (output, is_error) = match tool_result {
+                            Ok(out) => (out, false),
+                            Err(e) => (format!("Tool error: {}", e), true),
+                        };
+                        tool_result_blocks.push(ContentBlock::ToolResult {
+                            tool_use_id: call.id.clone(),
+                            output,
+                            is_error,
+                        });
+                    }
+                    // Add tool results as a single Tool message
+                    messages.push(ConversationMessage {
+                        role: MessageRole::Tool,
+                        blocks: tool_result_blocks,
+                        is_private: private,
+                        timestamp: current_unix_timestamp(),
+                    });
+                }
+            }
+        }
+
+        // 5. Persist conversation to session
+        {
+            let agent_mut = self.ensure_born_mut()?;
+            agent_mut.add_message(ConversationMessage::new_user(prompt.clone(), private));
+            agent_mut.add_message(ConversationMessage::new_assistant(
+                final_response.clone(),
+                private,
+            ));
+
+            // Small reputation gain for agentic work
+            let current_rep = agent_mut.reputation();
+            agent_mut.update_reputation(
+                current_rep + 0.1,
+                crate::reputation::ReputationChangeReason::Think,
+            );
+        }
+
+        // 6. Record receipt
+        let receipt_payload = serde_json::json!({
+            "primitive": "think_agentic",
+            "turns": turn_count,
+            "max_turns": max_turns,
+            "private": private,
+            "output_tokens": total_usage.output_tokens,
+        })
+        .to_string();
+        let receipt = self.record_receipt("think_agentic", &receipt_payload, total_usage)?;
+
+        self.usage_tracker.record(total_usage);
+        self.auto_save();
+
+        Ok(ExecutionResult {
+            receipt: Some(receipt),
+            private_mode: private,
+            tool_output: Some(final_response),
+        })
+    }
+
+    /// Execute a single tool call during the agentic loop
+    async fn execute_tool_call_for_agentic(
+        &mut self,
+        tool_name: &str,
+        params: &str,
+        _private: bool,
+    ) -> Result<String, String> {
+        let (agent_id, name, tier, reputation, odu_identity, default_sandbox) = {
+            let agent = self.ensure_born()?;
+            (
+                agent.id().clone(),
+                agent.name().to_string(),
+                agent.tier(),
+                agent.reputation(),
+                agent.odu_identity().clone(),
+                agent.session().config.default_sandbox,
+            )
+        };
+
+        if !self.tools.is_allowed(tool_name, tier) {
+            return Err(format!(
+                "Tool '{}' requires higher tier (current: {})",
+                tool_name, tier
+            ));
+        }
+
+        // Permission check
+        let auth = self
+            .permission_policy
+            .authorize(tool_name, params, None);
+        if let crate::permissions::PermissionOutcome::Deny { reason } = auth {
+            return Err(format!("Permission denied: {}", reason));
+        }
+
+        let context = crate::tools::ExecutionContext {
+            agent_id,
+            name,
+            tier,
+            reputation,
+            odu_identity,
+            workspace_root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            sandbox_mode: default_sandbox,
+        };
+
+        let (output, tool_usage) = self
+            .tools
+            .execute(tool_name, params, context, &self.permission_policy, None)
+            .await?;
+
+        // Burn synapse for tool cost
+        let cost = crate::usage::estimate_tool_cost(tool_name);
+        self.ensure_born_mut()?
+            .burn_synapse(tool_usage.compute_synapse_burn() + cost)?;
+
+        Ok(output)
+    }
 }
 
 fn current_unix_timestamp() -> u64 {

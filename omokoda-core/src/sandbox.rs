@@ -1,10 +1,15 @@
 use std::path::Path;
+use wasmtime::{Engine, Store, Module, Linker};
+use wasmtime_wasi::WasiCtxBuilder;
 
-pub struct WasmSandbox;
+pub struct WasmSandbox {
+    engine: Engine,
+}
 
 impl WasmSandbox {
     pub fn new() -> Result<Self, String> {
-        Ok(Self)
+        let engine = Engine::default();
+        Ok(Self { engine })
     }
 
     pub fn execute_module(
@@ -13,14 +18,28 @@ impl WasmSandbox {
         _args: &[String],
         _sandboxed: bool,
     ) -> Result<String, String> {
-        // Check if file exists
-        if !module_path.exists() {
-            return Err(format!("WASM module not found: {}", module_path.display()));
-        }
+        let wasi = WasiCtxBuilder::new()
+            .inherit_stdout()
+            .inherit_stderr()
+            .build();
 
-        // Minimal WASM execution stub - returns success without running module
-        // Full WASI integration requires additional setup with wasmtime_wasi preview2
-        // This is a placeholder for future WASI sandbox implementation
-        Ok("WASM execution succeeded".to_string())
+        let mut store = Store::new(&self.engine, wasi);
+        let module = Module::from_file(&self.engine, module_path)
+            .map_err(|e| format!("failed to load module: {}", e))?;
+
+        let mut linker = Linker::new(&self.engine);
+        wasmtime_wasi::add_to_linker(&mut linker, |s| s)
+            .map_err(|e| format!("failed to add wasi: {}", e))?;
+
+        let instance = linker
+            .instantiate(&mut store, &module)
+            .map_err(|e| format!("failed to instantiate: {}", e))?;
+
+        let func = instance.get_typed_func::<(), ()>(&mut store, "_start")
+            .map_err(|_| "module lacks _start".to_string())?;
+
+        func.call(&mut store, ()).map_err(|e| format!("execution error: {}", e))?;
+
+        Ok("WASM execution completed".to_string())
     }
 }

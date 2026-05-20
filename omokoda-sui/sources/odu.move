@@ -123,13 +123,23 @@ module omokoda_sui::odu {
         )
     }
 
-    /// Check if an identity exists in the registry
-    public fun identity_exists(registry: &ODURegistry, fingerprint: vector<u8>): bool {
-        table::contains(&registry.identities, fingerprint)
+    /// Publicly anchor a receipt Merkle root to an identity
+    public entry fun anchor_receipt(
+        identity: &mut ODUIdentity,
+        merkle_root: vector<u8>,
+        ctx: &mut TxContext
+    ) {
+        // Here we could store the root in a table or emit an event
+        // For anchoring, emitting an event is sufficient for indexers
+        event::emit(ReceiptAnchored {
+            identity: object::uid_to_address(&identity.id),
+            merkle_root,
+            timestamp: tx_context::epoch_timestamp_ms(ctx),
+        });
     }
 
-    /// Get total registered identities count
-    public fun total_identities(registry: &ODURegistry): u64 {
-        registry.total_count
+    struct ReceiptAnchored has copy, drop {
+        identity: address,
+        merkle_root: vector<u8>,
+        timestamp: u64,
     }
-}

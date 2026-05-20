@@ -137,9 +137,7 @@ impl PluginRegistry {
     }
 
     /// Get all tool configs from enabled plugins
-    pub fn active_tools(
-        &self,
-    ) -> Vec<(&str, &crate::plugins::manifest::PluginToolConfig)> {
+    pub fn active_tools(&self) -> Vec<(&str, &crate::plugins::manifest::PluginToolConfig)> {
         self.list_enabled()
             .iter()
             .flat_map(|p| {

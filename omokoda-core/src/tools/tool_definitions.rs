@@ -1,7 +1,7 @@
 // Tool definition types for LLM-facing tool calling
 
-use serde::{Deserialize, Serialize};
 use crate::usage::TokenUsage;
+use serde::{Deserialize, Serialize};
 
 /// JSON Schema property for tool input
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,7 +18,7 @@ pub struct ToolProperty {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolInputSchema {
     #[serde(rename = "type")]
-    pub type_: String,                           // always "object"
+    pub type_: String, // always "object"
     pub properties: std::collections::HashMap<String, ToolProperty>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub required: Vec<String>,
@@ -37,7 +37,7 @@ pub struct ToolDefinition {
 pub struct ToolCall {
     pub id: String,
     pub name: String,
-    pub input: String,   // JSON string of params
+    pub input: String, // JSON string of params
 }
 
 /// LLM response that may contain text, tool calls, or both
@@ -48,7 +48,7 @@ pub enum LlmResponse {
         usage: TokenUsage,
     },
     ToolUse {
-        text_prefix: Option<String>,   // text before tool calls (may be empty)
+        text_prefix: Option<String>, // text before tool calls (may be empty)
         calls: Vec<ToolCall>,
         usage: TokenUsage,
     },

@@ -67,8 +67,8 @@ impl PluginManifest {
     }
 
     pub fn from_file(path: &std::path::Path) -> Result<Self, String> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| format!("Failed to read manifest: {}", e))?;
+        let content =
+            std::fs::read_to_string(path).map_err(|e| format!("Failed to read manifest: {}", e))?;
         Self::from_json(&content)
     }
 

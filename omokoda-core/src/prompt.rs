@@ -155,7 +155,10 @@ impl SystemPromptBuilder {
             .map(|t| format!("  - {}", t))
             .collect::<Vec<_>>()
             .join("\n");
-        format!("Available tools (tier {} access):\n{}", self.tier, tool_list)
+        format!(
+            "Available tools (tier {} access):\n{}",
+            self.tier, tool_list
+        )
     }
 
     fn hermetic_principles_section(&self) -> String {
@@ -228,8 +231,7 @@ mod tests {
 
     #[test]
     fn test_build_with_custom_instructions() {
-        let builder =
-            make_builder().with_instructions(vec!["Always be helpful.".to_string()]);
+        let builder = make_builder().with_instructions(vec!["Always be helpful.".to_string()]);
         let prompt = builder.build();
         assert!(prompt.contains("Always be helpful."));
     }

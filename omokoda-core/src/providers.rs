@@ -57,7 +57,10 @@ pub trait LlmProvider: Send + Sync {
             })
             .unwrap_or_default();
         let (text, usage) = self.generate(&prompt, messages).await?;
-        Ok(LlmResponse::Text { content: text, usage })
+        Ok(LlmResponse::Text {
+            content: text,
+            usage,
+        })
     }
 }
 
@@ -155,8 +158,7 @@ impl ProviderRegistry {
         tools: &[ToolDefinition],
         private_mode: bool,
     ) -> Result<LlmResponse, String> {
-        let provider = if provider_name.is_empty()
-            || provider_name.eq_ignore_ascii_case("default")
+        let provider = if provider_name.is_empty() || provider_name.eq_ignore_ascii_case("default")
         {
             self.providers.iter().map(Box::as_ref).find(|p| {
                 if private_mode {
@@ -664,8 +666,8 @@ impl AnthropicProvider {
                 "tool_use" => {
                     let id = block["id"].as_str().unwrap_or("").to_string();
                     let name = block["name"].as_str().unwrap_or("").to_string();
-                    let input = serde_json::to_string(&block["input"])
-                        .unwrap_or_else(|_| "{}".to_string());
+                    let input =
+                        serde_json::to_string(&block["input"]).unwrap_or_else(|_| "{}".to_string());
                     tool_calls.push(ToolCall { id, name, input });
                 }
                 _ => {}
@@ -708,7 +710,8 @@ impl LlmProvider for AnthropicProvider {
         tools: &[ToolDefinition],
         private: bool,
     ) -> Result<LlmResponse, String> {
-        self.generate_with_tools_impl(messages, tools, private).await
+        self.generate_with_tools_impl(messages, tools, private)
+            .await
     }
 
     async fn generate(

@@ -108,8 +108,8 @@ impl Tool for WriteTodoTool {
         params: &str,
         context: &ExecutionContext,
     ) -> Result<(String, TokenUsage), String> {
-        let v: serde_json::Value = serde_json::from_str(params)
-            .map_err(|e| format!("todo_write requires JSON: {}", e))?;
+        let v: serde_json::Value =
+            serde_json::from_str(params).map_err(|e| format!("todo_write requires JSON: {}", e))?;
 
         let content = v["content"].as_str().ok_or("missing content")?;
         let priority_str = v["priority"].as_str().unwrap_or("medium");
@@ -266,7 +266,9 @@ mod tests {
 
     #[test]
     fn test_priority_sort_key() {
-        assert!(priority_sort_key(&TodoPriority::Critical) > priority_sort_key(&TodoPriority::High));
+        assert!(
+            priority_sort_key(&TodoPriority::Critical) > priority_sort_key(&TodoPriority::High)
+        );
         assert!(priority_sort_key(&TodoPriority::High) > priority_sort_key(&TodoPriority::Medium));
         assert!(priority_sort_key(&TodoPriority::Medium) > priority_sort_key(&TodoPriority::Low));
     }

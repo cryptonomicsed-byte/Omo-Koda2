@@ -102,7 +102,8 @@ impl<'a> IntentCompileContext<'a> {
                 primary_index: 0, // Not strictly used for boundary checks
                 mnemonic: String::new(),
             },
-            workspace_root: std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+            workspace_root: std::env::current_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from(".")),
             sandbox_mode: default_sandbox,
         }
     }

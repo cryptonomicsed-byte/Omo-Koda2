@@ -18,8 +18,13 @@ pub enum EnforcementError {
 pub fn validate_path_boundary(root: &Path, target: &Path) -> Result<PathBuf, EnforcementError> {
     // 1. Enforce /private boundary in runtime
     let target_str = target.to_string_lossy();
-    if target_str.starts_with("/private") || target_str.starts_with("private/") || target_str == "private" {
-        return Err(EnforcementError::PrivateAccessViolation(target.to_path_buf()));
+    if target_str.starts_with("/private")
+        || target_str.starts_with("private/")
+        || target_str == "private"
+    {
+        return Err(EnforcementError::PrivateAccessViolation(
+            target.to_path_buf(),
+        ));
     }
 
     let canonical_root = root

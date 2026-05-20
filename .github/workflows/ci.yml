@@ -44,10 +44,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: erlef/setup-beam@v2
-        with:
-          elixir-version: "1.16.3"
-          otp-version: "26.2"
+      - name: Install Erlang + Elixir
+        run: |
+          wget -q https://packages.erlang-solutions.com/erlang-solutions_2.0_all.deb
+          sudo dpkg -i erlang-solutions_2.0_all.deb
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends esl-erlang elixir
+          elixir --version
       - name: Test
         run: mix test
         working-directory: omokoda-swarm

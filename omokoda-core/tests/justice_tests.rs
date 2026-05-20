@@ -62,6 +62,7 @@ mod justice_tests {
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
+        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
 
         // Basic: very short output
         let test_file = "basic.txt";
@@ -78,6 +79,7 @@ mod justice_tests {
         let useful_content = "A".repeat(150);
         let test_file2 = "useful.txt";
         std::fs::write(test_file2, &useful_content).unwrap();
+        steward.clear_cooldowns();
         steward.set_reputation_for_test(10.0);
         steward
             .dispatch(parse(r#"act "read_file" "useful.txt""#).unwrap()[0].clone())
@@ -128,6 +130,7 @@ mod justice_tests {
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
+        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
         steward.set_reputation_for_test(10.0);
 
         steward.add_pre_hook(Box::new(ReputationGate {

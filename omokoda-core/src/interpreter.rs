@@ -87,8 +87,8 @@ pub struct AgentState {
     pub current_memory_key: [u8; 32],
 }
 
-impl AgentState {
-    pub fn birth(name: String, metadata: Vec<MetadataPair>) -> Self {
+impl Steward {
+    pub fn birth(&mut self, name: String, metadata: Vec<MetadataPair>) -> Result<(), String> {
         use crate::identity::vault::SealVault;
         use crate::memory::odu_keys::OduKeys;
         use omokoda_hermetic::entropy::odu::OduEntropy;
@@ -154,7 +154,10 @@ impl AgentState {
             .expect("Failed to derive wallet key");
         let public_key = signing_key.verifying_key().to_bytes();
 
-        Self {
+        let synapse = self.dopamine_pool.compute_initial_synapse();
+        self.dopamine_pool.allocate(synapse);
+
+        let agent = AgentState {
             version: AGENT_STATE_VERSION,
             id,
             name,
@@ -172,13 +175,19 @@ impl AgentState {
             public_key,
             private_data: Some(private_data),
             resonance,
-            synapse: 8_600_000.0,
+            synapse,
             last_active_timestamp: birth_timestamp,
             k_root,
             act_counter: 0,
             current_memory_key: k0,
-        }
+        };
+        self.agent = Some(agent);
+        self.auto_save();
+        Ok(())
     }
+}
+
+impl AgentState {
 
     pub fn id(&self) -> &AgentId {
         &self.id
@@ -332,6 +341,10 @@ pub struct Steward {
     usage_tracker: crate::usage::UsageTracker,
     #[serde(skip)]
     persistence_path: Option<PathBuf>,
+    #[serde(skip, default = "crate::rhythm::CooldownTracker::new")]
+    rhythm_tracker: crate::rhythm::CooldownTracker,
+    #[serde(skip, default = "crate::economics::DopaminePool::default")]
+    dopamine_pool: crate::economics::DopaminePool,
     #[serde(skip, default = "default_session_dir")]
     session_dir: PathBuf,
     #[serde(skip)]
@@ -367,6 +380,8 @@ impl Steward {
             session_dir: default_session_dir(),
             unlock_key: None,
             event_bus: SovereignEventBus::default(),
+            rhythm_tracker: crate::rhythm::CooldownTracker::new(),
+            dopamine_pool: crate::economics::DopaminePool::default(),
         }
     }
 
@@ -403,12 +418,17 @@ impl Steward {
         self.justice.hook_runner.post_act.push(hook);
     }
 
+    pub fn clear_cooldowns(&mut self) {
+        self.rhythm_tracker = crate::rhythm::CooldownTracker::new();
+    }
+
     pub async fn dispatch(&mut self, stmt: Statement) -> Result<ExecutionResult, String> {
         let _ = OPERATIONS; // fractal invariant: 21 operations
         match stmt {
             Statement::Birth { name, metadata } => {
                 // Phase 1-7: BIRTH = 7^1 (fractal depth 1)
-                let agent = AgentState::birth(name, metadata);
+                self.birth(name, metadata)?;
+                let agent = self.ensure_born()?;
                 let provider = agent.session.config.default_provider.clone();
                 if !provider.is_empty()
                     && !provider.eq_ignore_ascii_case("default")
@@ -416,7 +436,6 @@ impl Steward {
                 {
                     return Err(format!("unknown provider '{}' in birth metadata", provider));
                 }
-                self.agent = Some(agent.clone());
                 self.auto_save();
 
                 // Publish AgentBorn event
@@ -616,17 +635,8 @@ impl Steward {
             } => {
                 // Phase 1-7: ACT = 7^3 (fractal depth 3)
 
-                // Apply synapse decay for elapsed inactivity before any act
-                {
-                    let now = current_unix_timestamp();
-                    let agent_mut = self.ensure_born_mut()?;
-                    let elapsed = now.saturating_sub(agent_mut.last_active_timestamp);
-                    if elapsed > 0 {
-                        let decay = crate::economics::compute_synapse_decay(agent_mut.synapse, elapsed);
-                        agent_mut.synapse = (agent_mut.synapse - decay).max(0.0);
-                        agent_mut.last_active_timestamp = now;
-                    }
-                }
+                // 0. Rhythm Pruning
+                self.rhythm_tracker.prune();
 
                 let (agent_id, name, tier, reputation, odu_identity, default_sandbox) = {
                     let agent = self.ensure_born()?;
@@ -647,16 +657,45 @@ impl Steward {
                     ));
                 }
 
-                // Sabbath guard: queue irreversible actions on UTC Saturday
+                // 1. Permission Authorization (Strictly Pre-Act)
+                let auth_result = self.permission_policy.authorize(&tool, &params, None);
+                if let crate::permissions::PermissionOutcome::Deny { reason } = auth_result {
+                    return Err(format!("Permission denied: {}", reason));
+                }
+
+                // Apply synapse decay for elapsed inactivity before any act
+                {
+                    let now = current_unix_timestamp();
+                    let agent_mut = self.ensure_born_mut()?;
+                    let elapsed = now.saturating_sub(agent_mut.last_active_timestamp);
+                    if elapsed > 0 {
+                        let decay = crate::economics::compute_synapse_decay(agent_mut.synapse, elapsed);
+                        agent_mut.synapse = (agent_mut.synapse - decay).max(0.0);
+                        agent_mut.last_active_timestamp = now;
+                    }
+                }
+
+                // Sabbath guard & Cooldowns: Rhythm module integration
                 let reversibility = crate::rhythm::RhythmGate::classify_reversibility(&tool);
+                let cooldown_remaining = self.rhythm_tracker.remaining(&tool);
                 let rhythm_decision =
-                    crate::rhythm::RhythmGate::check(&tool, reversibility, 0);
-                if let crate::rhythm::RhythmDecision::QueuedForSabbathEnd { reason } = rhythm_decision {
-                    return Ok(ExecutionResult {
-                        receipt: None,
-                        private_mode: false,
-                        tool_output: Some(format!("[SABBATH QUEUE] {}", reason)),
-                    });
+                    crate::rhythm::RhythmGate::check(&tool, reversibility, cooldown_remaining);
+                
+                match rhythm_decision {
+                    crate::rhythm::RhythmDecision::QueuedForSabbathEnd { reason } => {
+                        return Ok(ExecutionResult {
+                            receipt: None,
+                            private_mode: false,
+                            tool_output: Some(format!("[SABBATH QUEUE] {}", reason)),
+                        });
+                    }
+                    crate::rhythm::RhythmDecision::Cooldown { remaining_secs } => {
+                        return Err(format!(
+                            "Tool '{}' is on cooldown. {} seconds remaining.",
+                            tool, remaining_secs
+                        ));
+                    }
+                    crate::rhythm::RhythmDecision::Allow => {}
                 }
 
                 // Justice HookRunner: Pre-act
@@ -717,11 +756,19 @@ impl Steward {
                         &tool,
                         &params,
                         context,
-                        &crate::permissions::PermissionPolicy::default_steward_policy(self.permission_policy.active_mode()),
+                        &self.permission_policy,
                         None,
                     )
                     .await
                     .map_err(|e| format!("Tool execution failed: {}", e))?;
+
+                // 2. Set Cooldown after successful execution
+                let cooldown_duration = match tool.as_str() {
+                    "bash" | "wasm" | "exec" => 60,
+                    "write_file" | "edit_file" | "apply_patch" => 10,
+                    _ => 5,
+                };
+                self.rhythm_tracker.set(&tool, cooldown_duration);
 
                 // Justice module: Reputation update
                 let current_rep = self.reputation();
@@ -1054,7 +1101,7 @@ impl Steward {
 
         if !compilation.direct_act_calls.is_empty() {
             let mut outputs = Vec::new();
-            let mut total_usage = TokenUsage::default();
+            let total_usage = TokenUsage::default();
             for call in &compilation.direct_act_calls {
                 if call.high_risk {
                     return Ok((format_compilation_response(compilation), TokenUsage::default()));
@@ -1082,6 +1129,15 @@ impl Steward {
         call: &DirectActCall,
         private_context: bool,
     ) -> Result<(Receipt, String), String> {
+        // 0. Rhythm Pruning
+        self.rhythm_tracker.prune();
+
+        // 1. Permission Authorization
+        let auth_result = self.permission_policy.authorize(&call.tool, &call.params, None);
+        if let crate::permissions::PermissionOutcome::Deny { reason } = auth_result {
+            return Err(format!("Permission denied: {}", reason));
+        }
+
         let (agent_id, name, tier, reputation, odu_identity, default_sandbox) = {
             let agent = self.ensure_born()?;
             (
@@ -1116,6 +1172,25 @@ impl Steward {
                 "Tool '{}' requires higher reputation (current tier: {})",
                 call.tool, tier
             ));
+        }
+
+        // 2. Rhythm Gate
+        let reversibility = crate::rhythm::RhythmGate::classify_reversibility(&call.tool);
+        let cooldown_remaining = self.rhythm_tracker.remaining(&call.tool);
+        let rhythm_decision =
+            crate::rhythm::RhythmGate::check(&call.tool, reversibility, cooldown_remaining);
+        
+        match rhythm_decision {
+            crate::rhythm::RhythmDecision::QueuedForSabbathEnd { reason } => {
+                return Err(format!("[SABBATH QUEUE] {}", reason));
+            }
+            crate::rhythm::RhythmDecision::Cooldown { remaining_secs } => {
+                return Err(format!(
+                    "Tool '{}' is on cooldown. {} seconds remaining.",
+                    call.tool, remaining_secs
+                ));
+            }
+            crate::rhythm::RhythmDecision::Allow => {}
         }
 
         // Hermetic Gate: Act
@@ -1158,13 +1233,21 @@ impl Steward {
                 &call.tool,
                 &call.params,
                 context,
-                &crate::permissions::PermissionPolicy::default_steward_policy(self.permission_policy.active_mode()),
+                &self.permission_policy,
                 None,
             )
             .await
             .map_err(|e| format!("Tool execution failed: {}", e))?;
 
-        // ... [Reputation update and hooks] ...
+        // 3. Set Cooldown
+        let cooldown_duration = match call.tool.as_str() {
+            "bash" | "wasm" | "exec" => 60,
+            "write_file" | "edit_file" | "apply_patch" => 10,
+            _ => 5,
+        };
+        self.rhythm_tracker.set(&call.tool, cooldown_duration);
+
+        // Justice module: Reputation update
         let current_rep = self.reputation();
         let agent = self.ensure_born()?;
         let hermetic_state = agent.hermetic_state().clone();
@@ -1400,7 +1483,7 @@ impl Steward {
             .ok_or_else(|| "agent must be born first".to_string())
     }
 
-    fn ensure_born_mut(&mut self) -> Result<&mut AgentState, String> {
+    pub fn ensure_born_mut(&mut self) -> Result<&mut AgentState, String> {
         self.agent
             .as_mut()
             .ok_or_else(|| "agent must be born first".to_string())

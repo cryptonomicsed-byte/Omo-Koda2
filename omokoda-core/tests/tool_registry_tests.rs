@@ -179,4 +179,34 @@ mod tool_registry_tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("must not contain '..'"));
     }
+
+    #[tokio::test]
+    async fn note_taking_tool_basic() {
+        let registry = ToolRegistry::new();
+        let context = omokoda_core::tools::ExecutionContext {
+            agent_id: omokoda_core::identity::AgentId::from_str("test-agent-1234567890"),
+            name: "test".to_string(),
+            tier: 0,
+            reputation: 0.0,
+            odu_identity: omokoda_core::identity::odu::OduIdentity {
+                primary_index: 0,
+                mnemonic: "test".to_string(),
+            },
+            workspace_root: std::env::current_dir().unwrap(),
+            sandbox_mode: false,
+        };
+
+        let params = r#"{"title": "test_note", "content": "hello world"}"#;
+        let (output, _) = registry.execute("note_taking", params, context, &PermissionPolicy::default_steward_policy(omokoda_core::permissions::PermissionMode::DangerFullAccess), None).await.unwrap();
+        
+        assert!(output.contains("hello world"));
+        
+        let note_path = std::env::current_dir().unwrap().join("notes/test_note.md");
+        assert!(note_path.exists());
+        let content = std::fs::read_to_string(&note_path).unwrap();
+        assert_eq!(content, "hello world");
+        
+        std::fs::remove_file(note_path).unwrap();
+        let _ = std::fs::remove_dir(std::env::current_dir().unwrap().join("notes"));
+    }
 }

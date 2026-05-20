@@ -51,6 +51,27 @@ impl ToolRegistry {
         registry.register(Box::new(WasmTool));
         registry.register(Box::new(WebSearchTool));
         registry.register(Box::new(AgentOrchestrationTool));
+        registry.register(Box::new(NoteTakingTool));
+
+        // Register Sovereign tools
+        registry.register(Box::new(sovereign::ApplyPatchTool));
+        registry.register(Box::new(sovereign::ExecTool));
+        registry.register(Box::new(sovereign::ProcessTool));
+        registry.register(Box::new(sovereign::WebFetchTool));
+        registry.register(Box::new(sovereign::BrowserTool));
+        registry.register(Box::new(sovereign::CanvasTool));
+        registry.register(Box::new(sovereign::NodesTool));
+        registry.register(Box::new(sovereign::ImageTool));
+        registry.register(Box::new(sovereign::MessageTool));
+        registry.register(Box::new(sovereign::CronTool));
+        registry.register(Box::new(sovereign::GatewayTool));
+        registry.register(Box::new(sovereign::SessionsListTool));
+        registry.register(Box::new(sovereign::SessionsHistoryTool));
+        registry.register(Box::new(sovereign::SessionsSendTool));
+        registry.register(Box::new(sovereign::SessionsSpawnTool));
+        registry.register(Box::new(sovereign::SessionStatusTool));
+        registry.register(Box::new(sovereign::AgentsListTool));
+
         registry
     }
 
@@ -507,6 +528,47 @@ impl Tool for AgentOrchestrationTool {
         _context: &ExecutionContext,
     ) -> Result<(String, crate::usage::TokenUsage), String> {
         Ok(("orchestration complete".to_string(), crate::usage::TokenUsage::default()))
+    }
+}
+
+struct NoteTakingTool;
+#[async_trait]
+impl Tool for NoteTakingTool {
+    fn name(&self) -> &str {
+        "note_taking"
+    }
+    fn description(&self) -> &str {
+        "Record a persistent note in the workspace. Params: JSON {title, content}"
+    }
+    fn required_tier(&self) -> u8 {
+        0
+    }
+    fn is_write_operation(&self) -> bool {
+        true
+    }
+    async fn execute(
+        &self,
+        params: &str,
+        context: &ExecutionContext,
+    ) -> Result<(String, crate::usage::TokenUsage), String> {
+        let v: serde_json::Value = if params.starts_with('{') {
+            serde_json::from_str(params).map_err(|e| e.to_string())?
+        } else {
+            serde_json::json!({
+                "title": "manual_note",
+                "content": params
+            })
+        };
+        let title = v["title"].as_str().ok_or("missing title")?;
+        let content = v["content"].as_str().ok_or("missing content")?;
+        
+        let path = format!("notes/{}.md", title.to_lowercase().replace(' ', "_"));
+        // Don't validate boundary here yet if we want to auto-create 'notes/'
+        
+        let output = file_ops::write_file(&path, content)
+            .map_err(|e| format!("failed to record note: {}", e))?;
+        let resp = serde_json::to_string(&output).map_err(|e| e.to_string())?;
+        Ok((resp, crate::usage::TokenUsage::default()))
     }
 }
 

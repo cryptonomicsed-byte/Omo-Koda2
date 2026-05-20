@@ -554,9 +554,14 @@ impl LlmProvider for MockProvider {
 
     async fn generate(
         &self,
-        _prompt: &str,
+        prompt: &str,
         _history: &[ConversationMessage],
     ) -> Result<(String, TokenUsage), String> {
-        Ok((self.response.clone(), TokenUsage::default()))
+        let usage = TokenUsage {
+            input_tokens: prompt.split_whitespace().count() as u32,
+            output_tokens: self.response.split_whitespace().count() as u32,
+            ..Default::default()
+        };
+        Ok((self.response.clone(), usage))
     }
 }

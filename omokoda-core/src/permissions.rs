@@ -58,8 +58,20 @@ impl Default for ClawPolicy {
     fn default() -> Self {
         Self {
             version: 1,
-            allow: vec!["read:workspace/*".to_string(), "read:*".to_string(), "write:workspace/*".to_string(), "exec:*".to_string()],
-            deny: vec!["read:/etc/*".to_string(), "net:*".to_string(), "exec:sudo".to_string(), "exec:rm_rf".to_string()],
+            allow: vec![
+                "read:workspace/*".to_string(),
+                "read:*".to_string(),
+                "write:workspace/*".to_string(),
+                "write:notes/*".to_string(),
+                "write:*".to_string(),
+                "exec:*".to_string(),
+            ],
+            deny: vec![
+                "read:/etc/*".to_string(),
+                "net:*".to_string(),
+                "exec:sudo".to_string(),
+                "exec:rm_rf".to_string(),
+            ],
         }
     }
 }

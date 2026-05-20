@@ -62,6 +62,12 @@ enum Command {
         #[command(subcommand)]
         action: SessionAction,
     },
+    /// Start the HTTP/SSE server
+    Serve {
+        /// Port to listen on
+        #[arg(short, long, default_value_t = 7777)]
+        port: u16,
+    },
 }
 
 #[derive(Subcommand)]
@@ -150,6 +156,12 @@ async fn main() -> Result<()> {
 
         Some(Command::Repl) | None => {
             repl().await?;
+        }
+
+        Some(Command::Serve { port }) => {
+            omokoda_core::server::start_server(port)
+                .await
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
         }
 
         Some(Command::Session { action }) => match action {

@@ -1,5 +1,6 @@
 pub mod bus;
 pub mod economics;
+pub mod server;
 pub mod identity;
 pub mod intent;
 pub mod interpreter;

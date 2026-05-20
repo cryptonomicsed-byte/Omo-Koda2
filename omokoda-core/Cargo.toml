@@ -36,6 +36,9 @@ prost-derive = "0.14.3"
 protobuf-codegen = "3.7.2"
 ifascript = { version = "0.1.0", path = "../../Ifascript" }
 serde_yaml = "0.9"
+axum = { version = "0.7", features = ["json", "macros"] }
+tower-http = { version = "0.5", features = ["cors"] }
+tokio-stream = { version = "0.1", features = ["net", "sync"] }
 
 [dev-dependencies]
 criterion = "0.5"

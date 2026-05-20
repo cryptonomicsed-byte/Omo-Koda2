@@ -8,6 +8,7 @@ use crate::execution::permission_enforcer::{validate_path_boundary, enforce_mode
 
 pub mod sovereign;
 pub mod file_ops;
+pub mod python_bridge;
 
 #[derive(Debug, Clone)]
 pub struct ExecutionContext {
@@ -47,6 +48,11 @@ impl ToolRegistry {
         registry.register(Box::new(WasmTool));
         registry.register(Box::new(WebSearchTool));
         registry.register(Box::new(AgentOrchestrationTool));
+        // Python-backed tools (Ògún / Execution layer on :7779)
+        registry.register(Box::new(python_bridge::web_search_py()));
+        registry.register(Box::new(python_bridge::code_runner()));
+        registry.register(Box::new(python_bridge::data_analysis()));
+        registry.register(Box::new(python_bridge::cosmos()));
         registry
     }
 

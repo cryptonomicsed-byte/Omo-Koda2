@@ -3,6 +3,7 @@ pub mod bootstrap;
 pub mod bus;
 pub mod compact;
 pub mod config;
+pub mod dream;
 pub mod economics;
 pub mod execution;
 pub mod identity;

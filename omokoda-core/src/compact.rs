@@ -37,6 +37,7 @@ pub struct TimelineEvent {
 }
 
 /// Engine that performs session compaction
+#[derive(Debug)]
 pub struct CompactionEngine {
     /// Minimum messages before compaction is considered
     pub threshold: usize,
@@ -238,6 +239,232 @@ fn current_unix_timestamp() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
+}
+
+// ── Auto-Compaction ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CompactionTrigger {
+    MessageCount(usize),
+    EnergyBelow(f64),
+    TimeSecs(u64),
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum CompactionStrategy {
+    Micro,
+    Session,
+    Grouped,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutoCompactConfig {
+    pub triggers: Vec<CompactionTrigger>,
+    pub strategy: CompactionStrategy,
+    pub last_compact_at: u64,
+    pub compact_interval_secs: u64,
+}
+
+impl Default for AutoCompactConfig {
+    fn default() -> Self {
+        Self {
+            triggers: vec![
+                CompactionTrigger::MessageCount(50),
+                CompactionTrigger::TimeSecs(3600),
+            ],
+            strategy: CompactionStrategy::Session,
+            last_compact_at: 0,
+            compact_interval_secs: 3600,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct MicroCompactEngine {
+    pub batch_size: usize,
+    pub keep_minimum: usize,
+}
+
+impl MicroCompactEngine {
+    pub fn new(batch_size: usize, keep_minimum: usize) -> Self {
+        Self {
+            batch_size,
+            keep_minimum,
+        }
+    }
+
+    pub fn compact(&self, session: &mut Session) -> CompactionResult {
+        let len = session.public_messages.len();
+        if len <= self.keep_minimum {
+            return CompactionResult::NotNeeded;
+        }
+        let removable = len - self.keep_minimum;
+        let to_remove = self.batch_size.min(removable);
+        if to_remove == 0 {
+            return CompactionResult::NotNeeded;
+        }
+        session.public_messages.drain(..to_remove);
+        CompactionResult::Compacted(CompactionSummary {
+            key_files: Vec::new(),
+            pending_items: Vec::new(),
+            timeline: Vec::new(),
+            compacted_count: to_remove,
+            compacted_at: current_unix_timestamp(),
+            narrative: format!("[MICRO-COMPACT: removed {} oldest messages]", to_remove),
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct AutoCompactor {
+    pub config: AutoCompactConfig,
+    engine: CompactionEngine,
+    micro_engine: MicroCompactEngine,
+}
+
+impl AutoCompactor {
+    pub fn new(config: AutoCompactConfig) -> Self {
+        Self {
+            config,
+            engine: CompactionEngine::default(),
+            micro_engine: MicroCompactEngine::new(10, 5),
+        }
+    }
+
+    pub fn should_compact(&self, session: &Session, energy_ratio: f64, now: u64) -> bool {
+        for trigger in &self.config.triggers {
+            match trigger {
+                CompactionTrigger::MessageCount(n) => {
+                    if session.public_messages.len() > *n {
+                        return true;
+                    }
+                }
+                CompactionTrigger::EnergyBelow(threshold) => {
+                    if energy_ratio < *threshold {
+                        return true;
+                    }
+                }
+                CompactionTrigger::TimeSecs(secs) => {
+                    if self.config.last_compact_at > 0
+                        && now.saturating_sub(self.config.last_compact_at) >= *secs
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    pub fn compact_with_strategy(&mut self, session: &mut Session) -> CompactionResult {
+        match self.config.strategy {
+            CompactionStrategy::Micro => self.micro_engine.compact(session),
+            CompactionStrategy::Session | CompactionStrategy::Grouped => {
+                self.engine.compact(session)
+            }
+        }
+    }
+
+    pub fn compact_if_needed(
+        &mut self,
+        session: &mut Session,
+        energy_ratio: f64,
+    ) -> CompactionResult {
+        let now = current_unix_timestamp();
+        if self.should_compact(session, energy_ratio, now) {
+            let result = self.compact_with_strategy(session);
+            self.config.last_compact_at = now;
+            result
+        } else {
+            CompactionResult::NotNeeded
+        }
+    }
+}
+
+#[cfg(test)]
+mod auto_compact_tests {
+    use super::*;
+    use crate::identity::AgentId;
+
+    fn make_session(count: usize) -> Session {
+        let id = AgentId::new("auto-compact-test");
+        let mut session = Session::new(id, "auto-compact".to_string(), 0);
+        for i in 0..count {
+            session.public_messages.push(ConversationMessage::new_user(
+                format!("Message {}", i),
+                false,
+            ));
+        }
+        session
+    }
+
+    #[test]
+    fn test_micro_compact_removes_batch() {
+        let mut session = make_session(20);
+        let engine = MicroCompactEngine::new(5, 3);
+        engine.compact(&mut session);
+        assert_eq!(session.public_messages.len(), 15);
+    }
+
+    #[test]
+    fn test_auto_compact_message_count_trigger() {
+        let mut session = make_session(60);
+        let config = AutoCompactConfig {
+            triggers: vec![CompactionTrigger::MessageCount(50)],
+            strategy: CompactionStrategy::Session,
+            last_compact_at: 0,
+            compact_interval_secs: 3600,
+        };
+        let mut compactor = AutoCompactor::new(config);
+        let result = compactor.compact_if_needed(&mut session, 1.0);
+        assert!(matches!(result, CompactionResult::Compacted(_)));
+    }
+
+    #[test]
+    fn test_auto_compact_energy_trigger() {
+        let mut session = make_session(10);
+        let config = AutoCompactConfig {
+            triggers: vec![CompactionTrigger::EnergyBelow(0.1)],
+            strategy: CompactionStrategy::Micro,
+            last_compact_at: 0,
+            compact_interval_secs: 3600,
+        };
+        let mut compactor = AutoCompactor::new(config);
+        // energy_ratio = 0.05 is below 0.1
+        let triggered = compactor.should_compact(&session, 0.05, 0);
+        assert!(triggered);
+    }
+
+    #[test]
+    fn test_auto_compact_no_trigger() {
+        let mut session = make_session(10);
+        let config = AutoCompactConfig {
+            triggers: vec![
+                CompactionTrigger::MessageCount(50),
+                CompactionTrigger::EnergyBelow(0.1),
+            ],
+            strategy: CompactionStrategy::Session,
+            last_compact_at: 0,
+            compact_interval_secs: 3600,
+        };
+        let mut compactor = AutoCompactor::new(config);
+        let result = compactor.compact_if_needed(&mut session, 1.0);
+        assert!(matches!(result, CompactionResult::NotNeeded));
+    }
+
+    #[test]
+    fn test_auto_compact_updates_last_compact_at() {
+        let mut session = make_session(60);
+        let config = AutoCompactConfig {
+            triggers: vec![CompactionTrigger::MessageCount(50)],
+            strategy: CompactionStrategy::Session,
+            last_compact_at: 0,
+            compact_interval_secs: 3600,
+        };
+        let mut compactor = AutoCompactor::new(config);
+        compactor.compact_if_needed(&mut session, 1.0);
+        assert!(compactor.config.last_compact_at > 0);
+    }
 }
 
 #[cfg(test)]

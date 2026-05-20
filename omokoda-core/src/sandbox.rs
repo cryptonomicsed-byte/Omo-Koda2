@@ -92,6 +92,109 @@ impl SandboxProfile {
     }
 }
 
+/// Adapter that bridges a `SandboxProfile` to actual tool execution.
+/// Manages the toggle (enabled/disabled per tool) and dependency checks.
+#[derive(Debug, Clone)]
+pub struct SandboxAdapter {
+    pub profile: SandboxProfile,
+    pub enabled: bool,
+}
+
+impl SandboxAdapter {
+    pub fn for_tool(tool_name: &str) -> Self {
+        Self {
+            profile: SandboxProfile::for_tool(tool_name),
+            enabled: true,
+        }
+    }
+
+    pub fn disabled() -> Self {
+        Self {
+            profile: SandboxProfile::unrestricted(),
+            enabled: false,
+        }
+    }
+
+    /// Toggle sandbox on or off for this tool
+    pub fn toggle(&mut self) {
+        self.enabled = !self.enabled;
+    }
+
+    /// Returns the effective profile — None if sandbox is disabled
+    pub fn effective_profile(&self) -> Option<&SandboxProfile> {
+        if self.enabled {
+            Some(&self.profile)
+        } else {
+            None
+        }
+    }
+
+    /// Check if Linux namespace support (unshare) is available on this host
+    pub fn has_namespace_support() -> bool {
+        if SandboxProfile::is_container_environment() {
+            return false;
+        }
+        std::process::Command::new("unshare")
+            .arg("--version")
+            .output()
+            .is_ok()
+    }
+
+    /// Return the effective timeout — 0 means no limit
+    pub fn effective_timeout(&self) -> u64 {
+        if self.enabled {
+            self.profile.timeout_secs
+        } else {
+            0
+        }
+    }
+
+    /// Return the effective max output size in bytes
+    pub fn effective_max_output(&self) -> usize {
+        if self.enabled {
+            self.profile.max_output_bytes
+        } else {
+            usize::MAX
+        }
+    }
+}
+
+#[cfg(test)]
+mod sandbox_adapter_tests {
+    use super::*;
+
+    #[test]
+    fn test_adapter_for_tool_enabled() {
+        let adapter = SandboxAdapter::for_tool("bash");
+        assert!(adapter.enabled);
+        assert!(adapter.effective_profile().is_some());
+    }
+
+    #[test]
+    fn test_adapter_toggle() {
+        let mut adapter = SandboxAdapter::for_tool("read_file");
+        assert!(adapter.enabled);
+        adapter.toggle();
+        assert!(!adapter.enabled);
+        assert!(adapter.effective_profile().is_none());
+        adapter.toggle();
+        assert!(adapter.enabled);
+    }
+
+    #[test]
+    fn test_adapter_disabled_returns_no_profile() {
+        let adapter = SandboxAdapter::disabled();
+        assert!(adapter.effective_profile().is_none());
+    }
+
+    #[test]
+    fn test_read_only_profile() {
+        let adapter = SandboxAdapter::for_tool("grep");
+        let profile = adapter.effective_profile().unwrap();
+        assert_eq!(profile.filesystem, FilesystemMode::ReadOnly);
+    }
+}
+
 pub struct WasmSandbox {
     engine: Engine,
 }

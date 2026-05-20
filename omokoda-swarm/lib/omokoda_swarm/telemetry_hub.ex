@@ -30,7 +30,8 @@ defmodule OmokodaSwarm.TelemetryHub do
   # ---------------------------------------------------------------------------
 
   def child_spec(_opts) do
-    Registry.child_spec(keys: :duplicate, name: @registry)
+    # Override id so it doesn't conflict with the unique Registry in the same supervisor.
+    %{Registry.child_spec(keys: :duplicate, name: @registry) | id: __MODULE__}
   end
 
   # ---------------------------------------------------------------------------

@@ -1,11 +1,8 @@
 [package]
-name = "omokoda-hermetic"
+name = "bipon39"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
-blake3 = "1.5"
-hkdf = "0.12"
-sha2 = "0.10"
-ifascript = { path = "../Ifascript" }
+blake3 = "1.8"

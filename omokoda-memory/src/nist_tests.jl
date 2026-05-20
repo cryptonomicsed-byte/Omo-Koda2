@@ -40,8 +40,16 @@ struct NISTResult
 end
 
 # ---------------------------------------------------------------------------
-# Math helpers (erfc and chi-squared are in Julia Base / built-in)
+# Math helpers
 # ---------------------------------------------------------------------------
+
+# erfc moved to SpecialFunctions.jl in Julia 1.0; local A&S 7.1.26 approx (max error ~1.5e-7)
+function _erfc(x::Float64)::Float64
+    x < 0.0 && return 2.0 - _erfc(-x)
+    t = 1.0 / (1.0 + 0.3275911 * x)
+    p = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))))
+    p * exp(-x * x)
+end
 
 """Wilson-Hilferty normal approximation for χ²(k) upper tail probability."""
 function chi2_pvalue(chi2::Float64, k::Int)::Float64
@@ -52,7 +60,7 @@ function chi2_pvalue(chi2::Float64, k::Int)::Float64
     mu = 1.0 - 2.0 / (9k)
     sigma = sqrt(2.0 / (9k))
     z = (h - mu) / sigma
-    return 0.5 * erfc(z / sqrt(2.0))
+    return 0.5 * _erfc(z / sqrt(2.0))
 end
 
 """Parse input: accepts Vector{Int}, Vector{Bool}, or hex/binary String."""
@@ -91,7 +99,7 @@ function test_frequency(bits::Vector{Int})::NISTResult
     n < 100 && return NISTResult("frequency", false, 0.0, 0.0, "n < 100 minimum")
     S_n  = sum(2 .* bits .- 1)   # ±1 representation
     s_obs = abs(S_n) / sqrt(n)
-    p = erfc(s_obs / sqrt(2.0))
+    p = _erfc(s_obs / sqrt(2.0))
     NISTResult("frequency", p >= ALPHA, p, s_obs, "")
 end
 
@@ -138,7 +146,7 @@ function test_runs(bits::Vector{Int})::NISTResult
     expected = 2n * pi * (1 - pi)
     denom    = 2 * sqrt(2n) * pi * (1 - pi)
     s_obs    = abs(V - expected) / denom
-    p        = erfc(s_obs / sqrt(2.0))
+    p        = _erfc(s_obs / sqrt(2.0))
     NISTResult("runs", p >= ALPHA, p, Float64(V), "V=$V expected=$(round(expected, digits=2))")
 end
 
@@ -261,8 +269,8 @@ function _cusum_pvalue(z::Float64, n::Int)::Float64
     1.0 - sum1 + sum2
 end
 
-# Standard normal CDF via erfc
-_Φ(x::Float64) = 0.5 * erfc(-x / sqrt(2.0))
+# Standard normal CDF
+_Φ(x::Float64) = 0.5 * _erfc(-x / sqrt(2.0))
 
 # ---------------------------------------------------------------------------
 # 7. Serial Test

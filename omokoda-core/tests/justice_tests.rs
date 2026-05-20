@@ -63,7 +63,8 @@ mod justice_tests {
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+ // Boost budget
 
         // Basic: very short output
         let test_file = "basic.txt";
@@ -108,7 +109,8 @@ mod justice_tests {
             tier: 0,
         };
 
-        match runner.run_pre(&ctx) {
+        let bus = omokoda_core::bus::SovereignEventBus::default();
+        match runner.run_pre(&ctx, &bus) {
             HookDecision::Deny(reason) => assert!(reason.contains("Reputation too low")),
             _ => panic!("Should have been denied"),
         }
@@ -120,7 +122,7 @@ mod justice_tests {
             reputation: 60.0,
             tier: 2,
         };
-        assert!(matches!(runner.run_pre(&ctx_high), HookDecision::Allow));
+        assert!(matches!(runner.run_pre(&ctx_high, &bus), HookDecision::Allow));
     }
 
     #[tokio::test]
@@ -131,7 +133,8 @@ mod justice_tests {
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+ // Boost budget
         steward.set_reputation_for_test(10.0);
 
         steward.add_pre_hook(Box::new(ReputationGate {

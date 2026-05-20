@@ -20,17 +20,83 @@ pub struct ExecutionContext {
     pub sandbox_mode: bool,
 }
 
+use tokio::sync::OnceCell;
+
 #[async_trait]
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn required_tier(&self) -> u8;
     fn is_write_operation(&self) -> bool;
+    fn params_schema(&self) -> Option<serde_json::Value> {
+        None
+    }
     async fn execute(
         &self,
         params: &str,
         context: &ExecutionContext,
     ) -> Result<(String, crate::usage::TokenUsage), String>;
+}
+
+pub struct LazyTool {
+    name: String,
+    description: String,
+    required_tier: u8,
+    is_write: bool,
+    factory: Box<dyn Fn() -> Box<dyn Tool> + Send + Sync>,
+    instance: OnceCell<Box<dyn Tool>>,
+}
+
+impl LazyTool {
+    pub fn new(
+        name: &str,
+        description: &str,
+        required_tier: u8,
+        is_write: bool,
+        factory: Box<dyn Fn() -> Box<dyn Tool> + Send + Sync>,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            description: description.to_string(),
+            required_tier,
+            is_write,
+            factory,
+            instance: OnceCell::new(),
+        }
+    }
+
+    async fn get_instance(&self) -> &dyn Tool {
+        self.instance
+            .get_or_init(|| async { (self.factory)() })
+            .await
+            .as_ref()
+    }
+}
+
+#[async_trait]
+impl Tool for LazyTool {
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn description(&self) -> &str {
+        &self.description
+    }
+    fn required_tier(&self) -> u8 {
+        self.required_tier
+    }
+    fn is_write_operation(&self) -> bool {
+        self.is_write
+    }
+    fn params_schema(&self) -> Option<serde_json::Value> {
+        None 
+    }
+    async fn execute(
+        &self,
+        params: &str,
+        context: &ExecutionContext,
+    ) -> Result<(String, crate::usage::TokenUsage), String> {
+        self.get_instance().await.execute(params, context).await
+    }
 }
 
 pub struct ToolRegistry {
@@ -48,7 +114,13 @@ impl ToolRegistry {
         registry.register(Box::new(GlobTool));
         registry.register(Box::new(GrepTool));
         registry.register(Box::new(BashTool));
-        registry.register(Box::new(WasmTool));
+        registry.register(Box::new(LazyTool::new(
+            "wasm",
+            "Execute a WASM module in the sandbox",
+            2,
+            true,
+            Box::new(|| Box::new(WasmTool)),
+        )));
         registry.register(Box::new(WebSearchTool));
         registry.register(Box::new(AgentOrchestrationTool));
         registry.register(Box::new(NoteTakingTool));
@@ -85,11 +157,35 @@ impl ToolRegistry {
             .is_some_and(|t| tier >= t.required_tier())
     }
 
-    pub fn list_available(&self, tier: u8) -> Vec<String> {
+    pub fn list_available(
+        &self,
+        context: &ExecutionContext,
+        policy: &crate::permissions::PermissionPolicy,
+    ) -> Vec<String> {
         let mut list: Vec<String> = self
             .tools
             .values()
-            .filter(|t| tier >= t.required_tier())
+            .filter(|t| {
+                // 1. Tier check
+                if context.tier < t.required_tier() {
+                    return false;
+                }
+                // 2. Policy check (Hide denied tools)
+                // We use a dummy input for check
+                let action = if t.name().contains("read") || t.name() == "glob" || t.name() == "grep" {
+                    "read"
+                } else if t.name().contains("write") || t.name() == "note_taking" {
+                    "write"
+                } else if t.name() == "bash" || t.name() == "wasm" {
+                    "exec"
+                } else if t.name() == "web_search" || t.name() == "web_fetch" {
+                    "net"
+                } else {
+                    "tool"
+                };
+                
+                matches!(policy.claw.check(action, "*"), crate::permissions::PermissionOutcome::Allow)
+            })
             .map(|t| t.name().to_string())
             .collect();
         list.sort();
@@ -118,18 +214,47 @@ impl ToolRegistry {
             ));
         }
 
-        // 1. Enforce mode (read-only)
+        // 1. JSON Schema Validation
+        if let Some(schema) = tool.params_schema() {
+            let instance: serde_json::Value = serde_json::from_str(params)
+                .map_err(|e| format!("Invalid JSON input for tool '{}': {}", name, e))?;
+            
+            let compiled = jsonschema::JSONSchema::compile(&schema)
+                .map_err(|e| format!("Invalid JSON Schema for tool '{}': {}", name, e))?;
+            
+            let validation_result = compiled.validate(&instance);
+            if let Err(errors) = validation_result {
+                let error_msgs: Vec<String> = errors.map(|e| e.to_string()).collect();
+                return Err(format!("JSON Schema validation failed for tool '{}': {}", name, error_msgs.join(", ")));
+            }
+        }
+
+        // 2. Enforce mode (read-only)
         if let Err(e) = enforce_mode(policy.active_mode(), name, tool.is_write_operation()) {
             return Err(e.to_string());
         }
 
-        // 2. Pre-act check: Permission Policy enforcement
+        // 3. Pre-act check: Permission Policy enforcement
         let auth_result = policy.authorize(name, params, prompter);
         if let crate::permissions::PermissionOutcome::Deny { reason } = auth_result {
             return Err(format!("Permission denied: {}", reason));
         }
 
-        tool.execute(params, &context).await
+        // 4. Execute with timeout and output limit
+        let timeout_duration = std::time::Duration::from_secs(60);
+        let exec_res = tokio::time::timeout(timeout_duration, tool.execute(params, &context))
+            .await
+            .map_err(|_| format!("Tool '{}' timed out after 60s", name))??;
+
+        let (mut output, usage) = exec_res;
+
+        // 5. Output size limit (max 10MB)
+        if output.len() > 10 * 1024 * 1024 {
+            output.truncate(10 * 1024 * 1024);
+            output.push_str("\n... [OUTPUT TRUNCATED: EXCEEDED 10MB LIMIT]");
+        }
+
+        Ok((output, usage))
     }
 }
 
@@ -553,7 +678,7 @@ impl Tool for NoteTakingTool {
     async fn execute(
         &self,
         params: &str,
-        context: &ExecutionContext,
+        _context: &ExecutionContext,
     ) -> Result<(String, crate::usage::TokenUsage), String> {
         let v: serde_json::Value = if params.starts_with('{') {
             serde_json::from_str(params).map_err(|e| e.to_string())?

@@ -86,6 +86,28 @@ pub struct IntentCompileContext<'a> {
     pub available_tools: &'a [String],
 }
 
+impl<'a> IntentCompileContext<'a> {
+    pub fn to_exec_context(
+        &self,
+        agent_id: crate::identity::AgentId,
+        name: String,
+        default_sandbox: bool,
+    ) -> crate::tools::ExecutionContext {
+        crate::tools::ExecutionContext {
+            agent_id,
+            name,
+            tier: self.tier,
+            reputation: self.reputation,
+            odu_identity: crate::identity::odu::OduIdentity {
+                primary_index: 0, // Not strictly used for boundary checks
+                mnemonic: String::new(),
+            },
+            workspace_root: std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+            sandbox_mode: default_sandbox,
+        }
+    }
+}
+
 pub struct IntentCompiler;
 
 impl IntentCompiler {

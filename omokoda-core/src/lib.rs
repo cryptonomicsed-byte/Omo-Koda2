@@ -23,7 +23,7 @@ pub use intent::{
     IntentClass, IntentCompilation, IntentCompileContext, IntentCompiler, IntentPlan,
     SubAgentSuggestion,
 };
-pub use interpreter::{AgentState, ExecutionResult, Steward};
+pub use interpreter::{AgentCore, AgentSnapshot, ExecutionResult, Steward};
 pub use parser::{parse, Statement};
 pub use receipt::{Receipt, ReceiptStore};
 pub use session::{EncryptedSession, SensitiveKey};

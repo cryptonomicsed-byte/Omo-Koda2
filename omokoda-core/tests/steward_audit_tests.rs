@@ -31,7 +31,7 @@ mod steward_audit_tests {
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        let agent = steward.agent_state().unwrap();
+        let agent = steward.agent_core().unwrap();
 
         // IDENTITY
         assert!(!agent.dna_fingerprint().is_empty());
@@ -59,15 +59,15 @@ mod steward_audit_tests {
             .await
             .unwrap();
 
-        let initial_synapse = steward.agent_state().unwrap().synapse();
+        let initial_synapse = steward.agent_core().unwrap().synapse();
         steward
             .dispatch(parse(r#"think "hello""#).unwrap()[0].clone())
             .await
             .unwrap();
 
-        assert!(steward.agent_state().unwrap().synapse() < initial_synapse);
+        assert!(steward.agent_core().unwrap().synapse() < initial_synapse);
         assert_eq!(
-            initial_synapse - steward.agent_state().unwrap().synapse(),
+            initial_synapse - steward.agent_core().unwrap().synapse(),
             1000.0
         );
     }
@@ -129,7 +129,7 @@ mod steward_audit_tests {
         let test_file = "steward_test_synapse_act.txt";
         std::fs::write(test_file, "content").unwrap();
 
-        let initial_synapse = steward.agent_state().unwrap().synapse();
+        let initial_synapse = steward.agent_core().unwrap().synapse();
         steward
             .dispatch(
                 parse(r#"act "read_file" "steward_test_synapse_act.txt""#).unwrap()[0].clone(),
@@ -137,7 +137,7 @@ mod steward_audit_tests {
             .await
             .unwrap();
 
-        let diff = initial_synapse - steward.agent_state().unwrap().synapse();
+        let diff = initial_synapse - steward.agent_core().unwrap().synapse();
         assert!(
             diff >= 5100.0,
             "Burn amount {} should be at least 5100",
@@ -209,7 +209,7 @@ act "read_file" "steward_test_multi.txt""#,
             steward.dispatch(stmt).await.unwrap();
         }
 
-        let agent = steward.agent_state().unwrap();
+        let agent = steward.agent_core().unwrap();
         // Birth(0) + Think(2: user/assistant) + Act(2: tooluse/result) = 4 messages
         // Act messages currently go to private if sandbox is requested (which defaults to true in our recent change)
         // Let's check for at least the think messages in public.
@@ -228,10 +228,10 @@ act "read_file" "steward_test_multi.txt""#,
             .await
             .unwrap();
 
-        let agent_id = steward.agent_state().unwrap().id().clone();
+        let agent_id = steward.agent_core().unwrap().id().clone();
 
         let mut steward2 = Steward::new().with_session_dir(test_session_dir(name, false));
         steward2.load_agent(&agent_id).unwrap();
-        assert_eq!(steward2.agent_state().unwrap().name(), "luna");
+        assert_eq!(steward2.agent_core().unwrap().name(), "luna");
     }
 }

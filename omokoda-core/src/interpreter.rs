@@ -188,33 +188,273 @@ mod personality_profile_serde {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct AgentState {
+pub struct AgentSnapshot {
     pub version: u32,
-    id: AgentId,
-    name: String,
-    birth_timestamp: u64,
-    odu_seed: OduSeed,
-    odu_identity: OduIdentity,
-    pet_identity: PetIdentity,
+    pub id: AgentId,
+    pub name: String,
+    pub birth_timestamp: u64,
+    pub odu_seed: OduSeed,
+    pub odu_identity: OduIdentity,
+    pub pet_identity: PetIdentity,
     #[serde(with = "personality_profile_serde")]
-    personality: PersonalityProfile,
-    dna_fingerprint: String,
-    reputation: f64,
-    reputation_ledger: ReputationLedger,
-    session: Session,
-    receipts: ReceiptStore,
-    hermetic_state: HermeticState,
-    public_key: [u8; 32],
-    #[serde(skip)]
-    pub private_data: Option<PrivateSessionData>,
+    pub personality: PersonalityProfile,
+    pub dna_fingerprint: String,
+    pub reputation: f64,
+    pub reputation_ledger: ReputationLedger,
+    pub session: Session,
+    pub receipts: ReceiptStore,
+    pub hermetic_state: HermeticState,
+    pub public_key: [u8; 32],
     pub resonance: Option<omokoda_hermetic::fractal::ResonanceSignature>,
     pub synapse: f64,
     pub last_active_timestamp: u64,
-    #[serde(skip)]
-    pub k_root: [u8; 32],
     pub act_counter: u64,
-    #[serde(skip)]
+}
+
+#[derive(Debug, Clone)]
+pub struct AgentCore {
+    pub snapshot: AgentSnapshot,
+    pub private_data: Option<PrivateSessionData>,
+    pub k_root: [u8; 32],
     pub current_memory_key: [u8; 32],
+    pub memory: Vec<MemoryEntry>,
+}
+
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Zeroize)]
+pub enum MemoryScope {
+    Public,
+    Private,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Zeroize, ZeroizeOnDrop)]
+pub struct MemoryEntry {
+    pub id: String,
+    #[zeroize(skip)]
+    pub scope: MemoryScope,
+    pub tier: u8,
+    pub content_hash: [u8; 32],
+    pub created_time: u64,
+    pub importance: f32,
+    pub ciphertext: Option<Vec<u8>>,
+    #[zeroize(skip)]
+    pub text: Option<String>,
+}
+
+impl MemoryEntry {
+    pub fn zeroize_text(&mut self) {
+        if let Some(mut t) = self.text.take() {
+            t.zeroize();
+        }
+    }
+}
+impl AgentCore {
+    pub fn from_snapshot(snapshot: AgentSnapshot, k_root: [u8; 32]) -> Self {
+        let current_memory_key = snapshot.odu_seed.as_bytes().clone();
+        Self {
+            snapshot,
+            private_data: None,
+            k_root,
+            current_memory_key,
+            memory: Vec::new(),
+        }
+    }
+
+    pub fn id(&self) -> &AgentId {
+        &self.snapshot.id
+    }
+
+    pub fn name(&self) -> &str {
+        &self.snapshot.name
+    }
+
+    pub fn reputation(&self) -> f64 {
+        self.snapshot.reputation
+    }
+
+    pub fn tier(&self) -> u8 {
+        tier_for(self.snapshot.reputation)
+    }
+
+    pub fn session(&self) -> &Session {
+        &self.snapshot.session
+    }
+
+    pub fn session_mut(&mut self) -> &mut Session {
+        &mut self.snapshot.session
+    }
+
+    pub fn receipts(&self) -> &ReceiptStore {
+        &self.snapshot.receipts
+    }
+
+    pub fn receipts_mut(&mut self) -> &mut ReceiptStore {
+        &mut self.snapshot.receipts
+    }
+
+    pub fn hermetic_state(&self) -> &HermeticState {
+        &self.snapshot.hermetic_state
+    }
+
+    pub fn public_key(&self) -> &[u8; 32] {
+        &self.snapshot.public_key
+    }
+
+    pub fn private_data(&self) -> Option<&PrivateSessionData> {
+        self.private_data.as_ref()
+    }
+
+    pub fn synapse(&self) -> f64 {
+        self.snapshot.synapse
+    }
+
+    pub fn set_synapse(&mut self, synapse: f64) {
+        self.snapshot.synapse = synapse;
+    }
+
+    pub fn last_active_timestamp(&self) -> u64 {
+        self.snapshot.last_active_timestamp
+    }
+
+    pub fn set_last_active_timestamp(&mut self, timestamp: u64) {
+        self.snapshot.last_active_timestamp = timestamp;
+    }
+
+    pub fn burn_synapse(&mut self, amount: f64) -> Result<(), String> {
+        if self.snapshot.synapse < amount {
+            return Err(format!(
+                "Insufficient synapse budget. Required: {:.0}, Available: {:.0}",
+                amount, self.snapshot.synapse
+            ));
+        }
+        self.snapshot.synapse -= amount;
+        Ok(())
+    }
+
+    pub fn signing_key(&self) -> SigningKey {
+        derive_signing_key(&self.snapshot.odu_seed)
+    }
+
+    pub fn add_message(&mut self, message: ConversationMessage) {
+        let rep = self.snapshot.reputation;
+        if message.is_private {
+            if let Some(pd) = &mut self.private_data {
+                pd.push_private(message, rep);
+            }
+        } else {
+            self.snapshot.session.add_message(message, rep);
+        }
+    }
+
+    pub fn update_reputation(&mut self, new_rep: f64, reason: ReputationChangeReason) {
+        let old_rep = self.snapshot.reputation;
+        self.snapshot.reputation = new_rep.clamp(0.0, 100.0);
+        let amount = self.snapshot.reputation - old_rep;
+
+        self.snapshot.reputation_ledger.record(ReputationEntry {
+            timestamp: current_unix_timestamp(),
+            amount,
+            reason,
+            previous_reputation: old_rep,
+            new_reputation: self.snapshot.reputation,
+        });
+
+        self.snapshot.pet_identity =
+            PetIdentity::derive(&self.snapshot.odu_identity, &self.snapshot.hermetic_state, self.tier());
+        self.snapshot.session.reputation = self.snapshot.reputation;
+    }
+
+    pub fn add_memory(&mut self, text: String, scope: MemoryScope, importance: f32) -> Result<(), String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let created_time = current_unix_timestamp();
+        let content_hash = blake3::hash(text.as_bytes()).into();
+        
+        let mut entry = MemoryEntry {
+            id,
+            scope,
+            tier: self.tier(),
+            content_hash,
+            created_time,
+            importance,
+            ciphertext: None,
+            text: Some(text),
+        };
+
+        if scope == MemoryScope::Private {
+            self.encrypt_memory_entry(&mut entry)?;
+        }
+
+        self.memory.push(entry);
+        
+        let engine = crate::memory::MemoryEngine::new();
+        engine.process_working_memory(&mut self.memory);
+        
+        Ok(())
+    }
+
+    fn encrypt_memory_entry(&mut self, entry: &mut MemoryEntry) -> Result<(), String> {
+        use chacha20poly1305::{aead::{Aead, KeyInit}, ChaCha20Poly1305, Nonce};
+        
+        let text = entry.text.as_ref().ok_or("no text to encrypt")?;
+        let cipher = ChaCha20Poly1305::new(&self.current_memory_key.into());
+        let mut nonce_bytes = [0u8; 12];
+        let key_hash = blake3::derive_key("omokoda:memory:nonce", &entry.content_hash);
+        nonce_bytes.copy_from_slice(&key_hash[..12]);
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        let ciphertext = cipher.encrypt(nonce, text.as_bytes())
+            .map_err(|e| format!("memory encryption failed: {e}"))?;
+        
+        entry.ciphertext = Some(ciphertext);
+        entry.zeroize_text();
+        
+        Ok(())
+    }
+
+    pub fn increment_act_counter(&mut self) {
+        self.snapshot.act_counter += 1;
+        if self.snapshot.act_counter % 100 == 0 {
+            self.rotate_memory_key();
+        }
+    }
+
+    fn rotate_memory_key(&mut self) {
+        use crate::memory::odu_keys::OduKeys;
+        let hermetic_seed = blake3::derive_key("omokoda:hermetic_seed", self.snapshot.odu_seed.as_bytes());
+
+        let epoch_nonce = [0u8; 32];
+        self.current_memory_key = OduKeys::rotate_key(
+            &self.current_memory_key,
+            &hermetic_seed,
+            self.snapshot.act_counter,
+            &epoch_nonce,
+        );
+    }
+
+    pub fn dna_fingerprint(&self) -> &str {
+        &self.snapshot.dna_fingerprint
+    }
+
+    pub fn odu_seed(&self) -> &OduSeed {
+        &self.snapshot.odu_seed
+    }
+
+    pub fn odu_identity(&self) -> &OduIdentity {
+        &self.snapshot.odu_identity
+    }
+
+    pub fn pet_identity(&self) -> &PetIdentity {
+        &self.snapshot.pet_identity
+    }
+
+    pub fn personality(&self) -> &PersonalityProfile {
+        &self.snapshot.personality
+    }
+
+    pub fn birth_timestamp(&self) -> u64 {
+        self.snapshot.birth_timestamp
+    }
 }
 
 impl Steward {
@@ -289,7 +529,7 @@ impl Steward {
         let synapse = self.dopamine_pool.compute_initial_synapse();
         self.dopamine_pool.allocate(synapse);
 
-        let agent = AgentState {
+        let snapshot = AgentSnapshot {
             version: AGENT_STATE_VERSION,
             id,
             name,
@@ -305,147 +545,24 @@ impl Steward {
             receipts,
             hermetic_state,
             public_key,
-            private_data: Some(private_data),
             resonance,
             synapse,
             last_active_timestamp: birth_timestamp,
-            k_root,
             act_counter: 0,
-            current_memory_key: k0,
         };
-        self.agent = Some(agent);
+        let mut core = AgentCore::from_snapshot(snapshot, k_root);
+        core.private_data = Some(private_data);
+        core.current_memory_key = k0;
+
+        self.agent = Some(core);
         self.auto_save();
         Ok(())
     }
 }
 
-impl AgentState {
+impl AgentSnapshot {
     pub fn id(&self) -> &AgentId {
         &self.id
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn birth_timestamp(&self) -> u64 {
-        self.birth_timestamp
-    }
-
-    pub fn dna_fingerprint(&self) -> &str {
-        &self.dna_fingerprint
-    }
-
-    pub fn odu_seed(&self) -> &OduSeed {
-        &self.odu_seed
-    }
-
-    pub fn odu_identity(&self) -> &OduIdentity {
-        &self.odu_identity
-    }
-
-    pub fn pet_identity(&self) -> &PetIdentity {
-        &self.pet_identity
-    }
-
-    pub fn personality(&self) -> &PersonalityProfile {
-        &self.personality
-    }
-
-    pub fn reputation(&self) -> f64 {
-        self.reputation
-    }
-
-    pub fn tier(&self) -> u8 {
-        tier_for(self.reputation)
-    }
-
-    pub fn session(&self) -> &Session {
-        &self.session
-    }
-
-    pub fn receipts(&self) -> &ReceiptStore {
-        &self.receipts
-    }
-
-    pub fn hermetic_state(&self) -> &HermeticState {
-        &self.hermetic_state
-    }
-
-    pub fn public_key(&self) -> &[u8; 32] {
-        &self.public_key
-    }
-
-    pub fn private_data(&self) -> Option<&PrivateSessionData> {
-        self.private_data.as_ref()
-    }
-
-    pub fn synapse(&self) -> f64 {
-        self.synapse
-    }
-
-    pub fn burn_synapse(&mut self, amount: f64) -> Result<(), String> {
-        if self.synapse < amount {
-            return Err(format!(
-                "Insufficient synapse budget. Required: {:.0}, Available: {:.0}",
-                amount, self.synapse
-            ));
-        }
-        self.synapse -= amount;
-        Ok(())
-    }
-
-    pub fn signing_key(&self) -> SigningKey {
-        derive_signing_key(&self.odu_seed)
-    }
-
-    pub fn add_message(&mut self, message: ConversationMessage) {
-        let rep = self.reputation;
-        if message.is_private {
-            if let Some(pd) = &mut self.private_data {
-                pd.push_private(message, rep);
-            }
-        } else {
-            self.session.add_message(message, rep);
-        }
-    }
-
-    pub fn update_reputation(&mut self, new_rep: f64, reason: ReputationChangeReason) {
-        let old_rep = self.reputation;
-        self.reputation = new_rep.clamp(0.0, 100.0);
-        let amount = self.reputation - old_rep;
-
-        self.reputation_ledger.record(ReputationEntry {
-            timestamp: current_unix_timestamp(),
-            amount,
-            reason,
-            previous_reputation: old_rep,
-            new_reputation: self.reputation,
-        });
-
-        self.pet_identity =
-            PetIdentity::derive(&self.odu_identity, &self.hermetic_state, self.tier());
-        self.session.reputation = self.reputation;
-    }
-
-    pub fn increment_act_counter(&mut self) {
-        self.act_counter += 1;
-        if self.act_counter % 100 == 0 {
-            self.rotate_memory_key();
-        }
-    }
-
-    fn rotate_memory_key(&mut self) {
-        use crate::memory::odu_keys::OduKeys;
-        let hermetic_seed = blake3::derive_key("omokoda:hermetic_seed", self.odu_seed.as_bytes());
-
-        let epoch_nonce = [0u8; 32]; // Stub for now
-        self.current_memory_key = OduKeys::rotate_key(
-            &self.current_memory_key,
-            &hermetic_seed,
-            self.act_counter,
-            &epoch_nonce,
-        );
     }
 }
 
@@ -459,7 +576,7 @@ fn derive_signing_key(odu_seed: &OduSeed) -> SigningKey {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Steward {
-    agent: Option<AgentState>,
+    agent: Option<AgentCore>,
     #[serde(skip, default = "ToolRegistry::new")]
     tools: ToolRegistry,
     #[serde(skip, default = "ProviderRegistry::new")]
@@ -480,8 +597,29 @@ pub struct Steward {
     session_dir: PathBuf,
     #[serde(skip)]
     unlock_key: Option<SensitiveKey>,
+    #[serde(skip)]
+    pub permission_prompter: Option<Box<dyn crate::permissions::PermissionPrompter + Send>>,
     #[serde(skip, default = "SovereignEventBus::default")]
     pub event_bus: SovereignEventBus,
+}
+
+impl serde::Serialize for AgentCore {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.snapshot.serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for AgentCore {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let snapshot = AgentSnapshot::deserialize(deserializer)?;
+        Ok(AgentCore::from_snapshot(snapshot, [0u8; 32]))
+    }
 }
 
 fn default_session_dir() -> PathBuf {
@@ -512,6 +650,7 @@ impl Steward {
             persistence_path: None,
             session_dir: default_session_dir(),
             unlock_key: None,
+            permission_prompter: None,
             event_bus: SovereignEventBus::default(),
             rhythm_tracker: crate::rhythm::CooldownTracker::new(),
             dopamine_pool: crate::economics::DopaminePool::default(),
@@ -562,7 +701,7 @@ impl Steward {
                 // Phase 1-7: BIRTH = 7^1 (fractal depth 1)
                 self.birth(name, metadata)?;
                 let agent = self.ensure_born()?;
-                let provider = agent.session.config.default_provider.clone();
+                let provider = agent.session().config.default_provider.clone();
                 if !provider.is_empty()
                     && !provider.eq_ignore_ascii_case("default")
                     && !self.providers.is_known_provider(&provider)
@@ -606,7 +745,7 @@ impl Steward {
                         );
                     }
 
-                    let config = &agent.session.config;
+                    let config = &agent.session().config;
                     let provider_name = config.default_provider.as_str();
                     match provider_name {
                         "webllm" | "ollama" => {} // allowed
@@ -623,7 +762,7 @@ impl Steward {
                 let (provider, tier, reputation, odu_seed, hermetic_state) = {
                     let agent = self.ensure_born()?;
                     (
-                        agent.session.config.default_provider.clone(),
+                        agent.session().config.default_provider.clone(),
                         agent.tier(),
                         agent.reputation(),
                         *agent.odu_seed().as_bytes(),
@@ -631,7 +770,19 @@ impl Steward {
                     )
                 };
 
-                let available_tools = self.tools.list_available(tier);
+                let available_tools = {
+                    let agent = self.ensure_born()?;
+                    let compile_ctx = IntentCompileContext {
+                        private,
+                        tier: agent.tier(),
+                        reputation: agent.reputation(),
+                        odu_seed: agent.odu_seed().as_bytes(),
+                        hermetic: agent.hermetic_state(),
+                        available_tools: &[],
+                    };
+                    let exec_ctx = compile_ctx.to_exec_context(agent.id().clone(), agent.name().to_string(), agent.snapshot.session.config.default_sandbox);
+                    self.tools.list_available(&exec_ctx, &self.permission_policy)
+                };
                 let compilation = IntentCompiler::compile(
                     &prompt,
                     &modifiers,
@@ -652,7 +803,7 @@ impl Steward {
                     reputation,
                     tier,
                 };
-                let hook_decision = self.justice.hook_runner.run_pre(&compile_hook_ctx);
+                let hook_decision = self.justice.hook_runner.run_pre(&compile_hook_ctx, &self.event_bus);
 
                 let (response, usage) = match hook_decision {
                     crate::justice::HookDecision::Deny(reason) => (
@@ -678,7 +829,7 @@ impl Steward {
                     reputation,
                     tier,
                 };
-                let response = match self.justice.hook_runner.run_post(&post_hook_ctx) {
+                let response = match self.justice.hook_runner.run_post(&post_hook_ctx, &self.event_bus) {
                     crate::justice::HookDecision::Deny(reason) => {
                         format!("Intent post-validation refused by Justice hook: {reason}")
                     }
@@ -729,8 +880,8 @@ impl Steward {
                     let hermetic = crate::justice::hermetic::evaluate_and_receipt(
                         &prompt,
                         &action_proposal,
-                        &mut agent_mut.session,
-                        &mut agent_mut.receipts,
+                        &mut agent_mut.snapshot.session,
+                        &mut agent_mut.snapshot.receipts,
                         &agent_id,
                     )?;
                     if !hermetic.is_allowed() {
@@ -788,7 +939,7 @@ impl Steward {
                         agent.tier(),
                         agent.reputation(),
                         agent.odu_identity().clone(),
-                        agent.session.config.default_sandbox,
+                        agent.session().config.default_sandbox,
                     )
                 };
 
@@ -809,12 +960,13 @@ impl Steward {
                 {
                     let now = current_unix_timestamp();
                     let agent_mut = self.ensure_born_mut()?;
-                    let elapsed = now.saturating_sub(agent_mut.last_active_timestamp);
+                    let elapsed = now.saturating_sub(agent_mut.last_active_timestamp());
                     if elapsed > 0 {
+                        let current_synapse = agent_mut.synapse();
                         let decay =
-                            crate::economics::compute_synapse_decay(agent_mut.synapse, elapsed);
-                        agent_mut.synapse = (agent_mut.synapse - decay).max(0.0);
-                        agent_mut.last_active_timestamp = now;
+                            crate::economics::compute_synapse_decay(current_synapse, elapsed);
+                        agent_mut.set_synapse((current_synapse - decay).max(0.0));
+                        agent_mut.set_last_active_timestamp(now);
                     }
                 }
 
@@ -849,7 +1001,7 @@ impl Steward {
                     reputation,
                     tier,
                 };
-                match self.justice.hook_runner.run_pre(&hook_ctx) {
+                match self.justice.hook_runner.run_pre(&hook_ctx, &self.event_bus) {
                     crate::justice::HookDecision::Deny(reason) => {
                         return Err(format!("Hook denied execution: {}", reason))
                     }
@@ -870,8 +1022,8 @@ impl Steward {
                     let hermetic = crate::justice::hermetic::evaluate_and_receipt(
                         "Direct tool execution",
                         &action_proposal,
-                        &mut agent_mut.session,
-                        &mut agent_mut.receipts,
+                        &mut agent_mut.snapshot.session,
+                        &mut agent_mut.snapshot.receipts,
                         &agent_id,
                     )?;
                     if !hermetic.is_allowed() {
@@ -893,11 +1045,25 @@ impl Steward {
                     sandbox_mode: force_sandbox,
                 };
 
-                let (output, tool_usage) = self
+                let (output, tool_usage) = match self
                     .tools
-                    .execute(&tool, &params, context, &self.permission_policy, None)
-                    .await
-                    .map_err(|e| format!("Tool execution failed: {}", e))?;
+                    .execute(&tool, &params, context, &self.permission_policy, self.permission_prompter.as_deref_mut().map(|p| p as &mut dyn crate::permissions::PermissionPrompter))
+                    .await {
+                    Ok(res) => res,
+                    Err(e) => {
+                        if e.contains("Private Access Violation") {
+                            let event = SovereignEvent {
+                                event: Some(sovereign_event::Event::Denial(crate::bus::events::Denial {
+                                    tool: tool.clone(),
+                                    reason: "runtime_private_boundary_violation".to_string(),
+                                    resource: params.clone(),
+                                })),
+                            };
+                            let _ = self.event_bus.publish(event);
+                        }
+                        return Err(format!("Tool execution failed: {}", e));
+                    }
+                };
 
                 // 2. Set Cooldown after successful execution
                 let cooldown_duration = match tool.as_str() {
@@ -928,7 +1094,7 @@ impl Steward {
                     reputation: new_rep,
                     tier: tier_for(new_rep),
                 };
-                match self.justice.hook_runner.run_post(&post_hook_ctx) {
+                match self.justice.hook_runner.run_post(&post_hook_ctx, &self.event_bus) {
                     crate::justice::HookDecision::Deny(reason) => {
                         return Err(format!("Post-act hook denied: {}", reason))
                     }
@@ -945,8 +1111,8 @@ impl Steward {
                 agent_mut.increment_act_counter();
 
                 // Receipt generation
-                let last_hash = agent_mut.receipts.last_hash().to_string();
-                let merkle_root = agent_mut.receipts.current_merkle_root();
+                let last_hash = agent_mut.receipts().last_hash().to_string();
+                let merkle_root = agent_mut.receipts().current_merkle_root();
                 let signing_key = agent_mut.signing_key();
                 let agent_id = agent_mut.id().clone();
                 let receipt = Receipt::new_merkle(
@@ -958,7 +1124,7 @@ impl Steward {
                     &signing_key,
                 );
 
-                agent_mut.receipts.record(receipt.clone());
+                agent_mut.receipts_mut().record(receipt.clone());
 
                 // Session history
                 agent_mut.add_message(ConversationMessage {
@@ -1007,15 +1173,15 @@ impl Steward {
                         let agent = self.ensure_born()?;
                         let status = format!(
                             "Agent Name: {}\nAgent ID: {}\nTier: {}\nReputation: {:.3}\nDNA: {}\nPet: {}\nOrisha: {}\nProfile: {}\nReceipts: {}\n",
-                            agent.name,
-                            agent.id,
+                            agent.name(),
+                            agent.id(),
                             agent.tier(),
-                            agent.reputation,
-                            agent.dna_fingerprint,
-                            agent.pet_identity.pet(),
-                            agent.personality.dominant_orisha.name(),
-                            agent.personality.personality_summary,
-                            agent.receipts.count()
+                            agent.reputation(),
+                            agent.dna_fingerprint(),
+                            agent.pet_identity().pet(),
+                            agent.personality().dominant_orisha.name(),
+                            agent.personality().personality_summary,
+                            agent.receipts().count()
                         );
                         Ok(ExecutionResult {
                             receipt: None,
@@ -1033,14 +1199,22 @@ impl Steward {
                     }
                     "tools" => {
                         let agent = self.ensure_born()?;
-                        let tier = agent.tier();
-                        let tools = self.tools.list_available(tier);
+                        let context = ExecutionContext {
+                            agent_id: agent.id().clone(),
+                            name: agent.name().to_string(),
+                            tier: agent.tier(),
+                            reputation: agent.reputation(),
+                            odu_identity: agent.snapshot.odu_identity.clone(),
+                            workspace_root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+                            sandbox_mode: agent.snapshot.session.config.default_sandbox,
+                        };
+                        let tools = self.tools.list_available(&context, &self.permission_policy);
                         let tools_list = tools
                             .iter()
                             .map(|t| format!("- {}", t))
                             .collect::<Vec<_>>()
                             .join("\n");
-                        let output = format!("Allowed tools for Tier {}:\n{}", tier, tools_list);
+                        let output = format!("Allowed tools for Tier {}:\n{}", context.tier, tools_list);
                         Ok(ExecutionResult {
                             receipt: None,
                             private_mode: false,
@@ -1064,7 +1238,7 @@ impl Steward {
                                         ));
                                     }
                                     let agent = self.ensure_born_mut()?;
-                                    agent.session.config.default_provider = value.to_string();
+                                    agent.session_mut().config.default_provider = value.to_string();
                                     self.auto_save();
                                     Ok(ExecutionResult {
                                         receipt: None,
@@ -1087,7 +1261,7 @@ impl Steward {
                                         }
                                     };
                                     let agent = self.ensure_born_mut()?;
-                                    agent.session.config.default_privacy = parsed;
+                                    agent.session_mut().config.default_privacy = parsed;
                                     self.auto_save();
                                     Ok(ExecutionResult {
                                         receipt: None,
@@ -1110,7 +1284,7 @@ impl Steward {
                                         }
                                     };
                                     let agent = self.ensure_born_mut()?;
-                                    agent.session.config.default_sandbox = parsed;
+                                    agent.session_mut().config.default_sandbox = parsed;
                                     self.auto_save();
                                     Ok(ExecutionResult {
                                         receipt: None,
@@ -1135,15 +1309,21 @@ impl Steward {
 
                         let private_data = agent
                             .private_data
-                            .as_ref()
+                            .take()
                             .ok_or_else(|| "agent already sealed".to_string())?;
 
-                        let key = derive_unlock_key(&password, &agent.public_key)?;
+                        let key = derive_unlock_key(&password, agent.public_key())?;
 
-                        agent
-                            .session
-                            .seal_private(private_data, &agent.odu_seed, key.expose())?;
-                        agent.private_data = None;
+                        let odu_seed = agent.odu_seed().clone();
+                        let res = agent
+                            .session_mut()
+                            .seal_private(&private_data, &odu_seed, key.expose());
+                        
+                        if let Err(e) = res {
+                            agent.private_data = Some(private_data);
+                            return Err(e);
+                        }
+
                         self.unlock_key = None;
                         self.auto_save();
 
@@ -1163,12 +1343,12 @@ impl Steward {
                             return Err("agent already unlocked".to_string());
                         }
 
-                        let key = derive_unlock_key(&password, &agent.public_key)?;
+                        let key = derive_unlock_key(&password, agent.public_key())?;
 
-                        // Try to unseal
+                        let odu_seed = agent.odu_seed().clone();
                         let private_data = agent
-                            .session
-                            .unseal_private(&agent.odu_seed, key.expose())?;
+                            .session()
+                            .unseal_private(&odu_seed, key.expose())?;
                         agent.private_data = Some(private_data);
                         self.unlock_key = Some(key);
                         self.auto_save();
@@ -1188,7 +1368,7 @@ impl Steward {
         }
     }
 
-    pub fn agent_state(&self) -> Option<&AgentState> {
+    pub fn agent_core(&self) -> Option<&AgentCore> {
         self.agent.as_ref()
     }
 
@@ -1291,7 +1471,7 @@ impl Steward {
                 agent.tier(),
                 agent.reputation(),
                 agent.odu_identity().clone(),
-                agent.session.config.default_sandbox,
+                agent.session().config.default_sandbox,
             )
         };
 
@@ -1302,7 +1482,7 @@ impl Steward {
             reputation,
             tier,
         };
-        match self.justice.hook_runner.run_pre(&hook_ctx) {
+        match self.justice.hook_runner.run_pre(&hook_ctx, &self.event_bus) {
             crate::justice::HookDecision::Deny(reason) => {
                 return Err(format!("Hook denied execution: {}", reason))
             }
@@ -1350,8 +1530,8 @@ impl Steward {
             let hermetic = crate::justice::hermetic::evaluate_and_receipt(
                 "Direct tool execution",
                 &action_proposal,
-                &mut agent_mut.session,
-                &mut agent_mut.receipts,
+                &mut agent_mut.snapshot.session,
+                &mut agent_mut.snapshot.receipts,
                 &agent_id,
             )?;
             if !hermetic.is_allowed() {
@@ -1372,17 +1552,31 @@ impl Steward {
             sandbox_mode: force_sandbox,
         };
 
-        let (output, tool_usage) = self
+        let (output, tool_usage) = match self
             .tools
             .execute(
                 &call.tool,
                 &call.params,
                 context,
                 &self.permission_policy,
-                None,
+                self.permission_prompter.as_deref_mut().map(|p| p as &mut dyn crate::permissions::PermissionPrompter),
             )
-            .await
-            .map_err(|e| format!("Tool execution failed: {}", e))?;
+            .await {
+            Ok(res) => res,
+            Err(e) => {
+                if e.contains("Private Access Violation") {
+                    let event = SovereignEvent {
+                        event: Some(sovereign_event::Event::Denial(crate::bus::events::Denial {
+                            tool: call.tool.clone(),
+                            reason: "runtime_private_boundary_violation_direct".to_string(),
+                            resource: call.params.clone(),
+                        })),
+                    };
+                    let _ = self.event_bus.publish(event);
+                }
+                return Err(format!("Tool execution failed: {}", e));
+            }
+        };
 
         // 3. Set Cooldown
         let cooldown_duration = match call.tool.as_str() {
@@ -1412,7 +1606,7 @@ impl Steward {
             reputation: new_rep,
             tier: tier_for(new_rep),
         };
-        match self.justice.hook_runner.run_post(&post_hook_ctx) {
+        match self.justice.hook_runner.run_post(&post_hook_ctx, &self.event_bus) {
             crate::justice::HookDecision::Deny(reason) => {
                 return Err(format!("Post-act hook denied: {}", reason))
             }
@@ -1477,8 +1671,8 @@ impl Steward {
     ) -> Result<Receipt, String> {
         self.usage_tracker.record(usage);
         let agent_mut = self.ensure_born_mut()?;
-        let last_hash = agent_mut.receipts.last_hash().to_string();
-        let merkle_root = agent_mut.receipts.current_merkle_root();
+        let last_hash = agent_mut.receipts().last_hash().to_string();
+        let merkle_root = agent_mut.receipts().current_merkle_root();
         let signing_key = agent_mut.signing_key();
         let agent_id = agent_mut.id().clone();
         let receipt = Receipt::new_merkle(
@@ -1489,7 +1683,7 @@ impl Steward {
             &merkle_root,
             &signing_key,
         );
-        agent_mut.receipts.record(receipt.clone());
+        agent_mut.receipts_mut().record(receipt.clone());
         Ok(receipt)
     }
 
@@ -1506,7 +1700,16 @@ impl Steward {
         } = &stmt
         {
             if let Ok(agent) = self.ensure_born() {
-                let available_tools = self.tools.list_available(agent.tier());
+                let compile_ctx = IntentCompileContext {
+                    private: *private,
+                    tier: agent.tier(),
+                    reputation: agent.reputation(),
+                    odu_seed: agent.odu_seed().as_bytes(),
+                    hermetic: agent.hermetic_state(),
+                    available_tools: &[],
+                };
+                let exec_ctx = compile_ctx.to_exec_context(agent.id().clone(), agent.name().to_string(), agent.snapshot.session.config.default_sandbox);
+                let available_tools = self.tools.list_available(&exec_ctx, &self.permission_policy);
                 let compilation = IntentCompiler::compile(
                     prompt,
                     modifiers,
@@ -1590,17 +1793,17 @@ impl Steward {
         let path = self.resolve_agent_file_path(agent_id);
         let content = std::fs::read_to_string(&path)
             .map_err(|e| format!("failed to read agent file at {:?}: {e}", path))?;
-        let agent: AgentState = serde_json::from_str(&content)
+        let snapshot: AgentSnapshot = serde_json::from_str(&content)
             .map_err(|e| format!("failed to deserialize agent: {e}"))?;
 
-        if agent.version != AGENT_STATE_VERSION {
+        if snapshot.version != AGENT_STATE_VERSION {
             return Err(format!(
                 "Unsupported agent version: {}. Expected: {}",
-                agent.version, AGENT_STATE_VERSION
+                snapshot.version, AGENT_STATE_VERSION
             ));
         }
 
-        self.agent = Some(agent);
+        self.agent = Some(AgentCore::from_snapshot(snapshot, [0u8; 32]));
         self.persistence_path = Some(path);
         Ok(())
     }
@@ -1622,13 +1825,13 @@ impl Steward {
         }
     }
 
-    fn ensure_born(&self) -> Result<&AgentState, String> {
+    fn ensure_born(&self) -> Result<&AgentCore, String> {
         self.agent
             .as_ref()
             .ok_or_else(|| "agent must be born first".to_string())
     }
 
-    pub fn ensure_born_mut(&mut self) -> Result<&mut AgentState, String> {
+    pub fn ensure_born_mut(&mut self) -> Result<&mut AgentCore, String> {
         self.agent
             .as_mut()
             .ok_or_else(|| "agent must be born first".to_string())

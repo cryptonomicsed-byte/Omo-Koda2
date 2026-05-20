@@ -41,6 +41,18 @@ message SabbathEntered {
   uint32 queued_ops = 2;
 }
 
+message Denial {
+  string tool = 1;
+  string reason = 2;
+  string resource = 3;
+}
+
+message Audit {
+  string event_type = 1;
+  string details = 2;
+  uint64 timestamp = 3;
+}
+
 message SovereignEvent {
   oneof event {
     AgentBorn agent_born = 1;
@@ -50,5 +62,7 @@ message SovereignEvent {
     TierAdvanced tier_advanced = 5;
     AuditPassed audit_passed = 6;
     SabbathEntered sabbath_entered = 7;
+    Denial denial = 8;
+    Audit audit = 9;
   }
 }

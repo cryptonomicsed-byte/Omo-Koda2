@@ -176,7 +176,15 @@ impl HookRunner {
         }
     }
 
-    pub fn run_pre(&self, ctx: &HookContext) -> HookDecision {
+    pub fn run_pre(&self, ctx: &HookContext, bus: &crate::bus::SovereignEventBus) -> HookDecision {
+        let _ = bus.publish(crate::bus::SovereignEvent {
+            event: Some(crate::bus::events::sovereign_event::Event::Audit(crate::bus::events::Audit {
+                event_type: "hook_pre_run".to_string(),
+                details: redact_secrets(&ctx.input),
+                timestamp: current_unix_timestamp(),
+            })),
+        });
+
         for hook in &self.pre_act {
             match hook.run(ctx) {
                 HookDecision::Allow => continue,
@@ -186,7 +194,15 @@ impl HookRunner {
         HookDecision::Allow
     }
 
-    pub fn run_post(&self, ctx: &HookContext) -> HookDecision {
+    pub fn run_post(&self, ctx: &HookContext, bus: &crate::bus::SovereignEventBus) -> HookDecision {
+        let _ = bus.publish(crate::bus::SovereignEvent {
+            event: Some(crate::bus::events::sovereign_event::Event::Audit(crate::bus::events::Audit {
+                event_type: "hook_post_run".to_string(),
+                details: redact_secrets(&ctx.output.as_deref().unwrap_or_default()),
+                timestamp: current_unix_timestamp(),
+            })),
+        });
+
         for hook in &self.post_act {
             match hook.run(ctx) {
                 HookDecision::Allow => continue,
@@ -195,6 +211,23 @@ impl HookRunner {
         }
         HookDecision::Allow
     }
+}
+
+fn redact_secrets(input: &str) -> String {
+    let lower = input.to_lowercase();
+    for secret in &["password", "api_key", "secret", "mnemonic", "seed"] {
+        if lower.contains(secret) {
+            return format!("[REDACTED: contains {}]", secret);
+        }
+    }
+    input.to_string()
+}
+
+fn current_unix_timestamp() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]

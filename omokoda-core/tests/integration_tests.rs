@@ -37,7 +37,7 @@ async fn full_private_e2e_flow() {
         .dispatch(parse(r#"birth "luna" provider:ollama"#).unwrap()[0].clone())
         .await
         .unwrap();
-    let agent_id = steward.agent_state().unwrap().id().clone();
+    let agent_id = steward.agent_core().unwrap().id().clone();
 
     // 2. Private Think
     steward
@@ -52,7 +52,7 @@ async fn full_private_e2e_flow() {
         .unwrap();
 
     // Verify private data is gone from memory
-    assert!(steward.agent_state().unwrap().private_data().is_none());
+    assert!(steward.agent_core().unwrap().private_data().is_none());
     let saved_path = steward.agent_storage_path(&agent_id);
     let saved_json = std::fs::read_to_string(&saved_path).unwrap();
     assert!(!saved_json.contains("my secret is 42"));
@@ -63,7 +63,7 @@ async fn full_private_e2e_flow() {
     let mut steward2 = Steward::new().with_session_dir(session_dir.clone());
     steward2.set_mock_provider("42 is the answer".to_string());
     steward2.load_agent(&agent_id).unwrap();
-    assert!(steward2.agent_state().unwrap().private_data().is_none());
+    assert!(steward2.agent_core().unwrap().private_data().is_none());
 
     // 5. Unlock
     steward2
@@ -72,7 +72,7 @@ async fn full_private_e2e_flow() {
         .unwrap();
 
     // Verify private messages are restored
-    let pd = steward2.agent_state().unwrap().private_data().unwrap();
+    let pd = steward2.agent_core().unwrap().private_data().unwrap();
     assert!(pd.private_messages.iter().any(|m| {
         m.role == MessageRole::User
             && m.blocks.iter().any(|b| {
@@ -126,8 +126,8 @@ async fn multi_agent_storage_isolation() {
         .await
         .unwrap();
 
-    let id1 = steward1.agent_state().unwrap().id().clone();
-    let id2 = steward2.agent_state().unwrap().id().clone();
+    let id1 = steward1.agent_core().unwrap().id().clone();
+    let id2 = steward2.agent_core().unwrap().id().clone();
 
     assert!(id1 != id2);
     assert!(steward1.agent_storage_path(&id1).exists());

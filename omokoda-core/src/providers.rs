@@ -42,7 +42,6 @@ impl ProviderRegistry {
         registry.register(Box::new(OllamaProvider::new(
             "http://localhost:11434".to_string(),
         )));
-        registry.register(Box::new(WebLLMProvider::new()));
 
         if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
             registry.register(Box::new(OpenAIProvider::new(api_key, None, None)));

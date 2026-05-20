@@ -10,10 +10,18 @@ pub enum EnforcementError {
     BoundaryViolation(PathBuf),
     #[error("Read-Only Violation: Attempted {0} in read-only mode")]
     ReadOnlyViolation(String),
+    #[error("Private Access Violation: Attempted to access {0}")]
+    PrivateAccessViolation(PathBuf),
 }
 
-/// Validates that a path is within the workspace root.
+/// Validates that a path is within the workspace root and not within /private.
 pub fn validate_path_boundary(root: &Path, target: &Path) -> Result<PathBuf, EnforcementError> {
+    // 1. Enforce /private boundary in runtime
+    let target_str = target.to_string_lossy();
+    if target_str.starts_with("/private") || target_str.starts_with("private/") || target_str == "private" {
+        return Err(EnforcementError::PrivateAccessViolation(target.to_path_buf()));
+    }
+
     let canonical_root = root
         .canonicalize()
         .map_err(|_| EnforcementError::BoundaryViolation(root.to_path_buf()))?;

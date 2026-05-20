@@ -37,7 +37,7 @@ pub enum PermissionPromptDecision {
     Deny { reason: String },
 }
 
-pub trait PermissionPrompter {
+pub trait PermissionPrompter: std::fmt::Debug {
     fn decide(&mut self, request: &PermissionRequest) -> PermissionPromptDecision;
 }
 

@@ -40,7 +40,7 @@ defmodule OmokodaSwarm.AuguryClient do
         alpha: Keyword.get(opts, :alpha, 0.3),
         beta: Keyword.get(opts, :beta, 0.1)
       }
-      |> Jason.encode!()
+      |> OmokodaSwarm.JSON.encode!()
 
     post("/predict", body)
   end
@@ -59,7 +59,7 @@ defmodule OmokodaSwarm.AuguryClient do
         timestamp: DateTime.utc_now() |> DateTime.to_unix(),
         parent_id: Keyword.get(opts, :parent_id)
       }
-      |> Jason.encode!()
+      |> OmokodaSwarm.JSON.encode!()
 
     post("/augury/dag/snapshot", body)
   end
@@ -75,7 +75,7 @@ defmodule OmokodaSwarm.AuguryClient do
   remaining 8 (returns not_implemented).
   """
   def nist_test(test, bits) when is_binary(test) and is_list(bits) do
-    body = Jason.encode!(%{test: test, data: bits})
+    body = OmokodaSwarm.JSON.encode!(%{test: test, data: bits})
     post("/nist/test", body)
   end
 
@@ -84,7 +84,7 @@ defmodule OmokodaSwarm.AuguryClient do
   Returns {:ok, %{all_passed: bool, passed: int, total: int, results: [...]}}
   """
   def nist_validate(bits) when is_list(bits) do
-    body = Jason.encode!(%{data: bits})
+    body = OmokodaSwarm.JSON.encode!(%{data: bits})
     post("/nist/validate", body)
   end
 
@@ -94,7 +94,7 @@ defmodule OmokodaSwarm.AuguryClient do
   Returns {:ok, %{valid: bool, reason: str, known_sigma: int|nil, known_steps: int}}
   """
   def bb_verify(states \\ 2, claimed_steps \\ 6) do
-    body = Jason.encode!(%{states: states, steps: claimed_steps})
+    body = OmokodaSwarm.JSON.encode!(%{states: states, steps: claimed_steps})
     post("/bb_verify", body)
   end
 
@@ -106,7 +106,7 @@ defmodule OmokodaSwarm.AuguryClient do
   `strategy` — "greedy" | "round_robin" | "least_connections"
   """
   def optimize(nodes, tasks, strategy \\ "greedy") do
-    body = Jason.encode!(%{nodes: nodes, tasks: tasks, strategy: strategy})
+    body = OmokodaSwarm.JSON.encode!(%{nodes: nodes, tasks: tasks, strategy: strategy})
     post("/optimize", body)
   end
 
@@ -115,7 +115,7 @@ defmodule OmokodaSwarm.AuguryClient do
   Returns probability estimates for system uptime under random node failures.
   """
   def reliability_simulation(nodes, tasks, n_trials \\ 10_000) do
-    body = Jason.encode!(%{nodes: nodes, tasks: tasks, n_trials: n_trials})
+    body = OmokodaSwarm.JSON.encode!(%{nodes: nodes, tasks: tasks, n_trials: n_trials})
     post("/optimize/reliability", body)
   end
 
@@ -124,7 +124,7 @@ defmodule OmokodaSwarm.AuguryClient do
   Returns throughput, latency percentiles, tool frequency, and economy stats.
   """
   def garden_analyse(receipts) when is_list(receipts) do
-    body = Jason.encode!(%{receipts: receipts})
+    body = OmokodaSwarm.JSON.encode!(%{receipts: receipts})
     post("/garden/analyse", body)
   end
 
@@ -132,7 +132,7 @@ defmodule OmokodaSwarm.AuguryClient do
   Extract a 12-dimensional feature vector from recent receipts for Augury input.
   """
   def garden_feed(receipts) when is_list(receipts) do
-    body = Jason.encode!(%{receipts: receipts})
+    body = OmokodaSwarm.JSON.encode!(%{receipts: receipts})
     post("/garden/feed", body)
   end
 
@@ -146,7 +146,7 @@ defmodule OmokodaSwarm.AuguryClient do
 
     case :httpc.request(:post, request, [timeout: 30_000], []) do
       {:ok, {{_, status, _}, _headers, resp_body}} when status >= 200 and status < 300 ->
-        {:ok, Jason.decode!(to_string(resp_body))}
+        {:ok, OmokodaSwarm.JSON.decode!(to_string(resp_body))}
 
       {:ok, {{_, status, _}, _headers, resp_body}} ->
         {:error, {status, safe_decode(resp_body)}}
@@ -162,7 +162,7 @@ defmodule OmokodaSwarm.AuguryClient do
 
     case :httpc.request(:get, request, [timeout: 10_000], []) do
       {:ok, {{_, status, _}, _headers, resp_body}} when status >= 200 and status < 300 ->
-        {:ok, Jason.decode!(to_string(resp_body))}
+        {:ok, OmokodaSwarm.JSON.decode!(to_string(resp_body))}
 
       {:ok, {{_, status, _}, _headers, resp_body}} ->
         {:error, {status, safe_decode(resp_body)}}
@@ -173,7 +173,7 @@ defmodule OmokodaSwarm.AuguryClient do
   end
 
   defp safe_decode(body) do
-    case Jason.decode(to_string(body)) do
+    case OmokodaSwarm.JSON.decode(to_string(body)) do
       {:ok, decoded} -> decoded
       _ -> to_string(body)
     end

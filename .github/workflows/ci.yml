@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install protoc
+        run: sudo apt-get install -y protobuf-compiler
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -46,14 +48,6 @@ jobs:
         with:
           elixir-version: "1.16"
           otp-version: "26"
-      - name: Restore deps cache
-        uses: actions/cache@v4
-        with:
-          path: omokoda-swarm/deps
-          key: elixir-deps-${{ hashFiles('omokoda-swarm/mix.lock') }}
-      - name: Install deps
-        run: mix deps.get
-        working-directory: omokoda-swarm
       - name: Test
         run: mix test
         working-directory: omokoda-swarm

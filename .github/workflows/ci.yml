@@ -2,6 +2,9 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
+      - 'claude/**'
   pull_request:
 
 jobs:
@@ -83,6 +86,47 @@ jobs:
           elixir-version: "1.17"
       - run: mix deps.get
       - run: mix test
+
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python3 -m pip install -r omokoda-simulation/requirements.txt --quiet
+      - run: python3 -m py_compile omokoda-simulation/simulation.py
+
+  node:
+    name: Node
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '18'
+      - run: npm install --legacy-peer-deps
+        working-directory: omokoda-frontend
+      - run: npm run build
+        working-directory: omokoda-frontend
+
+  julia:
+    name: Julia
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.10'
+      - name: Install Julia deps if present
+        run: |
+          if [ -d "omokoda-memory" ]; then
+            julia --project=omokoda-memory -e 'using Pkg; Pkg.instantiate()'
+            julia --project=omokoda-memory -e 'include("src/OmokodaMemory.jl")'
+          else
+            echo "No omokoda-memory Julia project found; skipping instantiate."
+          fi
 
   move:
     name: Move

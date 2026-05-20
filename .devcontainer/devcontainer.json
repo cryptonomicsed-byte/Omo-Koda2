@@ -1,0 +1,25 @@
+{
+  "name": "Omo-Koda2 DePIN OS",
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "features": {
+    "ghcr.io/devcontainers/features/rust:1": { "version": "stable", "profile": "default" }
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "golang.go",
+        "jakebecker.elixir-ls",
+        "julialang.language-julia",
+        "ms-python.python",
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  },
+  "remoteEnv": {
+    "STEWARD_URL": "http://localhost:7777",
+    "MEMORY_URL": "http://localhost:7778",
+    "PYTHON_TOOL_URL": "http://localhost:7779"
+  }
+}

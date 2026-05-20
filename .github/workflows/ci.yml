@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+
+jobs:
+  # ── Rust / Steward ──────────────────────────────────────────────────────────
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --workspace
+      - name: Test
+        run: cargo test --workspace
+      - name: Clippy
+        run: cargo clippy --workspace -- -D warnings
+
+  # ── Go / Gateway ────────────────────────────────────────────────────────────
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Test
+        run: go test ./...
+        working-directory: omokoda-ops
+
+  # ── Elixir / Swarm ──────────────────────────────────────────────────────────
+  elixir:
+    name: Elixir
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.16"
+          otp-version: "26"
+      - name: Restore deps cache
+        uses: actions/cache@v4
+        with:
+          path: omokoda-swarm/deps
+          key: elixir-deps-${{ hashFiles('omokoda-swarm/mix.lock') }}
+      - name: Install deps
+        run: mix deps.get
+        working-directory: omokoda-swarm
+      - name: Test
+        run: mix test
+        working-directory: omokoda-swarm
+
+  # ── Python / Tool Runner ────────────────────────────────────────────────────
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install -r requirements.txt
+        working-directory: omokoda-simulation
+      - name: Syntax check
+        run: |
+          python -m py_compile server.py
+          python -m py_compile tools/web_search.py
+          python -m py_compile tools/code_runner.py
+          python -m py_compile tools/data_analysis.py
+          python -m py_compile tools/cosmos_generator.py
+        working-directory: omokoda-simulation
+      - name: Unit tests
+        run: |
+          python -c "
+          from tools.data_analysis import data_analysis
+          from tools.cosmos_generator import cosmos_generate
+          from tools.code_runner import code_runner
+          import json
+
+          r = json.loads(data_analysis('[1,2,3,4,5]'))
+          assert r['mean'] == 3.0 and r['count'] == 5
+
+          r = json.loads(cosmos_generate('{\"theme\":\"sci-fi\"}'))
+          assert r['status'] == 'stub'
+
+          r = json.loads(code_runner(json.dumps({'code': 'print(6*7)'})))
+          assert r['stdout'].strip() == '42'
+
+          print('all Python tool tests passed')
+          "
+        working-directory: omokoda-simulation
+
+  # ── Julia / Memory ──────────────────────────────────────────────────────────
+  julia:
+    name: Julia
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: "1.10"
+      - uses: julia-actions/cache@v2
+      - name: Instantiate
+        run: julia --project=omokoda-memory -e 'using Pkg; Pkg.instantiate()'
+      - name: Syntax check
+        run: |
+          julia --project=omokoda-memory -e '
+            include("omokoda-memory/src/busy_beaver.jl")
+            include("omokoda-memory/src/nist_tests.jl")
+            include("omokoda-memory/src/augury.jl")
+            include("omokoda-memory/src/depin_optimizer.jl")
+            include("omokoda-memory/src/garden_analytics.jl")
+            println("Julia modules loaded OK")
+          '
+      - name: Unit tests
+        run: |
+          julia --project=omokoda-memory -e '
+            include("omokoda-memory/src/busy_beaver.jl")
+            include("omokoda-memory/src/nist_tests.jl")
+
+            # BB verification
+            r = verify_bb_steps(2, 6)
+            @assert r.valid "BB(2) step verification failed"
+
+            # Run BB2 and check output
+            result = run_known_bb(2)
+            @assert result.halted   "BB(2) should halt"
+            @assert result.ones == 4 "BB(2) should write 4 ones, got $(result.ones)"
+            @assert result.steps == 6 "BB(2) should take 6 steps, got $(result.steps)"
+
+            # NIST frequency test on known-good sequence
+            bits = repeat([0,1], 512)
+            r = test_frequency(bits)
+            @assert r.passed "Frequency test on balanced sequence should pass"
+
+            println("Julia unit tests passed")
+          '

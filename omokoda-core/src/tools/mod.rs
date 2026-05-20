@@ -10,6 +10,7 @@ pub mod config_tool;
 pub mod file_ops;
 pub mod repl;
 pub mod sovereign;
+pub mod streaming;
 pub mod structured_output;
 pub mod todo;
 pub mod tool_definitions;

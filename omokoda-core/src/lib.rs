@@ -14,12 +14,14 @@ pub mod permissions;
 pub mod plugins;
 pub mod prompt;
 pub mod providers;
+pub mod query;
 pub mod receipt;
 pub mod reputation;
 pub mod rhythm;
 pub mod sandbox;
 pub mod session;
 pub mod skills;
+pub mod tasks;
 pub mod tools;
 pub mod usage;
 

@@ -113,7 +113,6 @@ impl From<ExecutionResult> for ExecutionResponse {
 // Handlers
 // ---------------------------------------------------------------------------
 
-#[axum::debug_handler]
 async fn birth_handler(
     State(state): State<AppState>,
     Json(req): Json<BirthRequest>,

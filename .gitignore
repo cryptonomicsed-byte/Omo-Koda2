@@ -8,3 +8,4 @@ omokoda-frontend/out/
 
 # Sui Move build artifacts
 omokoda-sui/build/
+omokoda-core/test_sessions_privacy_restart/

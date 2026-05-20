@@ -45,9 +45,12 @@ pub enum TurnEvent {
     IntentCompiled(IntentCompilation),
     PlanGenerated(IntentPlan),
     SubAgentSuggested(SubAgentSuggestion),
+    BudgetCheck(TokenUsage),
+    CompactionTriggered(String),
+    ToolRequest(String, String), // Tool name, params
+    ToolResult(String),
     Audit(String),
     Token(String),
-    ToolRequestDetected(String),
     ReceiptGenerated(Receipt),
     Warning(String),
     Error(String),
@@ -695,6 +698,32 @@ impl Steward {
     }
 
     pub async fn dispatch(&mut self, stmt: Statement) -> Result<ExecutionResult, String> {
+        self.dispatch_internal(stmt).await
+    }
+
+    async fn dispatch_with_guard(
+        &mut self,
+        stmt: Statement,
+        _sink: &TurnEventSender,
+        iterations: &mut u32,
+        max: u32,
+    ) -> Result<ExecutionResult, String> {
+        if *iterations >= max {
+            return Err("max iterations reached".to_string());
+        }
+        *iterations += 1;
+
+        // Check budget before turn
+        if let Ok(agent) = self.ensure_born() {
+            if agent.synapse() < 100.0 {
+                return Err("insufficient synapse budget".to_string());
+            }
+        }
+
+        self.dispatch(stmt).await
+    }
+
+    async fn dispatch_internal(&mut self, stmt: Statement) -> Result<ExecutionResult, String> {
         let _ = OPERATIONS; // fractal invariant: 21 operations
         match stmt {
             Statement::Birth { name, metadata } => {
@@ -1738,12 +1767,16 @@ impl Steward {
         }
         if let Statement::Act { tool, .. } = &stmt {
             let _ = sink
-                .send(TurnEvent::ToolRequestDetected(tool.clone()))
+                .send(TurnEvent::ToolRequest(tool.clone(), "params".to_string()))
                 .await;
         }
 
+        let stmt = stmt;
+        let mut iterations = 0;
+        let max_iterations = 16; 
+        
         let audit_after_success = audit_event_for_success(&stmt);
-        let result = self.dispatch(stmt).await;
+        let result = self.dispatch_with_guard(stmt, &sink, &mut iterations, max_iterations).await;
 
         match &result {
             Ok(exec) => {

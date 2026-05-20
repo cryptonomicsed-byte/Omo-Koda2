@@ -1,3 +1,4 @@
+pub mod background;
 pub mod bootstrap;
 pub mod bus;
 pub mod compact;
@@ -8,6 +9,7 @@ pub mod identity;
 pub mod intent;
 pub mod interpreter;
 pub mod justice;
+pub mod main_loop;
 pub mod memory;
 pub mod parser;
 pub mod permissions;

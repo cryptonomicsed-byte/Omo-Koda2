@@ -1,6 +1,9 @@
 target/
 omokoda-core/sessions/
 
+# Claude Code agent workspace
+.claude/
+
 # Frontend and package artifacts
 omokoda-frontend/node_modules/
 omokoda-frontend/.next/

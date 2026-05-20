@@ -1427,6 +1427,84 @@ impl Steward {
                         tool_output: Some("Agent private memory unlocked.".to_string()),
                     })
                 }
+                "compact" => {
+                    use crate::compact::{CompactionEngine, CompactionResult};
+                    let agent = self.ensure_born_mut()?;
+                    let flags = crate::config::FeatureFlags::default();
+                    let engine =
+                        CompactionEngine::new(flags.compact_threshold, flags.compact_keep_recent);
+                    match engine.compact(&mut agent.snapshot.session) {
+                        CompactionResult::NotNeeded => Ok(ExecutionResult {
+                            receipt: None,
+                            private_mode: false,
+                            tool_output: Some(format!(
+                                "No compaction needed (messages: {})",
+                                agent.snapshot.session.public_messages.len()
+                            )),
+                        }),
+                        CompactionResult::Compacted(summary) => {
+                            self.auto_save();
+                            Ok(ExecutionResult {
+                                receipt: None,
+                                private_mode: false,
+                                tool_output: Some(format!(
+                                    "Compacted {} messages. Key files: {}. Pending: {}.",
+                                    summary.compacted_count,
+                                    summary.key_files.join(", "),
+                                    summary.pending_items.len(),
+                                )),
+                            })
+                        }
+                    }
+                }
+                "sessions" => {
+                    let sub = arg.as_deref().unwrap_or("list");
+                    match sub {
+                        "list" => {
+                            let dir = &self.session_dir;
+                            let sessions: Vec<String> = std::fs::read_dir(dir)
+                                .map(|entries| {
+                                    entries
+                                        .flatten()
+                                        .filter_map(|e| {
+                                            let name = e.file_name().to_string_lossy().to_string();
+                                            if name.ends_with(".json") {
+                                                Some(name.trim_end_matches(".json").to_string())
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .collect()
+                                })
+                                .unwrap_or_default();
+                            let output = if sessions.is_empty() {
+                                "No saved sessions.".to_string()
+                            } else {
+                                format!("Saved sessions:\n{}", sessions.join("\n"))
+                            };
+                            Ok(ExecutionResult {
+                                receipt: None,
+                                private_mode: false,
+                                tool_output: Some(output),
+                            })
+                        }
+                        _ => Err(format!("Unknown sessions subcommand: '{}'", sub)),
+                    }
+                }
+                "memory" => {
+                    let agent = self.ensure_born()?;
+                    let count = agent.memory.len();
+                    let total_importance: f32 = agent.memory.iter().map(|m| m.importance).sum();
+                    let output = format!(
+                        "Memory entries: {}\nTotal importance mass: {:.2}\nAct counter: {}",
+                        count, total_importance, agent.snapshot.act_counter,
+                    );
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(output),
+                    })
+                }
                 _ => Err(format!(
                     "Slash command '/{}' not yet implemented in Steward",
                     command

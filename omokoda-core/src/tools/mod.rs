@@ -6,7 +6,9 @@ use std::process::Command;
 use crate::execution::permission_enforcer::{enforce_mode, validate_path_boundary};
 use crate::sandbox::WasmSandbox;
 
+pub mod config_tool;
 pub mod file_ops;
+pub mod repl;
 pub mod sovereign;
 pub mod structured_output;
 pub mod todo;
@@ -151,6 +153,9 @@ impl ToolRegistry {
         registry.register(Box::new(todo::WriteTodoTool));
         registry.register(Box::new(todo::ReadTodoTool));
         registry.register(Box::new(structured_output::StructuredOutputTool));
+        registry.register(Box::new(repl::ReplTool));
+        registry.register(Box::new(config_tool::ConfigReadTool));
+        registry.register(Box::new(config_tool::ConfigWriteTool));
 
         registry
     }

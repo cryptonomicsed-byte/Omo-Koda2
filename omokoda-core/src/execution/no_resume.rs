@@ -9,7 +9,7 @@ impl NoResumeRestore {
     /// Validates if the current session attempt is a direct state restoration.
     /// In a high-security context, we force re-initialization.
     pub fn is_unsafe_restore(attempted_path: &str) -> bool {
-        // Logic: Check if the system is attempting to load a raw state 
+        // Logic: Check if the system is attempting to load a raw state
         // without going through the birth/seal verification ritual.
         attempted_path.contains("raw_state_load")
     }

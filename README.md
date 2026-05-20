@@ -104,4 +104,24 @@ omokoda/
 └── docs/              # Deep architecture and ADRs
 ```
 
+## Developer Setup
+
+The Rust workspace depends on two sibling repositories via path dependencies:
+
+```
+parent/
+├── Omo-Koda2/
+├── Bipon39-Rust/
+└── Ifascript/
+```
+
+Clone the external dependencies next to this repository before running Rust checks:
+
+```sh
+git clone https://github.com/Bino-Elgua/Bipon39-Rust ../Bipon39-Rust
+git clone https://github.com/Bino-Elgua/Ifascript ../Ifascript
+```
+
+CI uses the same sibling checkout layout. The Rust build vendors `protoc` through Cargo, so a system protobuf compiler is not required.
+
 *Àṣẹ. 🤍🗿*

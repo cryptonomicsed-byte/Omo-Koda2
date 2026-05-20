@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum PermissionMode {
@@ -83,12 +83,15 @@ impl ClawPolicy {
 
     pub fn check(&self, action: &str, resource: &str) -> PermissionOutcome {
         let target = format!("{}:{}", action, resource);
-        
+
         // 1. Deny always wins
         for pattern in &self.deny {
             if self.match_pattern(pattern, &target) {
                 return PermissionOutcome::Deny {
-                    reason: format!("ClawPolicy: action '{}' is explicitly denied by pattern '{}'", target, pattern),
+                    reason: format!(
+                        "ClawPolicy: action '{}' is explicitly denied by pattern '{}'",
+                        target, pattern
+                    ),
                 };
             }
         }
@@ -150,14 +153,15 @@ impl PermissionPolicy {
         policy = policy.with_tool_requirement("note_taking", PermissionMode::WorkspaceWrite);
         policy = policy.with_tool_requirement("glob", PermissionMode::ReadOnly);
         policy = policy.with_tool_requirement("grep", PermissionMode::ReadOnly);
-        
+
         // Tier 2 tools
         policy = policy.with_tool_requirement("bash", PermissionMode::DangerFullAccess);
         policy = policy.with_tool_requirement("wasm", PermissionMode::DangerFullAccess);
-        
+
         // Tier 4 tools
-        policy = policy.with_tool_requirement("agent_orchestration", PermissionMode::DangerFullAccess);
-        
+        policy =
+            policy.with_tool_requirement("agent_orchestration", PermissionMode::DangerFullAccess);
+
         policy
     }
 
@@ -263,17 +267,32 @@ mod tests {
     #[test]
     fn test_claw_policy_defaults() {
         let policy = ClawPolicy::default();
-        
+
         // Allowed
-        assert_eq!(policy.check("read", "workspace/file.txt"), PermissionOutcome::Allow);
-        assert_eq!(policy.check("write", "workspace/note.txt"), PermissionOutcome::Allow);
-        
+        assert_eq!(
+            policy.check("read", "workspace/file.txt"),
+            PermissionOutcome::Allow
+        );
+        assert_eq!(
+            policy.check("write", "workspace/note.txt"),
+            PermissionOutcome::Allow
+        );
+
         // Denied by pattern
-        assert!(matches!(policy.check("net", "google.com"), PermissionOutcome::Deny { .. }));
-        assert!(matches!(policy.check("exec", "sudo"), PermissionOutcome::Deny { .. }));
-        
+        assert!(matches!(
+            policy.check("net", "google.com"),
+            PermissionOutcome::Deny { .. }
+        ));
+        assert!(matches!(
+            policy.check("exec", "sudo"),
+            PermissionOutcome::Deny { .. }
+        ));
+
         // Denied by default (no matching allow)
-        assert!(matches!(policy.check("read", "/etc/passwd"), PermissionOutcome::Deny { .. }));
+        assert!(matches!(
+            policy.check("read", "/etc/passwd"),
+            PermissionOutcome::Deny { .. }
+        ));
     }
 
     #[test]
@@ -286,8 +305,11 @@ deny:
   - "read:/etc/*"
 "#;
         let policy = ClawPolicy::from_yaml(yaml).unwrap();
-        
+
         assert_eq!(policy.check("read", "anything"), PermissionOutcome::Allow);
-        assert!(matches!(policy.check("read", "/etc/passwd"), PermissionOutcome::Deny { .. }));
+        assert!(matches!(
+            policy.check("read", "/etc/passwd"),
+            PermissionOutcome::Deny { .. }
+        ));
     }
 }

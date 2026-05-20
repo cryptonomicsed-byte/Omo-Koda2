@@ -1,5 +1,5 @@
-pub mod fractal;
 pub mod entropy;
+pub mod fractal;
 
 use hkdf::Hkdf;
 use serde::{Deserialize, Serialize};

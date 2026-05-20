@@ -1,11 +1,14 @@
 pub mod bus;
+pub mod config;
 pub mod economics;
+pub mod execution;
 pub mod identity;
 pub mod intent;
 pub mod interpreter;
 pub mod justice;
 pub mod memory;
 pub mod parser;
+pub mod permissions;
 pub mod providers;
 pub mod receipt;
 pub mod reputation;
@@ -13,10 +16,7 @@ pub mod rhythm;
 pub mod sandbox;
 pub mod session;
 pub mod tools;
-pub mod execution;
-pub mod permissions;
 pub mod usage;
-pub mod config;
 
 pub use identity::AgentId;
 pub use intent::{

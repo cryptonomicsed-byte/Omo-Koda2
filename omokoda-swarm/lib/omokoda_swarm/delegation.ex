@@ -37,9 +37,10 @@ defmodule OmokodaSwarm.Delegation do
       witnesses = Enum.take_random(available_agents, witness_count)
 
       # Delegate to each witness
-      results = Enum.map(witnesses, fn agent_id ->
-        Task.async(fn -> OmokodaSwarm.Agent.delegate_task(agent_id, task) end)
-      end)
+      results =
+        Enum.map(witnesses, fn agent_id ->
+          Task.async(fn -> OmokodaSwarm.Agent.delegate_task(agent_id, task) end)
+        end)
 
       # Wait for all results
       Task.await_many(results, 5000)

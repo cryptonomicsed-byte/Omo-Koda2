@@ -1,16 +1,16 @@
 //! # The Omo-koda Fractal Architecture
-//! 
+//!
 //! This module encodes the 3-7-21-343 fractal as compile-time constants.
 //! Every number here is structural, not decorative.
-//! 
+//!
 //! ## The Fractal Equation
-//! 
+//!
 //! ```text:disable-run
 //! 3 primitives × 7 phases = 21 operations
 //! 7 days × 7 planets × 7 dimensions = 343 resonance signatures
 //! 7 modules × 7 functions = 49 module operations
 //! ```
-//! 
+//!
 //! The user sees 3 words. The Steward executes 21 operations.
 //! The system computes 343 states. The agent lives in 7 dimensions.
 
@@ -46,13 +46,13 @@ use serde::{Deserialize, Serialize};
 /// These are the axes of the soul coordinate system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Dimension {
-    Time = 0,      // When — the 7-day cycle
-    Space = 1,     // Where — the 7 planetary orbits
-    Body = 2,      // What — the 7 kernel modules
-    Sound = 3,     // How — the 7 languages / sonic code
-    Mind = 4,      // Why — the 7 Hermetic principles
-    Matter = 5,    // Which — the 7 Orishas / embodied archetypes
-    Spirit = 6,    // Who — the emergent agent identity
+    Time = 0,   // When — the 7-day cycle
+    Space = 1,  // Where — the 7 planetary orbits
+    Body = 2,   // What — the 7 kernel modules
+    Sound = 3,  // How — the 7 languages / sonic code
+    Mind = 4,   // Why — the 7 Hermetic principles
+    Matter = 5, // Which — the 7 Orishas / embodied archetypes
+    Spirit = 6, // Who — the emergent agent identity
 }
 
 impl Dimension {
@@ -84,9 +84,9 @@ impl Dimension {
 /// The 3 primitives — frozen surface interface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Primitive {
-    Birth = 0,   // 7¹ — enters the cycle
-    Think = 1,   // 7² — navigates the lattice
-    Act = 2,     // 7³ — manifests in state space
+    Birth = 0, // 7¹ — enters the cycle
+    Think = 1, // 7² — navigates the lattice
+    Act = 2,   // 7³ — manifests in state space
 }
 
 impl Primitive {
@@ -119,16 +119,20 @@ impl Primitive {
 /// Computed from: day (7) × planet (7) × dimension (7) = 343
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ResonanceSignature {
-    pub day: u8,        // 0-6 (Sunday-Saturday)
-    pub planet: u8,     // 0-6 (Sun-Saturn)
-    pub dimension: u8,  // 0-6 (Time-Spirit)
+    pub day: u8,       // 0-6 (Sunday-Saturday)
+    pub planet: u8,    // 0-6 (Sun-Saturn)
+    pub dimension: u8, // 0-6 (Time-Spirit)
 }
 
 impl ResonanceSignature {
     /// Create from components. Validates range.
     pub fn new(day: u8, planet: u8, dimension: u8) -> Option<Self> {
         if day < CYCLE as u8 && planet < CYCLE as u8 && dimension < CYCLE as u8 {
-            Some(Self { day, planet, dimension })
+            Some(Self {
+                day,
+                planet,
+                dimension,
+            })
         } else {
             None
         }

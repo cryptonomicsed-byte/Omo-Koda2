@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::execution::permission_enforcer::{enforce_mode, validate_path_boundary};
 use crate::sandbox::WasmSandbox;
-use crate::execution::permission_enforcer::{validate_path_boundary, enforce_mode};
 
-pub mod sovereign;
 pub mod file_ops;
+pub mod sovereign;
 
 #[derive(Debug, Clone)]
 pub struct ExecutionContext {
@@ -444,9 +444,8 @@ impl Tool for GrepTool {
         params: &str,
         context: &ExecutionContext,
     ) -> Result<(String, crate::usage::TokenUsage), String> {
-        let input: file_ops::GrepSearchInput = serde_json::from_str(params).map_err(|e| {
-            format!("grep requires JSON input: {}", e)
-        })?;
+        let input: file_ops::GrepSearchInput =
+            serde_json::from_str(params).map_err(|e| format!("grep requires JSON input: {}", e))?;
 
         let workspace_root = &context.workspace_root;
         if let Some(ref p) = input.path {
@@ -460,7 +459,8 @@ impl Tool for GrepTool {
             }
         }
 
-        let output = file_ops::grep_search(&input).map_err(|e| format!("grep search failed: {}", e))?;
+        let output =
+            file_ops::grep_search(&input).map_err(|e| format!("grep search failed: {}", e))?;
         let resp = serde_json::to_string(&output).map_err(|e| e.to_string())?;
         Ok((resp, crate::usage::TokenUsage::default()))
     }
@@ -502,7 +502,8 @@ impl Tool for WasmTool {
         let args: Vec<String> = parts.map(|s| s.to_string()).collect();
         let wasm_sandbox =
             WasmSandbox::new().map_err(|e| format!("failed to initialize wasm sandbox: {}", e))?;
-        let output = wasm_sandbox.execute_module(Path::new(module_path), &args, context.sandbox_mode)?;
+        let output =
+            wasm_sandbox.execute_module(Path::new(module_path), &args, context.sandbox_mode)?;
         Ok((output, crate::usage::TokenUsage::default()))
     }
 }
@@ -527,7 +528,10 @@ impl Tool for AgentOrchestrationTool {
         _params: &str,
         _context: &ExecutionContext,
     ) -> Result<(String, crate::usage::TokenUsage), String> {
-        Ok(("orchestration complete".to_string(), crate::usage::TokenUsage::default()))
+        Ok((
+            "orchestration complete".to_string(),
+            crate::usage::TokenUsage::default(),
+        ))
     }
 }
 
@@ -561,14 +565,13 @@ impl Tool for NoteTakingTool {
         };
         let title = v["title"].as_str().ok_or("missing title")?;
         let content = v["content"].as_str().ok_or("missing content")?;
-        
+
         let path = format!("notes/{}.md", title.to_lowercase().replace(' ', "_"));
         // Don't validate boundary here yet if we want to auto-create 'notes/'
-        
+
         let output = file_ops::write_file(&path, content)
             .map_err(|e| format!("failed to record note: {}", e))?;
         let resp = serde_json::to_string(&output).map_err(|e| e.to_string())?;
         Ok((resp, crate::usage::TokenUsage::default()))
     }
 }
-

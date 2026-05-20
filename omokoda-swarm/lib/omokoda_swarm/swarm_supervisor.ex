@@ -33,12 +33,32 @@ defmodule OmokodaSwarm.SwarmSupervisor do
   end
 
   @doc """
+  Ensures the default boot agents are running.
+  """
+  def ensure_initial_agents do
+    for {agent_id, role} <- [{"agent_1", :planner}, {"agent_2", :builder}, {"agent_3", :witness}] do
+      case start_agent(agent_id, %{role: role}) do
+        {:ok, _pid} -> :ok
+        {:error, {:already_started, _pid}} -> :ok
+        {:error, {:already_present, _pid}} -> :ok
+        {:error, _reason} -> :ok
+      end
+    end
+
+    :ok
+  end
+
+  @doc """
   Stops an agent in the swarm.
   """
   def stop_agent(agent_id) do
     case GenServer.whereis(OmokodaSwarm.Agent.process_name(agent_id)) do
-      nil -> {:error, :not_found}
-      pid -> GenServer.stop(pid)
+      nil ->
+        {:error, :not_found}
+
+      pid ->
+        DynamicSupervisor.terminate_child(OmokodaSwarm.AgentSupervisor, pid)
+        :ok
     end
   end
 

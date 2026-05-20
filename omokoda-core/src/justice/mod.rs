@@ -9,15 +9,15 @@ pub mod hermetic_tests;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HermeticEvaluation {
-    pub balance: f64,    // 0.0 - 1.0 (how aligned the act was with agent's principles)
-    pub alignment: f64,  // 0.0 - 1.0 (structural consistency)
+    pub balance: f64,   // 0.0 - 1.0 (how aligned the act was with agent's principles)
+    pub alignment: f64, // 0.0 - 1.0 (structural consistency)
 }
 
 impl HermeticEvaluation {
     pub fn new(state: &HermeticState, primitive: &str, output: &str) -> Self {
         // Behavioral Law manifestation (Layer B)
         // This is a simplified deterministic manifestation for Week 1.
-        
+
         let output_len = output.len() as f64;
         let balance = match primitive {
             "think" => {

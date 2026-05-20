@@ -1,6 +1,6 @@
-use async_trait::async_trait;
 use crate::interpreter::ExecutionResult;
 use crate::receipt::Receipt;
+use async_trait::async_trait;
 
 /// SwibePlugin Hook Contract
 /// Ports the onBirth, onThink, onReceipt, and onSettle hooks from Swibe.
@@ -25,7 +25,9 @@ pub struct HookManager {
 
 impl HookManager {
     pub fn new() -> Self {
-        Self { plugins: Vec::new() }
+        Self {
+            plugins: Vec::new(),
+        }
     }
 
     pub fn register(&mut self, plugin: Box<dyn SwibePlugin>) {

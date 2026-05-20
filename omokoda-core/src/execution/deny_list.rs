@@ -15,7 +15,10 @@ impl DenyFirstRules {
     /// Evaluates if the action is inherently denied.
     pub fn check(tool_name: &str) -> Result<(), String> {
         if Self::is_blacklisted(tool_name) {
-            return Err(format!("Security Violation: Tool '{}' is explicitly blacklisted.", tool_name));
+            return Err(format!(
+                "Security Violation: Tool '{}' is explicitly blacklisted.",
+                tool_name
+            ));
         }
         Ok(())
     }

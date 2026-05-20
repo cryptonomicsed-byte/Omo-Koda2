@@ -21,7 +21,7 @@ impl AutoModeClassifier {
             }
             return RiskLevel::High;
         }
-        
+
         if tool_name.contains("read") || tool_name.contains("search") {
             return RiskLevel::Safe;
         }

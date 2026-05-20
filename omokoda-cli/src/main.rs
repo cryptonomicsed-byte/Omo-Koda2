@@ -172,7 +172,9 @@ async fn main() -> Result<()> {
 async fn repl() -> Result<()> {
     println!(
         "{}",
-        "Ọmọ Kọ́dà  •  Àṣẹ CLI  •  type 'help' or Ctrl-D to exit".bold().cyan()
+        "Ọmọ Kọ́dà  •  Àṣẹ CLI  •  type 'help' or Ctrl-D to exit"
+            .bold()
+            .cyan()
     );
     let mut rl = DefaultEditor::new()?;
     let mut steward = load_or_new_steward();
@@ -249,11 +251,7 @@ async fn run_statement(steward: &mut Steward, stmt: Statement) -> Result<()> {
         }
     }
     if let Some(receipt) = result.receipt {
-        println!(
-            "{}  {}",
-            "receipt:".dimmed(),
-            receipt.receipt_id.dimmed()
-        );
+        println!("{}  {}", "receipt:".dimmed(), receipt.receipt_id.dimmed());
     }
     Ok(())
 }

@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::identity::AgentId;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActReceipt {

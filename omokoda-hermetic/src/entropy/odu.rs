@@ -18,7 +18,9 @@ impl OduEntropy {
     pub fn generate_hermetic_seed(odu_indices: &[u8]) -> [u8; 32] {
         let mut seed = [0u8; 32];
         for (i, &idx) in odu_indices.iter().enumerate() {
-            if i >= 32 { break; }
+            if i >= 32 {
+                break;
+            }
             seed[i] = Self::get_entropy(idx);
         }
         seed

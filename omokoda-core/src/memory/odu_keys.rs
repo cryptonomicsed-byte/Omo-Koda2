@@ -1,4 +1,4 @@
-use chacha20poly1305::{aead::Aead, KeyInit, ChaCha20Poly1305, Nonce};
+use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, KeyInit, Nonce};
 use hkdf::Hkdf;
 use sha2::Sha256;
 
@@ -40,12 +40,12 @@ impl OduKeys {
 
         let nonce = Nonce::from_slice(&odu_vector.as_bytes()[..12]);
         let cipher = ChaCha20Poly1305::new(kn.into());
-        
+
         let plaintext = [0u8; 32];
         let ciphertext = cipher
             .encrypt(nonce, plaintext.as_ref())
             .expect("ChaCha20Poly1305 encryption failed for key rotation");
-        
+
         let mut kn_plus_1 = [0u8; 32];
         kn_plus_1.copy_from_slice(&ciphertext[..32]);
         kn_plus_1

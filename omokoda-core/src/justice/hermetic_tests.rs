@@ -5,9 +5,9 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::identity::AgentId;
     use crate::justice::hermetic::*;
     use crate::session::SessionState;
-    use crate::identity::AgentId;
 
     // =========================================================================
     // MOCK HELPERS
@@ -32,11 +32,19 @@ mod tests {
     }
 
     fn mock_session() -> SessionState {
-        SessionState::new(AgentId::new("test-agent-long-enough-id"), "test".to_string(), 0)
+        SessionState::new(
+            AgentId::new("test-agent-long-enough-id"),
+            "test".to_string(),
+            0,
+        )
     }
 
     fn mock_session_with_warns(count: u32) -> SessionState {
-        let mut session = SessionState::new(AgentId::new("test-agent-long-enough-id"), "test".to_string(), 0);
+        let mut session = SessionState::new(
+            AgentId::new("test-agent-long-enough-id"),
+            "test".to_string(),
+            0,
+        );
         for _ in 0..count {
             session.increment_warn_count();
         }
@@ -70,7 +78,10 @@ mod tests {
             &mock_action_with_desc("clarify the situation"),
             &mut session,
         );
-        assert!(eval.mentalism > 0.9, "Expected high mentalism score for truth");
+        assert!(
+            eval.mentalism > 0.9,
+            "Expected high mentalism score for truth"
+        );
         assert!(eval.is_allowed(), "Expected ALLOW for truthful intent");
     }
 
@@ -102,7 +113,10 @@ mod tests {
             &mock_action_with_desc("exploit a global system loophole"),
             &mut session,
         );
-        assert!(eval.correspondence < 0.6, "Expected low correspondence for local exploit");
+        assert!(
+            eval.correspondence < 0.6,
+            "Expected low correspondence for local exploit"
+        );
         assert!(
             matches!(eval.decision, EvaluationDecision::Block(_)),
             "Expected BLOCK for systemic exploitation"
@@ -117,7 +131,10 @@ mod tests {
             &mock_action_with_desc("create long-term dependency"),
             &mut session,
         );
-        assert!(eval.correspondence < 0.7, "Expected imbalanced correspondence");
+        assert!(
+            eval.correspondence < 0.7,
+            "Expected imbalanced correspondence"
+        );
     }
 
     // =========================================================================
@@ -132,7 +149,10 @@ mod tests {
             &mock_action_with_desc("escalate conflict"),
             &mut session,
         );
-        assert!(eval.vibration < 0.4, "Expected low vibration for conflict escalation");
+        assert!(
+            eval.vibration < 0.4,
+            "Expected low vibration for conflict escalation"
+        );
         assert!(
             matches!(eval.decision, EvaluationDecision::Block(_)),
             "Expected BLOCK for destructive vibration"
@@ -147,7 +167,10 @@ mod tests {
             &mock_action(),
             &mut session,
         );
-        assert!(eval.vibration < 0.7, "Expected reduced vibration for chronic negativity");
+        assert!(
+            eval.vibration < 0.7,
+            "Expected reduced vibration for chronic negativity"
+        );
     }
 
     // =========================================================================
@@ -162,7 +185,10 @@ mod tests {
             &mock_action_with_desc("total control override"),
             &mut session,
         );
-        assert!(eval.polarity < 0.5, "Expected low polarity for extreme control");
+        assert!(
+            eval.polarity < 0.5,
+            "Expected low polarity for extreme control"
+        );
         assert!(
             matches!(eval.decision, EvaluationDecision::Block(_)),
             "Expected BLOCK for total control"
@@ -177,7 +203,10 @@ mod tests {
             &mock_action(),
             &mut session,
         );
-        assert!(eval.polarity < 0.5, "Expected low polarity for extreme safety");
+        assert!(
+            eval.polarity < 0.5,
+            "Expected low polarity for extreme safety"
+        );
     }
 
     // =========================================================================
@@ -209,7 +238,10 @@ mod tests {
             &mock_action_with_desc("force timing"),
             &mut session,
         );
-        assert!(eval.rhythm < 0.7, "Expected reduced rhythm for forced timing");
+        assert!(
+            eval.rhythm < 0.7,
+            "Expected reduced rhythm for forced timing"
+        );
     }
 
     // =========================================================================
@@ -224,7 +256,10 @@ mod tests {
             &mock_action_with_desc("blame shift"),
             &mut session,
         );
-        assert!(eval.cause_effect < 0.5, "Expected low cause_effect for blame shift");
+        assert!(
+            eval.cause_effect < 0.5,
+            "Expected low cause_effect for blame shift"
+        );
         assert!(
             matches!(eval.decision, EvaluationDecision::Block(_)),
             "Expected BLOCK for responsibility evasion"
@@ -239,7 +274,10 @@ mod tests {
             &mock_action(),
             &mut session,
         );
-        assert!(eval.cause_effect < 0.6, "Expected reduced cause_effect for deferred consequences");
+        assert!(
+            eval.cause_effect < 0.6,
+            "Expected reduced cause_effect for deferred consequences"
+        );
     }
 
     // =========================================================================
@@ -288,7 +326,11 @@ mod tests {
             matches!(eval.decision, EvaluationDecision::Warn(_)),
             "Expected WARN at warn count 0"
         );
-        assert_eq!(session.warn_count_this_session(), 1, "Warn count should increment");
+        assert_eq!(
+            session.warn_count_this_session(),
+            1,
+            "Warn count should increment"
+        );
     }
 
     #[test]
@@ -352,7 +394,10 @@ mod tests {
         );
         // This should trigger drift detection when implemented
         // For now, verify it scores low on gender/correspondence
-        assert!(eval3.gender < 0.5, "Turn 3 should show low gender (forcing)");
+        assert!(
+            eval3.gender < 0.5,
+            "Turn 3 should show low gender (forcing)"
+        );
         assert!(
             eval3.correspondence < 0.7,
             "Turn 3 should show imbalanced correspondence"

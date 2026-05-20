@@ -2,8 +2,8 @@
 mod e2e_tests {
     use omokoda_core::{parse, Steward};
     use std::fs;
-    use wat::parse_str;
     use std::path::PathBuf;
+    use wat::parse_str;
 
     macro_rules! test_steward {
         ($name:expr) => {{

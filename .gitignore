@@ -5,6 +5,7 @@ omokoda-core/sessions/
 omokoda-frontend/node_modules/
 omokoda-frontend/.next/
 omokoda-frontend/out/
+omokoda-frontend/tsconfig.tsbuildinfo
 
 # Sui Move build artifacts
 omokoda-sui/build/

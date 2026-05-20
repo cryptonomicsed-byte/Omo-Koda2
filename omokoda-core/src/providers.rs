@@ -282,7 +282,7 @@ impl LlmProvider for OllamaProvider {
 
         let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
         let response = json["response"].as_str().unwrap_or("").to_string();
-        
+
         let usage = TokenUsage {
             input_tokens: json["prompt_eval_count"].as_u64().unwrap_or(0) as u32,
             output_tokens: json["eval_count"].as_u64().unwrap_or(0) as u32,
@@ -504,7 +504,7 @@ impl LlmProvider for AnthropicProvider {
         let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
         let response = json["completion"].as_str().unwrap_or("").to_string();
 
-        // Anthropic legacy /v1/complete might not return usage in the same way, 
+        // Anthropic legacy /v1/complete might not return usage in the same way,
         // but we'll try to extract it if it's there.
         let usage = TokenUsage {
             input_tokens: json["usage"]["input_tokens"].as_u64().unwrap_or(0) as u32,

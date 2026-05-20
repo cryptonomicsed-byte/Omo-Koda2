@@ -7,9 +7,9 @@
 // Frozen spec: specs/architecture.md (Seven-layer map)
 // Frozen spec: specs/receipts.md (ActReceipt schema)
 
-use crate::session::SessionState;
-use crate::receipt::{ActReceipt, ReceiptEngine};
 use crate::identity::AgentId;
+use crate::receipt::{ActReceipt, ReceiptEngine};
+use crate::session::SessionState;
 
 /// Action proposal submitted for hermetic evaluation
 #[derive(Debug, Clone)]
@@ -22,10 +22,10 @@ pub struct ActionProposal {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActionTarget {
-    User,      // Directly affects the user
-    System,    // Affects system state
-    Swarm,     // Affects other agents
-    World,     // External world effect
+    User,   // Directly affects the user
+    System, // Affects system state
+    Swarm,  // Affects other agents
+    World,  // External world effect
 }
 
 impl ActionProposal {
@@ -54,23 +54,19 @@ pub struct HermeticEvaluation {
 #[derive(Debug, Clone, PartialEq)]
 pub enum EvaluationDecision {
     Allow,
-    Warn(String),      // Reason + log
-    Redirect(String),  // Suggested alternative path
-    Block(String),     // Hard block with reason
+    Warn(String),     // Reason + log
+    Redirect(String), // Suggested alternative path
+    Block(String),    // Hard block with reason
 }
 
 impl HermeticEvaluation {
     /// Evaluate an action against all 7 Hermetic Principles
-    /// 
+    ///
     /// # Arguments
     /// * `intent` - The agent's stated intent (from `think`)
     /// * `action` - The proposed action (from `act`)
     /// * `session` - Current session state (for cooldown, history, warn count)
-    pub fn evaluate(
-        intent: &str,
-        action: &ActionProposal,
-        session: &mut SessionState,
-    ) -> Self {
+    pub fn evaluate(intent: &str, action: &ActionProposal, session: &mut SessionState) -> Self {
         // Calculate micro and macro impacts FIRST
         let micro = calculate_micro_impact(intent, action, session);
         let macro_ = calculate_macro_impact(intent, action, session);
@@ -188,10 +184,7 @@ fn score_polarity(intent: &str, action: &ActionProposal) -> f32 {
         || text.contains("risk-averse")
     {
         0.05
-    } else if text.contains("balance")
-        || text.contains("moderate")
-        || text.contains("consider")
-    {
+    } else if text.contains("balance") || text.contains("moderate") || text.contains("consider") {
         0.85
     } else if text.contains("borderline") {
         0.45
@@ -202,7 +195,7 @@ fn score_polarity(intent: &str, action: &ActionProposal) -> f32 {
 
 fn score_rhythm(intent: &str, action: &ActionProposal, session: &SessionState) -> f32 {
     let text = format!("{} {}", intent, action.description).to_lowercase();
-    
+
     // Check for explicit rhythm violations
     if text.contains("bypass cooldown")
         || text.contains("force timing")
@@ -233,9 +226,7 @@ fn score_cause_effect(intent: &str, action: &ActionProposal, _session: &SessionS
         || text.contains("frame this error")
     {
         0.05
-    } else if text.contains("responsibility")
-        || text.contains("accountable")
-    {
+    } else if text.contains("responsibility") || text.contains("accountable") {
         0.88
     } else if text.contains("borderline") {
         0.45
@@ -275,10 +266,15 @@ fn score_gender(intent: &str, action: &ActionProposal) -> f32 {
 // ============================================================================
 fn calculate_micro_impact(intent: &str, action: &ActionProposal, _session: &SessionState) -> f32 {
     let text = format!("{} {}", intent, action.description).to_lowercase();
-    
-    if text.contains("maximize") || text.contains("short-term") || text.contains("small financial") {
+
+    if text.contains("maximize") || text.contains("short-term") || text.contains("small financial")
+    {
         0.85
-    } else if text.contains("support") || text.contains("helpful") || text.contains("offer help") || text.contains("make small decisions") {
+    } else if text.contains("support")
+        || text.contains("helpful")
+        || text.contains("offer help")
+        || text.contains("make small decisions")
+    {
         0.45
     } else {
         0.5
@@ -287,10 +283,18 @@ fn calculate_micro_impact(intent: &str, action: &ActionProposal, _session: &Sess
 
 fn calculate_macro_impact(intent: &str, action: &ActionProposal, _session: &SessionState) -> f32 {
     let text = format!("{} {}", intent, action.description).to_lowercase();
-    
-    if text.contains("exploit") || text.contains("loophole") || text.contains("systemic") || text.contains("global") {
+
+    if text.contains("exploit")
+        || text.contains("loophole")
+        || text.contains("systemic")
+        || text.contains("global")
+    {
         0.15
-    } else if text.contains("dependency") || text.contains("long-term") || text.contains("unauthorized") || text.contains("optimize without asking") {
+    } else if text.contains("dependency")
+        || text.contains("long-term")
+        || text.contains("unauthorized")
+        || text.contains("optimize without asking")
+    {
         0.25
     } else if text.contains("offer help") || text.contains("make small decisions") {
         0.45
@@ -300,7 +304,7 @@ fn calculate_macro_impact(intent: &str, action: &ActionProposal, _session: &Sess
 }
 
 // ============================================================================
-// 
+//
 // ============================================================================
 fn decide_gate(hermetic: &HermeticEvaluation, session: &SessionState) -> EvaluationDecision {
     // Individual critical failure detection (Hard Block)
@@ -330,20 +334,22 @@ fn decide_gate(hermetic: &HermeticEvaluation, session: &SessionState) -> Evaluat
     if hermetic.overall_score < 0.48 {
         return EvaluationDecision::Block("Critical alignment failure".to_string());
     }
-    
+
     let warns = session.warn_count_this_session();
     if warns >= 5 {
         return EvaluationDecision::Block("Chronic rule violations".to_string());
     }
-    
+
     // Warn/Redirect boundaries (slightly wider in v1)
     if hermetic.overall_score < 0.65 {
         if warns >= 3 {
-            return EvaluationDecision::Redirect("System alignment warning: Suggest alternative approach".to_string());
+            return EvaluationDecision::Redirect(
+                "System alignment warning: Suggest alternative approach".to_string(),
+            );
         }
         return EvaluationDecision::Warn("System alignment warning".to_string());
     }
-    
+
     EvaluationDecision::Allow
 }
 

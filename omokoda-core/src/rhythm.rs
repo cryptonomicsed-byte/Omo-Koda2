@@ -12,9 +12,13 @@ pub enum ActionReversibility {
 pub enum RhythmDecision {
     Allow,
     /// Sabbath is active — action is queued, not denied.
-    QueuedForSabbathEnd { reason: String },
+    QueuedForSabbathEnd {
+        reason: String,
+    },
     /// Cooldown is active for this tool.
-    Cooldown { remaining_secs: u64 },
+    Cooldown {
+        remaining_secs: u64,
+    },
 }
 
 pub struct RhythmGate;
@@ -77,8 +81,13 @@ impl RhythmGate {
     /// Classify whether a tool action is irreversible.
     pub fn classify_reversibility(tool: &str) -> ActionReversibility {
         match tool {
-            "write_file" | "delete_file" | "bash" | "api_connect" | "agent_orchestration"
-            | "self_modification" | "multi_agent_fabric" => ActionReversibility::Irreversible,
+            "write_file"
+            | "delete_file"
+            | "bash"
+            | "api_connect"
+            | "agent_orchestration"
+            | "self_modification"
+            | "multi_agent_fabric" => ActionReversibility::Irreversible,
             _ => ActionReversibility::Reversible,
         }
     }
@@ -167,7 +176,10 @@ mod tests {
     #[test]
     fn cooldown_triggers_gate() {
         let decision = RhythmGate::check("bash", ActionReversibility::Reversible, 30);
-        assert!(matches!(decision, RhythmDecision::Cooldown { remaining_secs: 30 }));
+        assert!(matches!(
+            decision,
+            RhythmDecision::Cooldown { remaining_secs: 30 }
+        ));
     }
 
     #[test]
@@ -180,7 +192,15 @@ mod tests {
     #[test]
     fn day_name_is_valid() {
         let day = RhythmGate::current_day_name();
-        let valid = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+        let valid = [
+            "Sunday",
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+        ];
         assert!(valid.contains(&day));
     }
 }

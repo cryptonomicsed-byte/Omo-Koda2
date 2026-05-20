@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tool_registry_tests {
+    use omokoda_core::permissions::{PermissionMode, PermissionPolicy};
     use omokoda_core::tools::ToolRegistry;
-    use omokoda_core::permissions::{PermissionPolicy, PermissionMode};
     use std::fs;
 
     #[tokio::test]
@@ -16,7 +16,10 @@ mod tool_registry_tests {
             name: "luna".to_string(),
             tier: 0,
             reputation: 0.0,
-            odu_identity: omokoda_core::identity::odu::OduIdentity { primary_index: 0, mnemonic: "".into() },
+            odu_identity: omokoda_core::identity::odu::OduIdentity {
+                primary_index: 0,
+                mnemonic: "".into(),
+            },
             workspace_root: std::env::current_dir().unwrap(),
             sandbox_mode: false,
         };
@@ -24,7 +27,8 @@ mod tool_registry_tests {
         let result = registry
             .execute("read_file", test_file, ctx, &policy, None)
             .await
-            .unwrap().0;
+            .unwrap()
+            .0;
         assert!(result.contains("hello world"));
         assert!(result.contains("\"file\":"));
 
@@ -44,7 +48,10 @@ mod tool_registry_tests {
             name: "luna".to_string(),
             tier: 0,
             reputation: 0.0,
-            odu_identity: omokoda_core::identity::odu::OduIdentity { primary_index: 0, mnemonic: "".into() },
+            odu_identity: omokoda_core::identity::odu::OduIdentity {
+                primary_index: 0,
+                mnemonic: "".into(),
+            },
             workspace_root: std::env::current_dir().unwrap(),
             sandbox_mode: false,
         };
@@ -52,7 +59,8 @@ mod tool_registry_tests {
         let result = registry
             .execute("glob", "test_glob_dir/*.txt", ctx, &policy, None)
             .await
-            .unwrap().0;
+            .unwrap()
+            .0;
         assert!(result.contains("test_glob_dir/a.txt"));
         assert!(result.contains("test_glob_dir/b.txt"));
         assert!(result.contains("\"filenames\":"));
@@ -79,7 +87,10 @@ mod tool_registry_tests {
             name: "luna".to_string(),
             tier: 0,
             reputation: 0.0,
-            odu_identity: omokoda_core::identity::odu::OduIdentity { primary_index: 0, mnemonic: "".into() },
+            odu_identity: omokoda_core::identity::odu::OduIdentity {
+                primary_index: 0,
+                mnemonic: "".into(),
+            },
             workspace_root: std::env::current_dir().unwrap(),
             sandbox_mode: false,
         };
@@ -87,7 +98,8 @@ mod tool_registry_tests {
         let result = registry
             .execute("grep", &grep_input.to_string(), ctx, &policy, None)
             .await
-            .unwrap().0;
+            .unwrap()
+            .0;
         assert!(result.contains(":2:line 2 with target"));
         assert!(result.contains("\"content\":"));
 
@@ -106,7 +118,10 @@ mod tool_registry_tests {
             name: "luna".to_string(),
             tier: 0,
             reputation: 0.0,
-            odu_identity: omokoda_core::identity::odu::OduIdentity { primary_index: 0, mnemonic: "".into() },
+            odu_identity: omokoda_core::identity::odu::OduIdentity {
+                primary_index: 0,
+                mnemonic: "".into(),
+            },
             workspace_root: workspace.clone(),
             sandbox_mode: false,
         };
@@ -119,7 +134,10 @@ mod tool_registry_tests {
             name: "luna".to_string(),
             tier: 2,
             reputation: 0.0,
-            odu_identity: omokoda_core::identity::odu::OduIdentity { primary_index: 0, mnemonic: "".into() },
+            odu_identity: omokoda_core::identity::odu::OduIdentity {
+                primary_index: 0,
+                mnemonic: "".into(),
+            },
             workspace_root: workspace,
             sandbox_mode: false,
         };
@@ -136,7 +154,10 @@ mod tool_registry_tests {
             name: "luna".to_string(),
             tier: 0,
             reputation: 0.0,
-            odu_identity: omokoda_core::identity::odu::OduIdentity { primary_index: 0, mnemonic: "".into() },
+            odu_identity: omokoda_core::identity::odu::OduIdentity {
+                primary_index: 0,
+                mnemonic: "".into(),
+            },
             workspace_root: std::env::current_dir().unwrap(),
             sandbox_mode: false,
         };
@@ -147,7 +168,9 @@ mod tool_registry_tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Boundary Violation"));
 
-        let result = registry.execute("glob", "../**/*", ctx.clone(), &policy, None).await;
+        let result = registry
+            .execute("glob", "../**/*", ctx.clone(), &policy, None)
+            .await;
         assert!(result.is_err());
 
         let grep_input = serde_json::json!({
@@ -171,11 +194,16 @@ mod tool_registry_tests {
             name: "luna".to_string(),
             tier: 2,
             reputation: 0.0,
-            odu_identity: omokoda_core::identity::odu::OduIdentity { primary_index: 0, mnemonic: "".into() },
+            odu_identity: omokoda_core::identity::odu::OduIdentity {
+                primary_index: 0,
+                mnemonic: "".into(),
+            },
             workspace_root: std::env::current_dir().unwrap(),
             sandbox_mode: true,
         };
-        let result = registry.execute("bash", "cd ../ && ls", ctx, &policy, None).await;
+        let result = registry
+            .execute("bash", "cd ../ && ls", ctx, &policy, None)
+            .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("must not contain '..'"));
     }
@@ -197,15 +225,26 @@ mod tool_registry_tests {
         };
 
         let params = r#"{"title": "test_note", "content": "hello world"}"#;
-        let (output, _) = registry.execute("note_taking", params, context, &PermissionPolicy::default_steward_policy(omokoda_core::permissions::PermissionMode::DangerFullAccess), None).await.unwrap();
-        
+        let (output, _) = registry
+            .execute(
+                "note_taking",
+                params,
+                context,
+                &PermissionPolicy::default_steward_policy(
+                    omokoda_core::permissions::PermissionMode::DangerFullAccess,
+                ),
+                None,
+            )
+            .await
+            .unwrap();
+
         assert!(output.contains("hello world"));
-        
+
         let note_path = std::env::current_dir().unwrap().join("notes/test_note.md");
         assert!(note_path.exists());
         let content = std::fs::read_to_string(&note_path).unwrap();
         assert_eq!(content, "hello world");
-        
+
         std::fs::remove_file(note_path).unwrap();
         let _ = std::fs::remove_dir(std::env::current_dir().unwrap().join("notes"));
     }

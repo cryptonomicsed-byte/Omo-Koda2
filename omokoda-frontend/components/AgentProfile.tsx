@@ -123,7 +123,7 @@ export function AgentProfile() {
           </code>
         </div>
         <p className="text-xs text-gray-400 mt-2">
-          This unique fingerprint ensures your agent's identity on the blockchain.
+          This unique fingerprint ensures your agent&apos;s identity on the blockchain.
         </p>
       </div>
     </div>

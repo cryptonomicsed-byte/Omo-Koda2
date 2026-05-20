@@ -12,6 +12,14 @@ defmodule OmokodaSwarm.Application do
     ]
 
     opts = [strategy: :one_for_one, name: OmokodaSwarm.Supervisor]
-    Supervisor.start_link(children, opts)
+
+    case Supervisor.start_link(children, opts) do
+      {:ok, pid} ->
+        OmokodaSwarm.SwarmSupervisor.ensure_initial_agents()
+        {:ok, pid}
+
+      other ->
+        other
+    end
   end
 end

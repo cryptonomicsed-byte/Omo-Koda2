@@ -19,7 +19,8 @@ macro_rules! test_steward {
 
 #[tokio::test]
 async fn natural_think_compiles_monitoring_to_confirmed_sub_agent_plan() {
-    let mut steward = test_steward!("natural_think_compiles_monitoring_to_confirmed_sub_agent_plan");
+    let mut steward =
+        test_steward!("natural_think_compiles_monitoring_to_confirmed_sub_agent_plan");
     steward.set_mock_provider("mock thought".to_string());
     steward
         .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
@@ -67,7 +68,8 @@ async fn natural_think_compiles_monitoring_to_confirmed_sub_agent_plan() {
 
 #[tokio::test]
 async fn natural_think_can_execute_safe_direct_act_and_receipt_every_output() {
-    let mut steward = test_steward!("natural_think_can_execute_safe_direct_act_and_receipt_every_output");
+    let mut steward =
+        test_steward!("natural_think_can_execute_safe_direct_act_and_receipt_every_output");
     steward
         .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
         .await
@@ -90,7 +92,8 @@ async fn natural_think_can_execute_safe_direct_act_and_receipt_every_output() {
 
 #[tokio::test]
 async fn natural_think_private_mode_blocks_external_capable_direct_tools() {
-    let mut steward = test_steward!("natural_think_private_mode_blocks_external_capable_direct_tools");
+    let mut steward =
+        test_steward!("natural_think_private_mode_blocks_external_capable_direct_tools");
     steward.set_mock_provider("private reasoning".to_string());
     steward
         .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
@@ -115,7 +118,8 @@ async fn natural_think_private_mode_blocks_external_capable_direct_tools() {
 
 #[tokio::test]
 async fn natural_think_ethics_validation_refuses_harmful_intent_with_receipt() {
-    let mut steward = test_steward!("natural_think_ethics_validation_refuses_harmful_intent_with_receipt");
+    let mut steward =
+        test_steward!("natural_think_ethics_validation_refuses_harmful_intent_with_receipt");
     steward.set_mock_provider("should not be needed".to_string());
     steward
         .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
@@ -175,7 +179,8 @@ impl Hook for DenyThinkCompileHook {
 
 #[tokio::test]
 async fn natural_think_justice_pre_hook_is_gatekeeper_and_still_receipts() {
-    let mut steward = test_steward!("natural_think_justice_pre_hook_is_gatekeeper_and_still_receipts");
+    let mut steward =
+        test_steward!("natural_think_justice_pre_hook_is_gatekeeper_and_still_receipts");
     steward.set_mock_provider("should not pass".to_string());
     steward.add_pre_hook(Box::new(DenyThinkCompileHook));
     steward

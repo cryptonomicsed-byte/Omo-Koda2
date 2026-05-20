@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Omo-Koda2
+        uses: actions/checkout@v4
+        with:
+          path: Omo-Koda2
+      - name: Checkout Bipon39-Rust
+        uses: actions/checkout@v4
+        with:
+          repository: Bino-Elgua/Bipon39-Rust
+          path: Bipon39-Rust
+      - name: Checkout Ifascript
+        uses: actions/checkout@v4
+        with:
+          repository: Bino-Elgua/Ifascript
+          path: Ifascript
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check formatting
+        working-directory: Omo-Koda2
+        run: |
+          cargo fmt -p omokoda-core -- --check
+          cargo fmt -p omokoda-hermetic -- --check
+          cargo fmt -p omokoda-cli -- --check
+      - name: Test workspace
+        working-directory: Omo-Koda2
+        run: cargo test --workspace
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: omokoda-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: omokoda-frontend/package-lock.json
+      - run: npm ci
+      - run: npm run type-check
+      - run: npm run lint
+      - run: npm run build
+
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: omokoda-ops
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: omokoda-ops/go.mod
+          cache-dependency-path: omokoda-ops/go.sum
+      - run: go test ./...
+
+  elixir:
+    name: Elixir
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: omokoda-swarm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "27"
+          elixir-version: "1.17"
+      - run: mix deps.get
+      - run: mix test
+
+  move:
+    name: Move
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Move packages when Sui CLI is available
+        run: |
+          if ! command -v sui >/dev/null 2>&1; then
+            echo "Sui CLI is not installed; skipping future Move checks."
+            exit 0
+          fi
+
+          for package in omokoda-sui omokoda-on-chain; do
+            if [ -f "$package/Move.toml" ]; then
+              (cd "$package" && sui move test)
+            fi
+          done

@@ -91,8 +91,8 @@ impl TokenUsage {
         // Base metabolic cost in Synapses.
         // 1 token ~= 1 Synapse (input), 5 Synapses (output)
         // Fixed overhead of 100 synapses per turn.
-        100.0 
-            + (self.input_tokens as f64 * 1.0) 
+        100.0
+            + (self.input_tokens as f64 * 1.0)
             + (self.output_tokens as f64 * 5.0)
             + (self.cache_creation_input_tokens as f64 * 1.25)
             + (self.cache_read_input_tokens as f64 * 0.1)
@@ -189,7 +189,7 @@ impl UsageTracker {
     pub fn from_session(_session: &SessionState) -> Self {
         let tracker = Self::new();
         // Since session.encrypted_private holds the private messages,
-        // this requires decryption to access properly. 
+        // this requires decryption to access properly.
         // For v1, we will skip tracking private messages to avoid decryption overhead.
         tracker
     }

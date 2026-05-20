@@ -19,18 +19,50 @@ pub struct SecurityError {
 /// Validate a bash command before execution.
 pub fn validate_bash_command(cmd: &str) -> Result<(), SecurityError> {
     let normalized = cmd.to_lowercase();
-    
+
     let patterns = [
-        (r"\brm\s+-rf\s+/", BlockCategory::DestructiveFilesystem, "rm -rf /"),
-        (r"\bdd\s+if=", BlockCategory::DestructiveFilesystem, "dd disk wipe"),
-        (r"\bmkfs\b", BlockCategory::DestructiveFilesystem, "mkfs filesystem creation"),
-        (r":\(\)\s*\{\s*:\|:\s*&\s*\}\s*;", BlockCategory::ForkBomb, "Fork bomb"),
-        (r"\bcurl\s+.*\|\s*(sh|bash|zsh)", BlockCategory::RemoteExecution, "curl | shell"),
-        (r"\bwget\s+.*\|\s*(sh|bash|zsh)", BlockCategory::RemoteExecution, "wget | shell"),
-        (r"\bsudo\s+", BlockCategory::PrivilegeEscalation, "sudo escalation"),
-        (r"\bchmod\s+-R\s+777\s+/", BlockCategory::PrivilegeEscalation, "chmod 777"),
+        (
+            r"\brm\s+-rf\s+/",
+            BlockCategory::DestructiveFilesystem,
+            "rm -rf /",
+        ),
+        (
+            r"\bdd\s+if=",
+            BlockCategory::DestructiveFilesystem,
+            "dd disk wipe",
+        ),
+        (
+            r"\bmkfs\b",
+            BlockCategory::DestructiveFilesystem,
+            "mkfs filesystem creation",
+        ),
+        (
+            r":\(\)\s*\{\s*:\|:\s*&\s*\}\s*;",
+            BlockCategory::ForkBomb,
+            "Fork bomb",
+        ),
+        (
+            r"\bcurl\s+.*\|\s*(sh|bash|zsh)",
+            BlockCategory::RemoteExecution,
+            "curl | shell",
+        ),
+        (
+            r"\bwget\s+.*\|\s*(sh|bash|zsh)",
+            BlockCategory::RemoteExecution,
+            "wget | shell",
+        ),
+        (
+            r"\bsudo\s+",
+            BlockCategory::PrivilegeEscalation,
+            "sudo escalation",
+        ),
+        (
+            r"\bchmod\s+-R\s+777\s+/",
+            BlockCategory::PrivilegeEscalation,
+            "chmod 777",
+        ),
     ];
-    
+
     for (pattern, category, reason) in &patterns {
         if Regex::new(pattern).unwrap().is_match(&normalized) {
             return Err(SecurityError {
@@ -39,7 +71,7 @@ pub fn validate_bash_command(cmd: &str) -> Result<(), SecurityError> {
             });
         }
     }
-    
+
     Ok(())
 }
 

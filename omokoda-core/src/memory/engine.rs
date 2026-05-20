@@ -5,7 +5,11 @@ impl MemoryEngine {
         Self
     }
 
-    pub fn compress(&self, messages: &mut Vec<crate::session::ConversationMessage>, _reputation: f64) {
+    pub fn compress(
+        &self,
+        messages: &mut Vec<crate::session::ConversationMessage>,
+        _reputation: f64,
+    ) {
         // Level 1: Truncate messages exceeding 1000 chars
         for message in messages.iter_mut() {
             for block in &mut message.blocks {

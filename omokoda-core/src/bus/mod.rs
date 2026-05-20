@@ -2,8 +2,8 @@ pub mod events {
     include!(concat!(env!("OUT_DIR"), "/omokoda.v1.rs"));
 }
 
-use tokio::sync::broadcast;
 pub use self::events::SovereignEvent;
+use tokio::sync::broadcast;
 
 #[derive(Debug, Clone)]
 pub struct SovereignEventBus {
@@ -16,7 +16,10 @@ impl SovereignEventBus {
         Self { sender }
     }
 
-    pub fn publish(&self, event: SovereignEvent) -> Result<usize, broadcast::error::SendError<SovereignEvent>> {
+    pub fn publish(
+        &self,
+        event: SovereignEvent,
+    ) -> Result<usize, broadcast::error::SendError<SovereignEvent>> {
         self.sender.send(event)
     }
 

@@ -1,4 +1,3 @@
-use bipon39::PersonalityProfile;
 use crate::bus::events::{sovereign_event, ActExecuted, AgentBorn, SovereignEvent, ThoughtSealed};
 use crate::bus::SovereignEventBus;
 use crate::identity::bipon39::Bipon39;
@@ -20,8 +19,9 @@ use crate::session::{
     derive_unlock_key, secure_write, ContentBlock, ConversationMessage, MessageRole,
     PrivateSessionData, SensitiveKey, Session,
 };
-use crate::tools::{ToolRegistry, ExecutionContext};
+use crate::tools::{ExecutionContext, ToolRegistry};
 use crate::usage::TokenUsage;
+use bipon39::{ElementalVector, Macro, MacroDistribution, PersonalityProfile};
 use ed25519_dalek::SigningKey;
 use hkdf::Hkdf;
 use omokoda_hermetic::fractal::OPERATIONS;
@@ -58,6 +58,135 @@ pub type TurnEventSender = mpsc::Sender<TurnEvent>;
 
 pub const AGENT_STATE_VERSION: u32 = 1;
 
+fn deterministic_cowrie_entropy(seed: [u8; 32], phase: u8) -> [u8; 32] {
+    let mut input = [0u8; 33];
+    input[..32].copy_from_slice(&seed);
+    input[32] = phase;
+    blake3::derive_key("omokoda:ifascript:cowrie_entropy_v1", &input)
+}
+
+mod personality_profile_serde {
+    use super::{ElementalVector, Macro, MacroDistribution, PersonalityProfile};
+    use serde::de::Error;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    #[derive(Serialize, Deserialize)]
+    struct PersonalityProfileWire {
+        macro_distribution: MacroDistributionWire,
+        macro_percentages: Vec<(String, f64)>,
+        elemental_signature: ElementalVectorWire,
+        dominant_orisha: String,
+        ritual_suggestions: Vec<String>,
+        personality_summary: String,
+    }
+
+    #[derive(Serialize, Deserialize)]
+    struct MacroDistributionWire {
+        counts: Vec<(String, usize)>,
+        total: usize,
+    }
+
+    #[derive(Serialize, Deserialize)]
+    struct ElementalVectorWire {
+        fire: usize,
+        water: usize,
+        earth: usize,
+        air: usize,
+        ether: usize,
+    }
+
+    pub fn serialize<S>(profile: &PersonalityProfile, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let wire = PersonalityProfileWire {
+            macro_distribution: MacroDistributionWire {
+                counts: profile
+                    .macro_distribution
+                    .counts
+                    .iter()
+                    .map(|(macro_, count)| (macro_.name().to_string(), *count))
+                    .collect(),
+                total: profile.macro_distribution.total,
+            },
+            macro_percentages: profile
+                .macro_percentages
+                .iter()
+                .map(|(macro_, percentage)| (macro_.name().to_string(), *percentage))
+                .collect(),
+            elemental_signature: ElementalVectorWire {
+                fire: profile.elemental_signature.fire,
+                water: profile.elemental_signature.water,
+                earth: profile.elemental_signature.earth,
+                air: profile.elemental_signature.air,
+                ether: profile.elemental_signature.ether,
+            },
+            dominant_orisha: profile.dominant_orisha.name().to_string(),
+            ritual_suggestions: profile.ritual_suggestions.clone(),
+            personality_summary: profile.personality_summary.clone(),
+        };
+
+        wire.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<PersonalityProfile, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = PersonalityProfileWire::deserialize(deserializer)?;
+        Ok(PersonalityProfile {
+            macro_distribution: MacroDistribution {
+                counts: macro_counts::<D::Error>(&wire.macro_distribution.counts)?,
+                total: wire.macro_distribution.total,
+            },
+            macro_percentages: macro_percentages::<D::Error>(&wire.macro_percentages)?,
+            elemental_signature: ElementalVector {
+                fire: wire.elemental_signature.fire,
+                water: wire.elemental_signature.water,
+                earth: wire.elemental_signature.earth,
+                air: wire.elemental_signature.air,
+                ether: wire.elemental_signature.ether,
+            },
+            dominant_orisha: parse_macro::<D::Error>(&wire.dominant_orisha)?,
+            ritual_suggestions: wire.ritual_suggestions,
+            personality_summary: wire.personality_summary,
+        })
+    }
+
+    fn macro_counts<E>(counts: &[(String, usize)]) -> Result<[(Macro, usize); 7], E>
+    where
+        E: Error,
+    {
+        let parsed = counts
+            .iter()
+            .map(|(macro_, count)| Ok((parse_macro::<E>(macro_)?, *count)))
+            .collect::<Result<Vec<_>, E>>()?;
+        parsed
+            .try_into()
+            .map_err(|_| E::custom("expected exactly seven macro counts"))
+    }
+
+    fn macro_percentages<E>(percentages: &[(String, f64)]) -> Result<[(Macro, f64); 7], E>
+    where
+        E: Error,
+    {
+        let parsed = percentages
+            .iter()
+            .map(|(macro_, percentage)| Ok((parse_macro::<E>(macro_)?, *percentage)))
+            .collect::<Result<Vec<_>, E>>()?;
+        parsed
+            .try_into()
+            .map_err(|_| E::custom("expected exactly seven macro percentages"))
+    }
+
+    fn parse_macro<E>(value: &str) -> Result<Macro, E>
+    where
+        E: Error,
+    {
+        Macro::from_name(value).ok_or_else(|| E::custom(format!("unknown macro {value}")))
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AgentState {
     pub version: u32,
@@ -67,6 +196,7 @@ pub struct AgentState {
     odu_seed: OduSeed,
     odu_identity: OduIdentity,
     pet_identity: PetIdentity,
+    #[serde(with = "personality_profile_serde")]
     personality: PersonalityProfile,
     dna_fingerprint: String,
     reputation: f64,
@@ -92,17 +222,16 @@ impl Steward {
         use crate::identity::vault::SealVault;
         use crate::memory::odu_keys::OduKeys;
         use omokoda_hermetic::entropy::odu::OduEntropy;
-        use ifascript::entropy::cast_cowrie_deterministic;
 
         let birth_timestamp = current_unix_timestamp();
-        
+
         // Layer A: SEAL vault forge + IfáScript deterministic entropy
         let initial_seed = blake3::hash(name.as_bytes()).into();
         let phase = (birth_timestamp % 7) as u8;
-        let entropy_bytes = cast_cowrie_deterministic(initial_seed, phase);
+        let entropy_bytes = deterministic_cowrie_entropy(initial_seed, phase);
 
         let k_root = SealVault::generate_deterministic_secret(&name, &entropy_bytes);
-        
+
         // Identity derivation
         let entropy = blake3::derive_key("omokoda:entropy_v1", &k_root);
 
@@ -115,14 +244,14 @@ impl Steward {
             primary_index,
             mnemonic: mnemonic.clone(),
         };
-        let personality = bipon39::personality_profile(&mnemonic)
-            .expect("Failed to derive personality profile");
+        let personality =
+            bipon39::personality_profile(&mnemonic).expect("Failed to derive personality profile");
         let receipts = ReceiptStore::new();
-        
+
         // Layer B: Hermetic Principle derivation via IfáScript entropy
         let hermetic_seed = OduEntropy::generate_hermetic_seed(&indices);
         let hermetic_state = HermeticState::from_odu_seed(&hermetic_seed);
-        
+
         let pet_identity = PetIdentity::derive(&odu_identity, &hermetic_state, 0);
 
         let dna_fingerprint = generate_dna_fingerprint(&name, birth_timestamp, odu_seed.as_bytes());
@@ -136,7 +265,9 @@ impl Steward {
         let day = (birth_timestamp % 7) as u8;
         let planet = (odu_bytes[0] % 7) as u8;
         let dimension = 0u8; // Time dimension at birth
-        let resonance = Some(omokoda_hermetic::fractal::ResonanceSignature::new(day, planet, dimension).unwrap());
+        let resonance = Some(
+            omokoda_hermetic::fractal::ResonanceSignature::new(day, planet, dimension).unwrap(),
+        );
 
         let mut session = Session::new(id.clone(), name.clone(), birth_timestamp);
         for pair in metadata {
@@ -150,8 +281,9 @@ impl Steward {
         };
 
         // Derive Sui-compatible Ed25519 signing key (m/44'/784'/0'/0'/0')
-        let signing_key = crate::identity::wallet::Wallet::derive_from_mnemonic(&odu_identity.mnemonic, "")
-            .expect("Failed to derive wallet key");
+        let signing_key =
+            crate::identity::wallet::Wallet::derive_from_mnemonic(&odu_identity.mnemonic, "")
+                .expect("Failed to derive wallet key");
         let public_key = signing_key.verifying_key().to_bytes();
 
         let synapse = self.dopamine_pool.compute_initial_synapse();
@@ -188,7 +320,6 @@ impl Steward {
 }
 
 impl AgentState {
-
     pub fn id(&self) -> &AgentId {
         &self.id
     }
@@ -307,7 +438,7 @@ impl AgentState {
     fn rotate_memory_key(&mut self) {
         use crate::memory::odu_keys::OduKeys;
         let hermetic_seed = blake3::derive_key("omokoda:hermetic_seed", self.odu_seed.as_bytes());
-        
+
         let epoch_nonce = [0u8; 32]; // Stub for now
         self.current_memory_key = OduKeys::rotate_key(
             &self.current_memory_key,
@@ -374,7 +505,9 @@ impl Steward {
             tools: ToolRegistry::new(),
             providers: ProviderRegistry::new(),
             justice: JusticeEngine::new(),
-            permission_policy: crate::permissions::PermissionPolicy::default_steward_policy(crate::permissions::PermissionMode::WorkspaceWrite),
+            permission_policy: crate::permissions::PermissionPolicy::default_steward_policy(
+                crate::permissions::PermissionMode::WorkspaceWrite,
+            ),
             usage_tracker: crate::usage::UsageTracker::new(),
             persistence_path: None,
             session_dir: default_session_dir(),
@@ -442,7 +575,12 @@ impl Steward {
                 let event = SovereignEvent {
                     event: Some(sovereign_event::Event::AgentBorn(AgentBorn {
                         dna: agent.dna_fingerprint().to_string(),
-                        mnemonic: agent.odu_identity().mnemonic.split_whitespace().map(|s| s.to_string()).collect(),
+                        mnemonic: agent
+                            .odu_identity()
+                            .mnemonic
+                            .split_whitespace()
+                            .map(|s| s.to_string())
+                            .collect(),
                         odu: agent.odu_identity().primary_index as u32,
                     })),
                 };
@@ -517,9 +655,10 @@ impl Steward {
                 let hook_decision = self.justice.hook_runner.run_pre(&compile_hook_ctx);
 
                 let (response, usage) = match hook_decision {
-                    crate::justice::HookDecision::Deny(reason) => {
-                        (format!("Intent refused by Justice pre-hook: {reason}"), TokenUsage::default())
-                    }
+                    crate::justice::HookDecision::Deny(reason) => (
+                        format!("Intent refused by Justice pre-hook: {reason}"),
+                        TokenUsage::default(),
+                    ),
                     crate::justice::HookDecision::Warn(warning) => {
                         let (base, usage) = self
                             .execute_compiled_think(&prompt, private, &provider, &compilation)
@@ -558,14 +697,17 @@ impl Steward {
                     );
                 let agent = self.ensure_born()?;
                 let hermetic_state = agent.hermetic_state().clone();
-                let (new_rep, _, _hermetic_eval) =
-                    self.justice
-                        .evaluate_think(current_rep, high_value, &response, &hermetic_state);
+                let (new_rep, _, _hermetic_eval) = self.justice.evaluate_think(
+                    current_rep,
+                    high_value,
+                    &response,
+                    &hermetic_state,
+                );
 
                 let agent_mut = self.ensure_born_mut()?;
 
                 let burn_amount = usage.compute_synapse_burn().max(1000.0);
-                agent_mut.burn_synapse(burn_amount)?; 
+                agent_mut.burn_synapse(burn_amount)?;
                 agent_mut.add_message(ConversationMessage::new_user(prompt.clone(), private));
                 agent_mut.add_message(ConversationMessage::new_assistant(
                     response.clone(),
@@ -669,7 +811,8 @@ impl Steward {
                     let agent_mut = self.ensure_born_mut()?;
                     let elapsed = now.saturating_sub(agent_mut.last_active_timestamp);
                     if elapsed > 0 {
-                        let decay = crate::economics::compute_synapse_decay(agent_mut.synapse, elapsed);
+                        let decay =
+                            crate::economics::compute_synapse_decay(agent_mut.synapse, elapsed);
                         agent_mut.synapse = (agent_mut.synapse - decay).max(0.0);
                         agent_mut.last_active_timestamp = now;
                     }
@@ -680,7 +823,7 @@ impl Steward {
                 let cooldown_remaining = self.rhythm_tracker.remaining(&tool);
                 let rhythm_decision =
                     crate::rhythm::RhythmGate::check(&tool, reversibility, cooldown_remaining);
-                
+
                 match rhythm_decision {
                     crate::rhythm::RhythmDecision::QueuedForSabbathEnd { reason } => {
                         return Ok(ExecutionResult {
@@ -752,13 +895,7 @@ impl Steward {
 
                 let (output, tool_usage) = self
                     .tools
-                    .execute(
-                        &tool,
-                        &params,
-                        context,
-                        &self.permission_policy,
-                        None,
-                    )
+                    .execute(&tool, &params, context, &self.permission_policy, None)
                     .await
                     .map_err(|e| format!("Tool execution failed: {}", e))?;
 
@@ -803,7 +940,7 @@ impl Steward {
 
                 let agent_mut = self.ensure_born_mut()?;
                 let burn_amount = (5_000.0 + tool_usage.compute_synapse_burn()).max(5000.0);
-                agent_mut.burn_synapse(burn_amount)?; 
+                agent_mut.burn_synapse(burn_amount)?;
                 agent_mut.update_reputation(new_rep, ReputationChangeReason::Act);
                 agent_mut.increment_act_counter();
 
@@ -1096,7 +1233,10 @@ impl Steward {
         compilation: &IntentCompilation,
     ) -> Result<(String, TokenUsage), String> {
         if !compilation.validation.allowed || compilation.validation.requires_confirmation {
-            return Ok((format_compilation_response(compilation), TokenUsage::default()));
+            return Ok((
+                format_compilation_response(compilation),
+                TokenUsage::default(),
+            ));
         }
 
         if !compilation.direct_act_calls.is_empty() {
@@ -1104,7 +1244,10 @@ impl Steward {
             let total_usage = TokenUsage::default();
             for call in &compilation.direct_act_calls {
                 if call.high_risk {
-                    return Ok((format_compilation_response(compilation), TokenUsage::default()));
+                    return Ok((
+                        format_compilation_response(compilation),
+                        TokenUsage::default(),
+                    ));
                 }
                 let (receipt, output) = self.execute_direct_act_call(call, private).await?;
                 outputs.push(format!(
@@ -1133,7 +1276,9 @@ impl Steward {
         self.rhythm_tracker.prune();
 
         // 1. Permission Authorization
-        let auth_result = self.permission_policy.authorize(&call.tool, &call.params, None);
+        let auth_result = self
+            .permission_policy
+            .authorize(&call.tool, &call.params, None);
         if let crate::permissions::PermissionOutcome::Deny { reason } = auth_result {
             return Err(format!("Permission denied: {}", reason));
         }
@@ -1179,7 +1324,7 @@ impl Steward {
         let cooldown_remaining = self.rhythm_tracker.remaining(&call.tool);
         let rhythm_decision =
             crate::rhythm::RhythmGate::check(&call.tool, reversibility, cooldown_remaining);
-        
+
         match rhythm_decision {
             crate::rhythm::RhythmDecision::QueuedForSabbathEnd { reason } => {
                 return Err(format!("[SABBATH QUEUE] {}", reason));
@@ -1280,7 +1425,7 @@ impl Steward {
         {
             let agent_mut = self.ensure_born_mut()?;
             let burn_amount = (5_000.0 + tool_usage.compute_synapse_burn()).max(5000.0);
-            agent_mut.burn_synapse(burn_amount)?; 
+            agent_mut.burn_synapse(burn_amount)?;
             agent_mut.update_reputation(new_rep, ReputationChangeReason::Act);
             agent_mut.increment_act_counter();
         }

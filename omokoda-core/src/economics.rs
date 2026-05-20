@@ -55,7 +55,7 @@ pub fn compute_synapse_decay(synapse: f64, elapsed_secs: u64) -> f64 {
         return 0.0;
     }
     let elapsed_days = elapsed_secs as f64 / 86_400.0;
-    
+
     let decay = if elapsed_days <= EXTENDED_INACTIVITY_DAYS as f64 {
         synapse * SYNAPSE_DAILY_DECAY_RATE * elapsed_days
     } else {
@@ -91,7 +91,10 @@ mod tests {
         let full = pool.compute_initial_synapse();
         pool.allocate(DOPAMINE_TOTAL_POOL * 0.5);
         let half = pool.compute_initial_synapse();
-        assert!(full > half, "Full pool should give more synapse than half-full");
+        assert!(
+            full > half,
+            "Full pool should give more synapse than half-full"
+        );
         assert!(full <= SYNAPSE_INITIAL);
     }
 

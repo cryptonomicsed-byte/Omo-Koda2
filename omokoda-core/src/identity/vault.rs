@@ -1,7 +1,7 @@
-use rand::Rng;
-use sha2::{Digest, Sha256};
 use hmac::{Hmac, Mac};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CapabilityToken {
@@ -16,13 +16,15 @@ impl CapabilityToken {
         let expiry = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_secs() + 3600; // 1 hour
-            
+            .as_secs()
+            + 3600; // 1 hour
+
         let message = format!("{}:{}:{}", agent_id, tool, expiry);
-        let mut hmac = Hmac::<Sha256>::new_from_slice(k_root).expect("HMAC can take key of any size");
+        let mut hmac =
+            Hmac::<Sha256>::new_from_slice(k_root).expect("HMAC can take key of any size");
         hmac.update(message.as_bytes());
         let signature = hmac.finalize().into_bytes().to_vec();
-        
+
         Self {
             agent_id: agent_id.to_string(),
             tool: tool.to_string(),
@@ -36,12 +38,15 @@ impl CapabilityToken {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        if self.expiry < now { return false; }
-        
+        if self.expiry < now {
+            return false;
+        }
+
         let message = format!("{}:{}:{}", self.agent_id, self.tool, self.expiry);
-        let mut hmac = Hmac::<Sha256>::new_from_slice(k_root).expect("HMAC can take key of any size");
+        let mut hmac =
+            Hmac::<Sha256>::new_from_slice(k_root).expect("HMAC can take key of any size");
         hmac.update(message.as_bytes());
-        
+
         hmac.verify_slice(&self.signature).is_ok()
     }
 }

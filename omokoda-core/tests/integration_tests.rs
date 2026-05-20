@@ -19,14 +19,18 @@ macro_rules! test_steward {
 
 #[tokio::test]
 async fn full_private_e2e_flow() {
-    let session_dir = std::env::current_dir().unwrap().join("target").join("test_sessions").join("full_private_e2e_flow");
+    let session_dir = std::env::current_dir()
+        .unwrap()
+        .join("target")
+        .join("test_sessions")
+        .join("full_private_e2e_flow");
     if session_dir.exists() {
         let _ = std::fs::remove_dir_all(&session_dir);
     }
     std::fs::create_dir_all(&session_dir).unwrap();
 
     let mut steward = Steward::new().with_session_dir(session_dir.clone());
-    
+
     // 1. Birth
     steward.set_mock_provider("42 is the answer".to_string());
     steward
@@ -86,7 +90,11 @@ async fn full_private_e2e_flow() {
     steward2.set_reputation_for_test(100.0); // Ensure tier high enough
     steward2.set_permission_mode(omokoda_core::permissions::PermissionMode::Allow);
     let res = steward2
-        .dispatch(parse(r#"act "read_file" "target/test_sessions/full_private_e2e_flow/test.txt""#).unwrap()[0].clone())
+        .dispatch(
+            parse(r#"act "read_file" "target/test_sessions/full_private_e2e_flow/test.txt""#)
+                .unwrap()[0]
+                .clone(),
+        )
         .await
         .unwrap();
     assert!(res.receipt.is_some());
@@ -109,8 +117,14 @@ async fn multi_agent_storage_isolation() {
     let mut steward1 = test_steward!("multi_agent_storage_isolation_1");
     let mut steward2 = test_steward!("multi_agent_storage_isolation_2");
 
-    steward1.dispatch(parse(r#"birth "agent1""#).unwrap()[0].clone()).await.unwrap();
-    steward2.dispatch(parse(r#"birth "agent2""#).unwrap()[0].clone()).await.unwrap();
+    steward1
+        .dispatch(parse(r#"birth "agent1""#).unwrap()[0].clone())
+        .await
+        .unwrap();
+    steward2
+        .dispatch(parse(r#"birth "agent2""#).unwrap()[0].clone())
+        .await
+        .unwrap();
 
     let id1 = steward1.agent_state().unwrap().id().clone();
     let id2 = steward2.agent_state().unwrap().id().clone();

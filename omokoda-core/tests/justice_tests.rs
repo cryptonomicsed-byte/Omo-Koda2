@@ -57,7 +57,8 @@ mod justice_tests {
 
     #[tokio::test]
     async fn quality_evaluation_useful_increases_reputation_more_than_basic() {
-        let mut steward = test_steward!("quality_evaluation_useful_increases_reputation_more_than_basic");
+        let mut steward =
+            test_steward!("quality_evaluation_useful_increases_reputation_more_than_basic");
         steward
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await

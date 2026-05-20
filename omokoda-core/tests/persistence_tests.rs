@@ -25,7 +25,7 @@ mod persistence_tests {
             .await
             .unwrap();
 
-        let agent_id = steward.agent_state().unwrap().id();
+        let agent_id = steward.agent_core().unwrap().id();
         let path = steward.agent_storage_path(agent_id);
 
         assert!(path.exists());
@@ -43,15 +43,15 @@ mod persistence_tests {
             .await
             .unwrap();
 
-        let agent_id = steward.agent_state().unwrap().id().clone();
-        let dna = steward.agent_state().unwrap().dna_fingerprint().to_string();
+        let agent_id = steward.agent_core().unwrap().id().clone();
+        let dna = steward.agent_core().unwrap().dna_fingerprint().to_string();
 
         // Start a new steward and load the agent
         let mut new_steward = Steward::new().with_session_dir(session_dir);
         new_steward.load_agent(&agent_id).unwrap();
 
-        assert_eq!(new_steward.agent_state().unwrap().name(), "luna");
-        assert_eq!(new_steward.agent_state().unwrap().dna_fingerprint(), dna);
+        assert_eq!(new_steward.agent_core().unwrap().name(), "luna");
+        assert_eq!(new_steward.agent_core().unwrap().dna_fingerprint(), dna);
 
         // Cleanup
         let path = new_steward.agent_storage_path(&agent_id);
@@ -67,7 +67,7 @@ mod persistence_tests {
             .await
             .unwrap();
 
-        let agent_id = steward.agent_state().unwrap().id().clone();
+        let agent_id = steward.agent_core().unwrap().id().clone();
 
         // Manually update reputation and check if it's saved
         // Tier 1 starts at 20.0
@@ -100,15 +100,15 @@ mod persistence_tests {
             .await
             .unwrap();
 
-        let agent_id = steward.agent_state().unwrap().id().clone();
+        let agent_id = steward.agent_core().unwrap().id().clone();
         let path = steward.agent_storage_path(&agent_id);
         assert!(path.exists());
 
         let mut new_steward = Steward::new().with_session_dir(session_dir);
         new_steward.load_agent(&agent_id).unwrap();
-        assert!(new_steward.agent_state().unwrap().private_data().is_none());
+        assert!(new_steward.agent_core().unwrap().private_data().is_none());
         assert!(new_steward
-            .agent_state()
+            .agent_core()
             .unwrap()
             .session()
             .encrypted_private
@@ -118,7 +118,7 @@ mod persistence_tests {
             .dispatch(parse(r#"/unlock mypass"#).unwrap()[0].clone())
             .await
             .unwrap();
-        assert!(new_steward.agent_state().unwrap().private_data().is_some());
+        assert!(new_steward.agent_core().unwrap().private_data().is_some());
 
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }

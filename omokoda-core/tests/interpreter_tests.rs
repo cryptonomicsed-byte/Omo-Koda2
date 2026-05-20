@@ -29,12 +29,12 @@ mod interpreter_tests {
     }
 
     #[tokio::test]
-    async fn birth_initializes_structured_agent_state() {
+    async fn birth_initializes_structured_agent_core() {
         let mut steward = test_steward!("birth_initializes_structured_agent_state");
         let stmts = parse(r#"birth "luna""#).unwrap();
         steward.dispatch(stmts[0].clone()).await.unwrap();
 
-        let agent = steward.agent_state().expect("agent exists after birth");
+        let agent = steward.agent_core().expect("agent exists after birth");
         assert!(agent.id().as_str().starts_with("agent-"));
         assert_eq!(agent.name(), "luna");
         assert!(agent.birth_timestamp() > 0);
@@ -54,7 +54,8 @@ mod interpreter_tests {
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+ // Boost budget
 
         let stmts = parse(r#"think "hello world""#).unwrap();
         let result = steward.dispatch(stmts[0].clone()).await.unwrap();
@@ -73,7 +74,8 @@ mod interpreter_tests {
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+ // Boost budget
 
         let (tx, mut rx) = mpsc::channel(10);
         let stmt = parse(r#"think "hello world""#).unwrap()[0].clone();
@@ -107,7 +109,8 @@ mod interpreter_tests {
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+ // Boost budget
         let test_file = "test_act_event.txt";
         std::fs::write(test_file, "content").unwrap();
 
@@ -135,7 +138,8 @@ mod interpreter_tests {
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+ // Boost budget
 
         let stmts = parse(r#"think "secret""#).unwrap();
         let result = steward.dispatch(stmts[0].clone()).await.unwrap();
@@ -150,7 +154,8 @@ mod interpreter_tests {
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+ // Boost budget
 
         let stmts = parse(r#"think "share this" /publish"#).unwrap();
         let result = steward.dispatch(stmts[0].clone()).await.unwrap();
@@ -167,7 +172,8 @@ mod interpreter_tests {
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+ // Boost budget
         steward
             .dispatch(parse(r#"/configure provider:ollama"#).unwrap()[0].clone())
             .await
@@ -185,7 +191,8 @@ mod interpreter_tests {
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+ // Boost budget
 
         let result = steward
             .dispatch(parse(r#"/configure provider:unknown"#).unwrap()[0].clone())
@@ -201,7 +208,8 @@ mod interpreter_tests {
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+ // Boost budget
 
         let test_file = "test_act_receipt.txt";
         std::fs::write(test_file, "content").unwrap();
@@ -223,7 +231,8 @@ mod interpreter_tests {
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+ // Boost budget
 
         let test_file = "test_act_rep.txt";
         std::fs::write(test_file, "content").unwrap();
@@ -247,7 +256,8 @@ mod interpreter_tests {
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+ // Boost budget
 
         let test_file = "test_act_rep_grows.txt";
         std::fs::write(test_file, "content").unwrap();
@@ -276,7 +286,8 @@ mod interpreter_tests {
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+ // Boost budget
 
         let stmts = parse(r#"act "agent_orchestration" "task""#).unwrap();
         let result = steward.dispatch(stmts[0].clone()).await;
@@ -290,7 +301,8 @@ mod interpreter_tests {
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+ // Boost budget
 
         steward.set_reputation_for_test(10.0);
         steward.apply_daily_decay(1); // 1 day inactive
@@ -306,7 +318,8 @@ mod interpreter_tests {
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+ // Boost budget
 
         steward.set_reputation_for_test(0.001);
         steward.apply_daily_decay(100); // massive inactivity
@@ -341,7 +354,8 @@ act "read_file" "test_multi.txt""#;
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+ // Boost budget
 
         let test_file = "test_persist.txt";
         std::fs::write(test_file, "content").unwrap();
@@ -388,7 +402,8 @@ act "read_file" "test_multi.txt""#;
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+ // Boost budget
 
         let test_file = "test_act_read.txt";
         std::fs::write(test_file, "real file content").unwrap();
@@ -431,7 +446,7 @@ act "read_file" "test_multi.txt""#;
         let stmts = parse(r#"birth "luna" provider:ollama privacy:false sandbox:false"#).unwrap();
         steward.dispatch(stmts[0].clone()).await.unwrap();
 
-        let agent = steward.agent_state().unwrap();
+        let agent = steward.agent_core().unwrap();
         let config = &agent.session().config;
         assert_eq!(config.default_provider, "ollama");
         assert!(!config.default_privacy);
@@ -446,21 +461,22 @@ act "read_file" "test_multi.txt""#;
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        steward.ensure_born_mut().unwrap().synapse = 100_000.0; // Boost budget
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+ // Boost budget
 
         steward
             .dispatch(parse(r#"think "secret thought""#).unwrap()[0].clone())
             .await
             .unwrap();
-        assert!(steward.agent_state().unwrap().private_data().is_some());
+        assert!(steward.agent_core().unwrap().private_data().is_some());
 
         steward
             .dispatch(parse(r#"/seal mypass"#).unwrap()[0].clone())
             .await
             .unwrap();
-        assert!(steward.agent_state().unwrap().private_data().is_none());
+        assert!(steward.agent_core().unwrap().private_data().is_none());
         assert!(steward
-            .agent_state()
+            .agent_core()
             .unwrap()
             .session()
             .encrypted_private
@@ -470,7 +486,7 @@ act "read_file" "test_multi.txt""#;
             .dispatch(parse(r#"/unlock mypass"#).unwrap()[0].clone())
             .await
             .unwrap();
-        assert!(steward.agent_state().unwrap().private_data().is_some());
+        assert!(steward.agent_core().unwrap().private_data().is_some());
     }
 
     #[tokio::test]

@@ -87,7 +87,7 @@ async fn natural_think_can_execute_safe_direct_act_and_receipt_every_output() {
     assert!(output.contains("Executed direct act calls"));
     assert!(output.contains("natural think content"));
     assert_eq!(result.receipt.unwrap().action, "think");
-    assert_eq!(steward.agent_state().unwrap().receipts().count(), 2);
+    assert_eq!(steward.agent_core().unwrap().receipts().count(), 2);
 }
 
 #[tokio::test]
@@ -113,7 +113,7 @@ async fn natural_think_private_mode_blocks_external_capable_direct_tools() {
 
     assert!(warned);
     assert_eq!(result.tool_output, Some("private reasoning".to_string()));
-    assert_eq!(steward.agent_state().unwrap().receipts().count(), 1);
+    assert_eq!(steward.agent_core().unwrap().receipts().count(), 1);
 }
 
 #[tokio::test]
@@ -132,7 +132,7 @@ async fn natural_think_ethics_validation_refuses_harmful_intent_with_receipt() {
 
     assert!(output.contains("Hermetic ethics blocked"));
     assert_eq!(result.receipt.unwrap().action, "think");
-    assert_eq!(steward.agent_state().unwrap().receipts().count(), 1);
+    assert_eq!(steward.agent_core().unwrap().receipts().count(), 1);
 }
 
 #[tokio::test]

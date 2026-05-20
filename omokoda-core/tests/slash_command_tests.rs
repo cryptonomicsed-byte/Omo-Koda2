@@ -58,7 +58,7 @@ mod slash_command_tests {
             .unwrap()
             .contains("Configured provider to ollama"));
 
-        let agent = steward.agent_state().unwrap();
+        let agent = steward.agent_core().unwrap();
         assert_eq!(agent.session().config.default_provider, "ollama");
     }
 

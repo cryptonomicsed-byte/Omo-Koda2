@@ -19,7 +19,7 @@ mod privacy_memory_tests {
             .await
             .unwrap();
 
-        let agent = steward.agent_state().unwrap();
+        let agent = steward.agent_core().unwrap();
         let public_json = serde_json::to_string(&agent.session()).unwrap();
 
         assert!(!public_json.contains(secret));
@@ -38,7 +38,7 @@ mod privacy_memory_tests {
             .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
             .await
             .unwrap();
-        let agent_id = steward.agent_state().unwrap().id().clone();
+        let agent_id = steward.agent_core().unwrap().id().clone();
 
         // Private think while unlocked (born unlocked)
         steward
@@ -99,7 +99,7 @@ mod privacy_memory_tests {
             .await
             .unwrap();
 
-        let agent = steward.agent_state().unwrap();
+        let agent = steward.agent_core().unwrap();
         let public_json = serde_json::to_string(&agent.session()).unwrap();
 
         assert!(!public_json.contains("secret content"));
@@ -122,7 +122,7 @@ mod privacy_memory_tests {
             .await
             .unwrap();
 
-        assert!(steward.agent_state().unwrap().private_data().is_some());
+        assert!(steward.agent_core().unwrap().private_data().is_some());
 
         // Seal it
         steward
@@ -130,7 +130,7 @@ mod privacy_memory_tests {
             .await
             .unwrap();
 
-        assert!(steward.agent_state().unwrap().private_data().is_none());
+        assert!(steward.agent_core().unwrap().private_data().is_none());
     }
 
     #[tokio::test]

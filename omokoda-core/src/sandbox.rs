@@ -36,7 +36,8 @@ impl WasmSandbox {
             .map_err(|e| format!("failed to instantiate: {}", e))?;
 
         let func = instance.get_typed_func::<(), ()>(&mut store, "_start")
-            .map_err(|_| "module lacks _start".to_string())?;
+            .or_else(|_| instance.get_typed_func::<(), ()>(&mut store, "main"))
+            .map_err(|_| "module lacks _start or main".to_string())?;
 
         func.call(&mut store, ()).map_err(|e| format!("execution error: {}", e))?;
 

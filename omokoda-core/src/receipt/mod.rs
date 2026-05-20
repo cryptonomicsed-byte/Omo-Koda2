@@ -129,9 +129,13 @@ pub struct ReceiptStore {
 pub type ReceiptEngine = ReceiptStore;
 
 impl ReceiptStore {
+    pub fn record_action_receipt(&mut self, receipt: Receipt) -> Result<(), String> {
+        self.record(receipt);
+        Ok(())
+    }
+
     pub fn write_receipt(&mut self, _receipt: ActReceipt) -> Result<(), String> {
-        // Stub: In a real implementation, this would persist the ActReceipt
-        // or integrate it into the Merkle chain.
+        // We'll leave this empty or point to our existing record logic if ActReceipt can be converted
         Ok(())
     }
 

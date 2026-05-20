@@ -1153,7 +1153,7 @@ impl Steward {
                     &signing_key,
                 );
 
-                agent_mut.receipts_mut().record(receipt.clone());
+                agent_mut.receipts_mut().record_action_receipt(receipt.clone()).map_err(|e| format!("failed to record receipt: {}", e))?;
 
                 // Session history
                 agent_mut.add_message(ConversationMessage {
@@ -1712,7 +1712,7 @@ impl Steward {
             &merkle_root,
             &signing_key,
         );
-        agent_mut.receipts_mut().record(receipt.clone());
+        agent_mut.receipts_mut().record_action_receipt(receipt.clone()).map_err(|e| format!("failed to record receipt: {}", e))?;
         Ok(receipt)
     }
 

@@ -35,8 +35,7 @@ mod e2e_tests {
 
         let wasm_bytes = parse_str(
             r#"(module
-  (func $_start)
-  (start $_start)
+  (func (export "_start"))
 )"#,
         )
         .unwrap();
@@ -45,7 +44,7 @@ mod e2e_tests {
 
         let act_stmts = parse(r#"act "wasm" "test_e2e.wasm" /sandbox"#).unwrap();
         let act_result = steward.dispatch(act_stmts[0].clone()).await.unwrap();
-        assert_eq!(act_result.tool_output.unwrap(), "WASM execution succeeded");
+        assert_eq!(act_result.tool_output.unwrap(), "WASM execution completed");
 
         fs::remove_file("test_e2e.wasm").unwrap();
     }

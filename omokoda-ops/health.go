@@ -13,9 +13,9 @@ type HealthStatus struct {
 }
 
 var (
-	startTime    time.Time
-	healthMutex  sync.RWMutex
-	lastHealth   HealthStatus
+	startTime     time.Time
+	healthMutex   sync.RWMutex
+	lastHealth    HealthStatus
 	checkInterval = 5 * time.Second
 )
 

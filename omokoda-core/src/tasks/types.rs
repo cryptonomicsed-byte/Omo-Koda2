@@ -44,9 +44,21 @@ pub enum TaskKind {
         params: String,
         sandbox: bool,
     },
+    /// Background memory consolidation via DreamEngine
+    Dream {
+        /// Optional hint about what memory region to consolidate
+        consolidation_target: Option<String>,
+    },
+    /// Delegate to a swarm agent (local process or remote node)
+    Delegate {
+        agent_id: String,
+        task_description: String,
+        /// Erlang/OTP node name for cross-node delegation; None = local
+        swarm_node: Option<String>,
+    },
     /// Background work described in prose (queued for later execution)
     Background { description: String },
-    /// Delegate to another agent
+    /// Delegate to another agent (legacy alias — prefer Delegate)
     Agent {
         agent_id: String,
         prompt: String,
@@ -59,13 +71,19 @@ impl TaskKind {
         match self {
             Self::Think { .. } => "think",
             Self::Act { .. } => "act",
+            Self::Dream { .. } => "dream",
+            Self::Delegate { .. } => "delegate",
             Self::Background { .. } => "background",
             Self::Agent { .. } => "agent",
         }
     }
 
     pub fn is_write(&self) -> bool {
-        matches!(self, Self::Act { .. } | Self::Agent { .. })
+        matches!(self, Self::Act { .. } | Self::Agent { .. } | Self::Delegate { .. })
+    }
+
+    pub fn is_async(&self) -> bool {
+        matches!(self, Self::Dream { .. } | Self::Background { .. } | Self::Delegate { .. })
     }
 }
 

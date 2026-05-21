@@ -1,5 +1,7 @@
+pub mod scheduler;
 pub mod types;
 
+pub use scheduler::{PollResult, SchedulerConfig, TaskScheduler};
 pub use types::{Task, TaskKind, TaskManager, TaskStatus};
 
 #[cfg(test)]

@@ -8,7 +8,10 @@ defmodule OmokodaSwarm.Application do
     children = [
       {Registry, keys: :unique, name: OmokodaSwarm.Registry},
       OmokodaSwarm.SwarmSupervisor,
-      OmokodaSwarm.Coordinator
+      OmokodaSwarm.Coordinator,
+      OmokodaSwarm.BackendRegistry,
+      OmokodaSwarm.TeammateLayoutManager,
+      OmokodaSwarm.PermissionSync
     ]
 
     opts = [strategy: :one_for_one, name: OmokodaSwarm.Supervisor]

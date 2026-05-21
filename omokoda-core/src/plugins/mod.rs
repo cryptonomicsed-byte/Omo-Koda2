@@ -1,11 +1,28 @@
 //! Plugin system — manage, load, and execute plugins.
-//! Ports Claw-code's plugin pattern (#15-20).
 
+pub mod agent;
+pub mod command;
+pub mod config_loader;
+pub mod discovery;
+pub mod hook_manifest;
 pub mod manifest;
+pub mod mcp;
 pub mod registry;
+pub mod rule_engine;
+pub mod settings;
+pub mod skill;
 
+pub use agent::AgentDef;
+pub use command::CommandDef;
+pub use config_loader::ConfigLoader;
+pub use discovery::{DiscoveredPlugin, PluginDiscovery};
+pub use hook_manifest::{HookEntry, HookEvent, HookManifestFile};
 pub use manifest::{HookConfig, LifecycleConfig, PluginManifest, PluginToolConfig, PluginType};
+pub use mcp::{McpManifest, McpServerConfig, McpTransport};
 pub use registry::{InstalledPlugin, PluginRegistry, PluginState};
+pub use rule_engine::{Condition, Rule, RuleAction, RuleContext, RuleEngine, RuleOperator, RuleResult};
+pub use settings::PluginSettings;
+pub use skill::{SkillDef, SkillTier};
 
 #[cfg(test)]
 mod tests {
@@ -56,3 +73,4 @@ mod tests {
         assert_eq!(registry.list_enabled().len(), 0);
     }
 }
+

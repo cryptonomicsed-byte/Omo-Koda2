@@ -5,6 +5,72 @@ use tokio::sync::mpsc;
 use crate::query::{QueryConfig, QueryEngine, QueryState};
 use crate::usage::TokenUsage;
 
+/// Omo-Koda2 REPL slash commands — intercepted before the prompt reaches the LLM.
+/// Mirrors Claw-code's client-side command interception pattern, adapted for the
+/// sovereign agent OS primitives: identity (Odu), economy (Synapse), and reputation tiers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReplCommand {
+    /// Show the agent's Odu identity (mnemonic + DNA fingerprint)
+    Odu,
+    /// Show the Synapse economy state (balance, escrow, burn rate)
+    Synapse,
+    /// Show the current reputation tier and tool access gates
+    Tier,
+    /// Show the receipt log (last N receipts)
+    Receipts { limit: usize },
+    /// Force context compaction now
+    Compact,
+    /// Show the active permission policy
+    Permissions,
+    /// List all tools available at the current tier
+    Tools,
+    /// Show help — list available slash commands
+    Help,
+}
+
+impl ReplCommand {
+    pub fn help_text() -> &'static str {
+        "\
+/odu         — Show Odu identity (mnemonic + DNA fingerprint)
+/synapse     — Show Synapse economy (balance, escrow, burn rate)
+/tier        — Show reputation tier and tool gates
+/receipts    — Show receipt log (last 10); /receipts N for last N
+/compact     — Force context compaction
+/permissions — Show active permission policy
+/tools       — List tools available at current tier
+/help        — Show this help message"
+    }
+}
+
+/// Try to parse a raw REPL input string as a slash command.
+/// Returns `Some(ReplCommand)` if the input starts with `/`, `None` otherwise.
+/// Unrecognised `/commands` return `None` so the string falls through to the LLM.
+pub fn intercept_slash_command(input: &str) -> Option<ReplCommand> {
+    let trimmed = input.trim();
+    if !trimmed.starts_with('/') {
+        return None;
+    }
+
+    let mut parts = trimmed.splitn(2, ' ');
+    let cmd = parts.next().unwrap_or("").to_lowercase();
+    let arg = parts.next().unwrap_or("").trim();
+
+    match cmd.as_str() {
+        "/odu" => Some(ReplCommand::Odu),
+        "/synapse" => Some(ReplCommand::Synapse),
+        "/tier" => Some(ReplCommand::Tier),
+        "/receipts" => {
+            let limit = arg.parse::<usize>().unwrap_or(10);
+            Some(ReplCommand::Receipts { limit })
+        }
+        "/compact" => Some(ReplCommand::Compact),
+        "/permissions" => Some(ReplCommand::Permissions),
+        "/tools" => Some(ReplCommand::Tools),
+        "/help" => Some(ReplCommand::Help),
+        _ => None,
+    }
+}
+
 /// Events that drive the main loop — inputs from user, tools, timers, or the system.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LoopEvent {
@@ -418,5 +484,85 @@ mod tests {
         assert!(loop_.push(LoopEvent::Compact).is_ok());
         assert!(loop_.push(LoopEvent::Compact).is_ok());
         assert!(loop_.push(LoopEvent::Compact).is_err());
+    }
+
+    // --- Slash command intercept tests ---
+
+    #[test]
+    fn slash_odu_parses() {
+        assert_eq!(intercept_slash_command("/odu"), Some(ReplCommand::Odu));
+    }
+
+    #[test]
+    fn slash_synapse_parses() {
+        assert_eq!(intercept_slash_command("/synapse"), Some(ReplCommand::Synapse));
+    }
+
+    #[test]
+    fn slash_tier_parses() {
+        assert_eq!(intercept_slash_command("/tier"), Some(ReplCommand::Tier));
+    }
+
+    #[test]
+    fn slash_receipts_default_limit() {
+        assert_eq!(
+            intercept_slash_command("/receipts"),
+            Some(ReplCommand::Receipts { limit: 10 })
+        );
+    }
+
+    #[test]
+    fn slash_receipts_custom_limit() {
+        assert_eq!(
+            intercept_slash_command("/receipts 25"),
+            Some(ReplCommand::Receipts { limit: 25 })
+        );
+    }
+
+    #[test]
+    fn slash_compact_parses() {
+        assert_eq!(intercept_slash_command("/compact"), Some(ReplCommand::Compact));
+    }
+
+    #[test]
+    fn slash_permissions_parses() {
+        assert_eq!(
+            intercept_slash_command("/permissions"),
+            Some(ReplCommand::Permissions)
+        );
+    }
+
+    #[test]
+    fn slash_tools_parses() {
+        assert_eq!(intercept_slash_command("/tools"), Some(ReplCommand::Tools));
+    }
+
+    #[test]
+    fn slash_help_parses() {
+        assert_eq!(intercept_slash_command("/help"), Some(ReplCommand::Help));
+    }
+
+    #[test]
+    fn non_slash_input_passes_through() {
+        assert_eq!(intercept_slash_command("hello world"), None);
+        assert_eq!(intercept_slash_command("think about this"), None);
+    }
+
+    #[test]
+    fn unknown_slash_command_passes_through() {
+        assert_eq!(intercept_slash_command("/doesnotexist"), None);
+    }
+
+    #[test]
+    fn slash_command_trims_whitespace() {
+        assert_eq!(intercept_slash_command("  /odu  "), Some(ReplCommand::Odu));
+    }
+
+    #[test]
+    fn help_text_contains_all_commands() {
+        let help = ReplCommand::help_text();
+        for cmd in &["/odu", "/synapse", "/tier", "/receipts", "/compact", "/permissions", "/tools", "/help"] {
+            assert!(help.contains(cmd), "help text missing {}", cmd);
+        }
     }
 }

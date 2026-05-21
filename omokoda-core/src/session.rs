@@ -723,6 +723,63 @@ impl SessionManager {
     pub fn restore_points(&self) -> &[RestorePoint] {
         &self.restore_points
     }
+
+    /// Persist the session as newline-delimited JSON to `.omokoda/sessions/<agent_id>.jsonl`.
+    /// Each public message is one line; the session header is line 0.
+    /// Mirrors Claw-code's compact_history pattern: writes only the live transcript so the
+    /// file can be appended on each turn rather than rewritten entirely.
+    pub fn save_to_disk(&self, base_dir: &Path) -> Result<(), String> {
+        let sessions_dir = base_dir.join(".omokoda").join("sessions");
+        fs::create_dir_all(&sessions_dir)
+            .map_err(|e| format!("create sessions dir: {}", e))?;
+
+        let path = sessions_dir.join(format!("{}.jsonl", self.session.agent_id));
+        let header = serde_json::to_string(&self.session)
+            .map_err(|e| format!("serialize session: {}", e))?;
+
+        let mut lines = vec![header];
+        for msg in &self.session.public_messages {
+            let line = serde_json::to_string(msg)
+                .map_err(|e| format!("serialize message: {}", e))?;
+            lines.push(line);
+        }
+
+        fs::write(&path, lines.join("\n"))
+            .map_err(|e| format!("write {}: {}", path.display(), e))?;
+        Ok(())
+    }
+
+    /// Restore a session from a `.omokoda/sessions/<agent_id>.jsonl` file written by
+    /// `save_to_disk`. Returns an error if the file does not exist or is malformed.
+    pub fn load_from_disk(agent_id: &AgentId, base_dir: &Path) -> Result<Self, String> {
+        let path = base_dir
+            .join(".omokoda")
+            .join("sessions")
+            .join(format!("{}.jsonl", agent_id));
+
+        let raw = fs::read_to_string(&path)
+            .map_err(|e| format!("read {}: {}", path.display(), e))?;
+
+        let mut lines = raw.lines();
+        let header_line = lines
+            .next()
+            .ok_or("empty session file")?;
+        let mut session: Session = serde_json::from_str(header_line)
+            .map_err(|e| format!("parse session header: {}", e))?;
+
+        session.public_messages.clear();
+        for line in lines {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let msg: ConversationMessage = serde_json::from_str(line)
+                .map_err(|e| format!("parse message line: {}", e))?;
+            session.public_messages.push(msg);
+        }
+
+        Ok(Self::new(session))
+    }
 }
 
 #[cfg(test)]
@@ -784,5 +841,46 @@ mod lifecycle_tests {
         assert_eq!(mgr.session.public_messages.len(), 6);
         mgr.restore_to(&rp_id).unwrap();
         assert_eq!(mgr.session.public_messages.len(), 3);
+    }
+
+    #[test]
+    fn test_save_and_load_from_disk() {
+        let tmp = std::env::temp_dir().join(format!(
+            "omokoda_session_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .subsec_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        let id = AgentId::new("disk-persist-fingerprint");
+        let mut mgr = SessionManager::new(Session::new(id.clone(), "disk-test".to_string(), 0));
+        mgr.session
+            .public_messages
+            .push(ConversationMessage::user_text("hello from disk"));
+        mgr.session
+            .public_messages
+            .push(ConversationMessage::user_text("second message"));
+
+        mgr.save_to_disk(&tmp).unwrap();
+
+        let loaded = SessionManager::load_from_disk(&id, &tmp).unwrap();
+        assert_eq!(loaded.session.name, "disk-test");
+        assert_eq!(loaded.session.public_messages.len(), 2);
+        if let crate::session::ContentBlock::Text { text } = &loaded.session.public_messages[0].blocks[0] {
+            assert_eq!(text, "hello from disk");
+        } else {
+            panic!("unexpected block type");
+        }
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_load_from_disk_missing_file_errors() {
+        let id = AgentId::new("no-such-agent-abcd");
+        let result = SessionManager::load_from_disk(&id, std::path::Path::new("/tmp/does_not_exist_omokoda"));
+        assert!(result.is_err());
     }
 }

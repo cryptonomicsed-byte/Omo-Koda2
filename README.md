@@ -47,11 +47,11 @@ A daily resonance engine that modulates agent behavior based on the time-stream,
 Ọmọ Kọ́dà maintains a rigorous testing standard across its multi-language ecosystem.
 
 **Current Audit Status (May 2026):** `PASSED` ✅
-*   **Total Verified Tests**: `215`
-*   **Core Rust (Steward)**: `178` tests
-*   **Hermetic Foundation**: `18` tests (Fractal & Entropy)
-*   **Go (Ops & Monitoring)**: `13` tests
-*   **Elixir (Swarm Coordination)**: `6` tests (Logic verified)
+*   **Total Verified Tests**: `370+`
+*   **Core Rust (Steward)**: `288` tests — lib + 22 integration suites
+*   **Hermetic Foundation**: `41` tests (Fractal, Entropy & Rule Engine)
+*   **Go (Ops & Monitoring)**: `41` tests — ops, bridge, remote, teleport
+*   **Elixir (Swarm Coordination)**: `49` tests — backends, teammate FSM, permission sync
 *   **E2E Flow**: `Verified` (Birth → Think → Act)
 
 ### Core Invariants Verified
@@ -68,11 +68,20 @@ A daily resonance engine that modulates agent behavior based on the time-stream,
 ### 🟢 Completed & Verified
 *   **3-Primitive Surface**: `birth`, `think`, `act` strictly enforced by the parser.
 *   **Fractal Kernel**: 7-phase dispatch lifecycle (21 operations) implemented in the Steward.
-*   **Hermetic Ethics Gate**: Stateless scoring for all 7 principles now live in `omokoda-core/src/justice/hermetic.rs`.
+*   **Hermetic Ethics Gate**: Stateless scoring for all 7 principles — `omokoda-core/src/justice/hermetic.rs`.
 *   **Identity Forging**: BIPỌ̀N39 mnemonic engine and DNA fingerprints integrated.
+*   **Permission System**: Tier-gated tool permissions with bash security, SSRF guard, and sandbox adapter — `omokoda-core/src/permissions.rs`.
+*   **Session Lifecycle**: Auto-compact (configurable threshold), dream-state consolidation, Odu memdir persistence.
+*   **Hook System**: 16 event types (`PreThink`, `PostThink`, `PreAct`, `PostAct`, `OnError`, `OnCompact`, `OnDream`, …), shell and Python hook handlers, and a glob-based rule engine in `omokoda-hermetic`.
+*   **Plugin Ecosystem**: Garden Marketplace manifest validation, command forge, plugin toolkits with sequential/parallel/hierarchical/pipeline activation — `omokoda-frontend/lib/`.
+*   **On-chain Registry**: Sui Move plugin registry with `PluginEntry` and capability-gated publish/install — `omokoda-sui/`.
+*   **Multi-agent Swarm (Elixir)**: Pluggable backends (local Task, remote `:erpc`, Docker container), 5-state teammate FSM, distributed permission sync via `persistent_term` — `omokoda-swarm/`.
+*   **Bridge & Teleport (Go)**: Remote session bridge, session migration/teleport between nodes — `omokoda-ops/bridge`, `omokoda-ops/teleport`.
+*   **Task Heterogeneity**: `Dream` (consolidation) and `Delegate` (sub-agent) task kinds, budgeted scheduler integrating `QueryEngine` and `BackgroundRegistry` — `omokoda-core/src/tasks/`.
+*   **Agent & Skill Definitions**: Markdown-frontmatter agent registry (`agents.rs`), hierarchical skill discovery with reference loading (`skills.rs`).
 
 ### 🟡 In Progress / Gaps
-*   **Permission Order**: Moving all permission checks to "Pre-act" (Current: some checks occur post-execution).
+*   **Permission Order**: Some checks still occur post-execution; target is full pre-act enforcement.
 *   **Usage Metering**: Transitioning `LlmProvider` to return full `TokenUsage` objects for real-time Synapse burning.
 *   **File Tool Expansion**: Mapping orphans in `file_ops.rs` to the `Tool` registry.
 

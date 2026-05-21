@@ -47,10 +47,11 @@ A daily resonance engine that modulates agent behavior based on the time-stream,
 Ọmọ Kọ́dà maintains a rigorous testing standard across its multi-language ecosystem.
 
 **Current Audit Status (May 2026):** `PASSED` ✅
-*   **Total Verified Tests**: `205`
-*   **Core Rust (Steward)**: `184` tests
-*   **Hermetic Foundation**: `10` tests (Fractal & Entropy)
+*   **Total Verified Tests**: `215`
+*   **Core Rust (Steward)**: `178` tests
+*   **Hermetic Foundation**: `18` tests (Fractal & Entropy)
 *   **Go (Ops & Monitoring)**: `13` tests
+*   **Elixir (Swarm Coordination)**: `6` tests (Logic verified)
 *   **E2E Flow**: `Verified` (Birth → Think → Act)
 
 ### Core Invariants Verified

@@ -65,10 +65,10 @@ impl Default for ClawPolicy {
                 "write:notes/*".to_string(),
                 "write:*".to_string(),
                 "exec:*".to_string(),
+                "net:*".to_string(),
             ],
             deny: vec![
                 "read:/etc/*".to_string(),
-                "net:*".to_string(),
                 "exec:sudo".to_string(),
                 "exec:rm_rf".to_string(),
             ],
@@ -277,12 +277,12 @@ mod tests {
             policy.check("write", "workspace/note.txt"),
             PermissionOutcome::Allow
         );
+        assert_eq!(
+            policy.check("net", "google.com"),
+            PermissionOutcome::Allow
+        );
 
         // Denied by pattern
-        assert!(matches!(
-            policy.check("net", "google.com"),
-            PermissionOutcome::Deny { .. }
-        ));
         assert!(matches!(
             policy.check("exec", "sudo"),
             PermissionOutcome::Deny { .. }

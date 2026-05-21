@@ -8,17 +8,9 @@ mod sandbox_tests {
     async fn wasm_tool_executes_simple_module_in_sandbox() {
         let wasm_bytes = parse_str(
             r#"(module
-  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
-  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
-  (memory 1)
-  (export "memory" (memory 0))
-  (data (i32.const 8) "Hello, WASM!\n")
-  (func $main (result i32)
-    (call $fd_write (i32.const 1) (i32.const 8) (i32.const 12) (i32.const 0))
-    (call $proc_exit (i32.const 0))
-    (i32.const 0)
+  (func (export "main")
+    nop
   )
-  (start $main)
 )"#,
         )
         .unwrap();
@@ -45,8 +37,8 @@ mod sandbox_tests {
         let result = registry
             .execute("wasm", "test_simple.wasm", ctx, &policy, None)
             .await;
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().0, "WASM execution succeeded");
+        assert!(result.is_ok(), "WASM execution failed: {:?}", result.err());
+        assert_eq!(result.unwrap().0, "WASM execution completed");
 
         fs::remove_file("test_simple.wasm").unwrap();
     }

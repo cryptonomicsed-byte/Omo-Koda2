@@ -33,7 +33,7 @@ pub struct ToolDefinition {
 }
 
 /// A tool call requested by the LLM
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolCall {
     pub id: String,
     pub name: String,

@@ -1,3 +1,6 @@
+pub mod aliases;
+pub mod streaming;
+
 use crate::session::ConversationMessage;
 use crate::tools::tool_definitions::{LlmResponse, ToolCall, ToolDefinition};
 use crate::usage::TokenUsage;

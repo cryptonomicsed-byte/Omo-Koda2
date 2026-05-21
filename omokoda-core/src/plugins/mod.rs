@@ -7,6 +7,7 @@ pub mod discovery;
 pub mod hook_manifest;
 pub mod manifest;
 pub mod mcp;
+pub mod output_style;
 pub mod registry;
 pub mod rule_engine;
 pub mod settings;
@@ -21,6 +22,7 @@ pub use manifest::{HookConfig, LifecycleConfig, PluginManifest, PluginToolConfig
 pub use mcp::{McpManifest, McpServerConfig, McpTransport};
 pub use registry::{InstalledPlugin, PluginRegistry, PluginState};
 pub use rule_engine::{Condition, Rule, RuleAction, RuleContext, RuleEngine, RuleOperator, RuleResult};
+pub use output_style::{OutputStyle, StyleDirective};
 pub use settings::PluginSettings;
 pub use skill::{SkillDef, SkillTier};
 

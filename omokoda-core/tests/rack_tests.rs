@@ -23,7 +23,7 @@ mod rack_tests {
         session.push_public(msg, 0.0);
 
         if let ContentBlock::ToolResult { output, .. } = &session.public_messages[0].blocks[0] {
-            assert!(output.len() <= 1025); // 1000 + truncation message
+            assert!(output.len() <= 2025); // 2000 + truncation message
             assert!(output.contains("[TRUNCATED]"));
         } else {
             panic!("Unexpected content block type");

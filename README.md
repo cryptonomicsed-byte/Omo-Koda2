@@ -46,63 +46,37 @@ A daily resonance engine that modulates agent behavior based on the time-stream,
 
 Ọmọ Kọ́dà maintains a rigorous testing standard across its multi-language ecosystem.
 
-**Current Audit Status:** `PASSED` ✅
-*   **Total Verified Tests**: `203`
-*   **Rust (Core & Hermetic)**: `182` tests
+**Current Audit Status (May 2026):** `PASSED` ✅
+*   **Total Verified Tests**: `215`
+*   **Core Rust (Steward)**: `178` tests
+*   **Hermetic Foundation**: `18` tests (Fractal & Entropy)
 *   **Go (Ops & Monitoring)**: `13` tests
-*   **Elixir (Swarm Coordination)**: `8` tests
+*   **Elixir (Swarm Coordination)**: `6` tests (Logic verified)
 *   **E2E Flow**: `Verified` (Birth → Think → Act)
 
 ### Core Invariants Verified
 1.  **Identity Anchor**: DNA fingerprints are deterministic and permanent.
 2.  **Sealed Memory**: Private thoughts never leak to external providers.
-3.  **Immutable Receipts**: Every `act` generates a cryptographically signed receipt.
-4.  **Hermetic Gate**: Pre-execution ethics evaluation for all `think` and `act` primitives.
-5.  **Tier Enforcement**: Reputation strictly controls tool access.
-6.  **Workspace Integrity**: Boundary validation ensures all operations stay within the defined environment, actively preventing directory traversal and unauthorized external access.
+3.  **Hermetic Gate**: Pre-execution ethics evaluation (Mentalism, Polarity, etc.) for all primitives.
+4.  **Tier Enforcement**: Reputation strictly controls tool access.
+5.  **Workspace Integrity**: Boundary validation ensures all operations stay within the defined environment.
 
 ---
 
-## 🐚 The Trinity of Primitives
+## 🏗️ Technical Status (Audit Findings)
 
-The entire user surface is restricted to exactly three commands.
+### 🟢 Completed & Verified
+*   **3-Primitive Surface**: `birth`, `think`, `act` strictly enforced by the parser.
+*   **Fractal Kernel**: 7-phase dispatch lifecycle (21 operations) implemented in the Steward.
+*   **Hermetic Ethics Gate**: Stateless scoring for all 7 principles now live in `omokoda-core/src/justice/hermetic.rs`.
+*   **Identity Forging**: BIPỌ̀N39 mnemonic engine and DNA fingerprints integrated.
 
-1.  `birth "name"` — **Who am I?**
-    *   Generates BIPỌ̀N39 mnemonic (256-token Yorùbá wordlist).
-    *   Forges identity in SEAL vault.
-    *   Derives 86-char DNA and Sui-anchored wallet.
-2.  `think "intent"` — **What do I intend?**
-    *   Private, hermetic-evaluated reasoning.
-    *   Enforced `/private` policy (Ollama/WebLLM only).
-    *   Hard-fails on non-sovereign routing.
-3.  `act "tool" "params"` — **What do I do?**
-    *   Sandboxed execution (WASM/Linux namespaces).
-    *   Produces on-chain anchored receipts.
-    *   Advances reputation and evolves the agent's soul.
+### 🟡 In Progress / Gaps
+*   **Permission Order**: Moving all permission checks to "Pre-act" (Current: some checks occur post-execution).
+*   **Usage Metering**: Transitioning `LlmProvider` to return full `TokenUsage` objects for real-time Synapse burning.
+*   **File Tool Expansion**: Mapping orphans in `file_ops.rs` to the `Tool` registry.
 
 ---
-
-## 🛣️ Implementation Roadmap
-
-- [x] **Week 1: Foundations** — Steward Kernel, Parser, and 3-Primitive Dispatch.
-- [x] **Week 2: Identity & Memory** — Living Odu Key Chain, BIPỌ̀N39, and SEAL Vault.
-- [x] **Week 3: Frontend & Pet** — ASCII Pet Engine, WASM Bridge, and Next.js Nexus.
-- [ ] **Week 4: Hive Integration** — Sui Testnet Deployment, Garden Marketplace, and Swarm Patrol.
-
----
-
-## 📦 Project Structure
-
-```
-omokoda/
-├── omokoda-core/      # Rust: The Steward Kernel (Identity, Memory, Execution)
-├── omokoda-hermetic/  # Rust: Behavioral Laws & Entropy Engine
-├── omokoda-frontend/  # Next.js: The Nexus (ASCII Pet, CommandForge)
-├── omokoda-ops/       # Go: Node Monitoring & Health Status
-├── omokoda-swarm/     # Elixir: Multi-agent coordination
-├── omokoda-sui/       # Move: On-chain Soul & Agent dNFTs
-└── docs/              # Deep architecture and ADRs
-```
 
 ## Developer Setup
 
@@ -122,6 +96,8 @@ git clone https://github.com/Bino-Elgua/Bipon39-Rust ../Bipon39-Rust
 git clone https://github.com/Bino-Elgua/Ifascript ../Ifascript
 ```
 
-CI uses the same sibling checkout layout. The Rust build vendors `protoc` through Cargo, so a system protobuf compiler is not required.
+### Environment Notes
+*   **Android/aarch64 (Termux)**: The `build.rs` script has been patched to fall back to system `protoc` if the vendored binary is incompatible. Ensure `protobuf` is installed (`pkg install protobuf`).
+*   **CI**: CI uses the same sibling checkout layout and handles vendoring automatically.
 
 *Àṣẹ. 🤍🗿*

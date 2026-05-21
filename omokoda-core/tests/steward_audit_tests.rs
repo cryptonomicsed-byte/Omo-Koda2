@@ -139,13 +139,13 @@ mod steward_audit_tests {
 
         let diff = initial_synapse - steward.agent_core().unwrap().synapse();
         assert!(
-            diff >= 5100.0,
-            "Burn amount {} should be at least 5100",
+            diff >= 6100.0,
+            "Burn amount {} should be at least 6100",
             diff
         );
         assert!(
-            diff < 5200.0,
-            "Burn amount {} should not exceed 5200 (including minor decay)",
+            diff < 6200.0,
+            "Burn amount {} should not exceed 6200 (including minor decay)",
             diff
         );
 

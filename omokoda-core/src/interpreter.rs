@@ -1217,6 +1217,7 @@ impl Steward {
                     }],
                     is_private: force_sandbox,
                     timestamp: current_unix_timestamp(),
+                    usage: None,
                 });
 
                 agent_mut.add_message(ConversationMessage {
@@ -1228,6 +1229,7 @@ impl Steward {
                     }],
                     is_private: force_sandbox,
                     timestamp: current_unix_timestamp(),
+                    usage: None,
                 });
 
                 // Publish ActExecuted event
@@ -1798,6 +1800,7 @@ impl Steward {
             }],
             is_private: message_private,
             timestamp: current_unix_timestamp(),
+            usage: None,
         });
 
         agent_mut.add_message(ConversationMessage {
@@ -1808,6 +1811,7 @@ impl Steward {
                 is_error: false,
             }],
             is_private: message_private,
+            usage: None,
             timestamp: current_unix_timestamp(),
         });
 
@@ -2167,6 +2171,7 @@ impl Steward {
                         blocks,
                         is_private: private,
                         timestamp: current_unix_timestamp(),
+                        usage: None,
                     });
 
                     // Execute each tool call
@@ -2191,6 +2196,7 @@ impl Steward {
                         blocks: tool_result_blocks,
                         is_private: private,
                         timestamp: current_unix_timestamp(),
+                        usage: None,
                     });
                 }
             }

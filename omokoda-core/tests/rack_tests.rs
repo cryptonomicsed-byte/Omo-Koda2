@@ -18,6 +18,7 @@ mod rack_tests {
             }],
             is_private: false,
             timestamp: 0,
+            usage: None,
         };
 
         session.push_public(msg, 0.0);

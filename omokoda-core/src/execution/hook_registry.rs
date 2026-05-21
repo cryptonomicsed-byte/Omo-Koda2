@@ -265,6 +265,243 @@ impl HookHandler for PassthroughHook {
     }
 }
 
+// ── ClawHookRunner ────────────────────────────────────────────────────────────
+// Implements Claw-code's exit-code hook protocol:
+//   exit 0  → Allow (optional message from stdout)
+//   exit 2  → Deny  (optional reason from stdout)
+//   other   → Warn  (non-blocking, warning message)
+// JSON payload is sent via stdin; env vars are set for compatibility.
+
+/// Result returned by `ClawHookRunner`
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HookRunResult {
+    denied: bool,
+    messages: Vec<String>,
+}
+
+impl HookRunResult {
+    /// Construct an allow result with optional messages
+    #[must_use]
+    pub fn allow(messages: Vec<String>) -> Self {
+        Self {
+            denied: false,
+            messages,
+        }
+    }
+
+    /// Returns true if the hook denied the operation
+    #[must_use]
+    pub fn is_denied(&self) -> bool {
+        self.denied
+    }
+
+    /// Returns the messages produced by hook commands
+    #[must_use]
+    pub fn messages(&self) -> &[String] {
+        &self.messages
+    }
+}
+
+/// Runs a list of shell commands using Claw-code's exit-code hook protocol.
+/// Commands receive a JSON payload on stdin and communicate via exit code + stdout.
+pub struct ClawHookRunner;
+
+impl ClawHookRunner {
+    /// Run pre-tool-use hooks.
+    /// `commands` — list of shell command strings to execute in order.
+    #[must_use]
+    pub fn run_pre_tool_use(
+        commands: &[String],
+        tool_name: &str,
+        tool_input: &str,
+    ) -> HookRunResult {
+        Self::run_commands(
+            commands,
+            "PreToolUse",
+            tool_name,
+            tool_input,
+            None,
+            false,
+        )
+    }
+
+    /// Run post-tool-use hooks.
+    #[must_use]
+    pub fn run_post_tool_use(
+        commands: &[String],
+        tool_name: &str,
+        tool_input: &str,
+        tool_output: &str,
+        is_error: bool,
+    ) -> HookRunResult {
+        Self::run_commands(
+            commands,
+            "PostToolUse",
+            tool_name,
+            tool_input,
+            Some(tool_output),
+            is_error,
+        )
+    }
+
+    fn run_commands(
+        commands: &[String],
+        event_name: &str,
+        tool_name: &str,
+        tool_input: &str,
+        tool_output: Option<&str>,
+        is_error: bool,
+    ) -> HookRunResult {
+        if commands.is_empty() {
+            return HookRunResult::allow(Vec::new());
+        }
+
+        let payload = serde_json::json!({
+            "hook_event_name": event_name,
+            "tool_name": tool_name,
+            "tool_input": Self::parse_tool_input(tool_input),
+            "tool_input_json": tool_input,
+            "tool_output": tool_output,
+            "tool_result_is_error": is_error,
+        })
+        .to_string();
+
+        let mut messages = Vec::new();
+
+        for command in commands {
+            match Self::run_single_command(
+                command,
+                event_name,
+                tool_name,
+                tool_input,
+                tool_output,
+                is_error,
+                &payload,
+            ) {
+                ClawCommandOutcome::Allow { message } => {
+                    if let Some(msg) = message {
+                        messages.push(msg);
+                    }
+                }
+                ClawCommandOutcome::Deny { message } => {
+                    let msg = message.unwrap_or_else(|| {
+                        format!("{event_name} hook denied tool `{tool_name}`")
+                    });
+                    messages.push(msg);
+                    return HookRunResult {
+                        denied: true,
+                        messages,
+                    };
+                }
+                ClawCommandOutcome::Warn { message } => messages.push(message),
+            }
+        }
+
+        HookRunResult::allow(messages)
+    }
+
+    fn run_single_command(
+        command: &str,
+        event_name: &str,
+        tool_name: &str,
+        tool_input: &str,
+        tool_output: Option<&str>,
+        is_error: bool,
+        payload: &str,
+    ) -> ClawCommandOutcome {
+        use std::io::Write;
+
+        // Use `sh <path>` if the command is a path that exists; otherwise `sh -lc <cmd>`
+        let mut child_cmd = if std::path::Path::new(command).exists() {
+            let mut c = std::process::Command::new("sh");
+            c.arg(command);
+            c
+        } else {
+            let mut c = std::process::Command::new("sh");
+            c.arg("-c").arg(command);
+            c
+        };
+
+        child_cmd
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .env("HOOK_EVENT", event_name)
+            .env("HOOK_TOOL_NAME", tool_name)
+            .env("HOOK_TOOL_INPUT", tool_input)
+            .env("HOOK_TOOL_IS_ERROR", if is_error { "1" } else { "0" });
+
+        if let Some(output) = tool_output {
+            child_cmd.env("HOOK_TOOL_OUTPUT", output);
+        }
+
+        let mut child = match child_cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                return ClawCommandOutcome::Warn {
+                    message: format!(
+                        "{event_name} hook `{command}` failed to start for `{tool_name}`: {e}"
+                    ),
+                }
+            }
+        };
+
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(payload.as_bytes());
+        }
+
+        match child.wait_with_output() {
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                let message = (!stdout.is_empty()).then_some(stdout);
+                match out.status.code() {
+                    Some(0) => ClawCommandOutcome::Allow { message },
+                    Some(2) => ClawCommandOutcome::Deny { message },
+                    Some(code) => ClawCommandOutcome::Warn {
+                        message: Self::format_warning(command, code, message.as_deref(), &stderr),
+                    },
+                    None => ClawCommandOutcome::Warn {
+                        message: format!(
+                            "{event_name} hook `{command}` terminated by signal while handling `{tool_name}`"
+                        ),
+                    },
+                }
+            }
+            Err(e) => ClawCommandOutcome::Warn {
+                message: format!(
+                    "{event_name} hook `{command}` failed to start for `{tool_name}`: {e}"
+                ),
+            },
+        }
+    }
+
+    fn parse_tool_input(tool_input: &str) -> serde_json::Value {
+        serde_json::from_str(tool_input)
+            .unwrap_or_else(|_| serde_json::json!({ "raw": tool_input }))
+    }
+
+    fn format_warning(command: &str, code: i32, stdout: Option<&str>, stderr: &str) -> String {
+        let mut msg = format!(
+            "Hook `{command}` exited with status {code}; allowing tool execution to continue"
+        );
+        if let Some(s) = stdout.filter(|s| !s.is_empty()) {
+            msg.push_str(": ");
+            msg.push_str(s);
+        } else if !stderr.is_empty() {
+            msg.push_str(": ");
+            msg.push_str(stderr);
+        }
+        msg
+    }
+}
+
+enum ClawCommandOutcome {
+    Allow { message: Option<String> },
+    Deny { message: Option<String> },
+    Warn { message: String },
+}
+
 /// Async hook registry — maps event types to ordered handler lists
 pub struct AsyncHookRegistry {
     handlers: HashMap<HookEventType, Vec<Box<dyn HookHandler>>>,
@@ -574,5 +811,57 @@ mod tests {
     #[test]
     fn test_shell_hook_parse_empty() {
         assert_eq!(ShellHookHandler::parse_outcome(""), HookOutcome::Allow);
+    }
+
+    // ── ClawHookRunner tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn claw_runner_allows_exit_zero_captures_stdout() {
+        let cmds = vec!["printf 'hook ok'".to_string()];
+        let result = ClawHookRunner::run_pre_tool_use(
+            &cmds,
+            "Read",
+            r#"{"path":"README.md"}"#,
+        );
+        assert!(!result.is_denied());
+        // Login shells may emit profile noise (e.g. nvm); check that the payload is present
+        assert!(
+            result.messages().iter().any(|m| m.contains("hook ok")),
+            "expected stdout to contain 'hook ok', got: {:?}",
+            result.messages()
+        );
+    }
+
+    #[test]
+    fn claw_runner_denies_exit_two() {
+        let cmds = vec!["printf 'blocked'; exit 2".to_string()];
+        let result = ClawHookRunner::run_pre_tool_use(
+            &cmds,
+            "Bash",
+            r#"{"command":"rm -rf /"}"#,
+        );
+        assert!(result.is_denied());
+        // Login shells may prepend profile noise; assert the denial message is present
+        assert!(
+            result.messages().iter().any(|m| m.contains("blocked")),
+            "expected denial message to contain 'blocked', got: {:?}",
+            result.messages()
+        );
+    }
+
+    #[test]
+    fn claw_runner_warns_for_other_non_zero() {
+        let cmds = vec!["printf 'warn msg'; exit 1".to_string()];
+        let result = ClawHookRunner::run_pre_tool_use(
+            &cmds,
+            "Edit",
+            r#"{"file":"src/lib.rs"}"#,
+        );
+        assert!(!result.is_denied());
+        assert!(
+            result.messages().iter().any(|m| m.contains("allowing tool execution to continue")),
+            "expected warning message, got: {:?}",
+            result.messages()
+        );
     }
 }

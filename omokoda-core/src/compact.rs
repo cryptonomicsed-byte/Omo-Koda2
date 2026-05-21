@@ -94,6 +94,7 @@ impl CompactionEngine {
             blocks: vec![ContentBlock::Text { text: summary_text }],
             is_private: false,
             timestamp: summary.compacted_at,
+            usage: None,
         };
         session.public_messages.insert(0, summary_message);
 
@@ -381,6 +382,94 @@ impl AutoCompactor {
     }
 }
 
+// ── Token-aware compaction helpers (ported from Claw-code) ───────────────────
+
+/// Preamble prepended to compact continuation messages.
+pub const COMPACT_CONTINUATION_PREAMBLE: &str =
+    "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\n";
+
+/// Instruction appended when `suppress_follow_up` is true.
+pub const COMPACT_DIRECT_RESUME_INSTRUCTION: &str =
+    "Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, and do not preface with continuation text.";
+
+/// Token estimation heuristic: 4 chars ≈ 1 token
+pub fn estimate_message_tokens(msg: &ConversationMessage) -> usize {
+    msg.blocks
+        .iter()
+        .map(|block| match block {
+            ContentBlock::Text { text } => text.len() / 4 + 1,
+            ContentBlock::ToolUse { name, input, .. } => (name.len() + input.len()) / 4 + 1,
+            ContentBlock::ToolResult { output, .. } => output.len() / 4 + 1,
+        })
+        .sum()
+}
+
+/// Estimate total tokens for all public messages in a session.
+pub fn estimate_session_tokens(session: &Session) -> usize {
+    session
+        .public_messages
+        .iter()
+        .map(estimate_message_tokens)
+        .sum()
+}
+
+/// Returns true if the session should be compacted based on token count.
+/// `max_tokens` — threshold above which compaction is triggered.
+/// `preserve_recent` — number of most-recent messages excluded from the estimate.
+pub fn should_compact_by_tokens(
+    session: &Session,
+    max_tokens: usize,
+    preserve_recent: usize,
+) -> bool {
+    let msgs = &session.public_messages;
+    let start = msgs.len().saturating_sub(preserve_recent);
+    let compactable = &msgs[..start];
+    compactable.len() > preserve_recent
+        && compactable.iter().map(estimate_message_tokens).sum::<usize>() >= max_tokens
+}
+
+/// Format a continuation message from a compaction summary.
+/// When `suppress_follow_up` is true the resume instruction is appended.
+pub fn format_compact_continuation_message(summary: &str, suppress_follow_up: bool) -> String {
+    let mut base = format!("{COMPACT_CONTINUATION_PREAMBLE}{summary}");
+    if suppress_follow_up {
+        base.push('\n');
+        base.push_str(COMPACT_DIRECT_RESUME_INSTRUCTION);
+    }
+    base
+}
+
+/// Merge an optional existing summary with a new summary.
+/// When `existing` is `Some`, the result includes labelled sections:
+///   "Previously compacted context:" + "Newly compacted context:".
+pub fn merge_compact_summaries(existing: Option<&str>, new_summary: &str) -> String {
+    let Some(existing) = existing else {
+        return new_summary.to_string();
+    };
+
+    let prev_highlights: Vec<&str> = existing
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    let new_highlights: Vec<&str> = new_summary
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    let mut lines = Vec::new();
+    lines.push("Previously compacted context:".to_string());
+    for l in &prev_highlights {
+        lines.push(format!("  {l}"));
+    }
+    lines.push("Newly compacted context:".to_string());
+    for l in &new_highlights {
+        lines.push(format!("  {l}"));
+    }
+    lines.join("\n")
+}
+
 #[cfg(test)]
 mod auto_compact_tests {
     use super::*;
@@ -513,5 +602,61 @@ mod tests {
         let session_large = make_session_with_messages(51);
         assert!(!engine.needs_compaction(&session_small));
         assert!(engine.needs_compaction(&session_large));
+    }
+
+    // ── Token-aware compaction tests ──────────────────────────────────────────
+
+    #[test]
+    fn token_estimate_grows_with_content() {
+        let short = ConversationMessage::new_user("hi".to_string(), false);
+        let long = ConversationMessage::new_user("hello world ".repeat(100), false);
+        assert!(
+            estimate_message_tokens(&long) > estimate_message_tokens(&short),
+            "longer message should have more estimated tokens"
+        );
+    }
+
+    #[test]
+    fn should_compact_by_tokens_triggers_when_over_limit() {
+        // Make a session with enough tokens to trigger compaction
+        let session = make_session_with_messages(20);
+        // Very low max_tokens should trigger
+        assert!(
+            should_compact_by_tokens(&session, 1, 2),
+            "should compact when token limit is very low"
+        );
+        // Very high max_tokens should not trigger
+        assert!(
+            !should_compact_by_tokens(&session, usize::MAX, 2),
+            "should not compact when token limit is very high"
+        );
+    }
+
+    #[test]
+    fn continuation_message_contains_preamble() {
+        let msg = format_compact_continuation_message("The agent worked on X.", true);
+        assert!(
+            msg.contains(COMPACT_CONTINUATION_PREAMBLE),
+            "message should contain the preamble"
+        );
+        assert!(
+            msg.contains(COMPACT_DIRECT_RESUME_INSTRUCTION),
+            "message should contain the resume instruction when suppress_follow_up=true"
+        );
+    }
+
+    #[test]
+    fn merge_summaries_preserves_previous_context() {
+        let merged = merge_compact_summaries(Some("old summary line"), "new summary line");
+        assert!(
+            merged.contains("Previously compacted context:"),
+            "merged summary should label previous context"
+        );
+        assert!(
+            merged.contains("Newly compacted context:"),
+            "merged summary should label new context"
+        );
+        assert!(merged.contains("old summary line"));
+        assert!(merged.contains("new summary line"));
     }
 }

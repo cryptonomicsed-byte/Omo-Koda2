@@ -130,6 +130,9 @@ pub struct ConversationMessage {
     pub blocks: Vec<ContentBlock>,
     pub is_private: bool,
     pub timestamp: u64,
+    /// Token usage for this message, if recorded. Defaults to None on old data (backward-compatible).
+    #[serde(default)]
+    pub usage: Option<crate::usage::TokenUsage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -393,6 +396,7 @@ impl ConversationMessage {
             blocks: vec![ContentBlock::Text { text: content }],
             is_private,
             timestamp: current_unix_timestamp(),
+            usage: None,
         }
     }
 
@@ -402,6 +406,7 @@ impl ConversationMessage {
             blocks: vec![ContentBlock::Text { text: content }],
             is_private,
             timestamp: current_unix_timestamp(),
+            usage: None,
         }
     }
 

@@ -195,6 +195,166 @@ mod sandbox_adapter_tests {
     }
 }
 
+// ── Container detection + Linux sandbox (ported from Claw-code) ──────────────
+
+/// Detected container environment markers
+#[derive(Debug, Clone, Default)]
+pub struct ContainerEnvironment {
+    pub in_container: bool,
+    pub markers: Vec<String>,
+}
+
+/// Inputs for the testable container-detection variant
+pub struct ContainerDetectionInputs<'a> {
+    pub env_pairs: Vec<(String, String)>,
+    pub dockerenv_exists: bool,
+    pub containerenv_exists: bool,
+    pub proc_1_cgroup: Option<&'a str>,
+}
+
+/// Detect if running inside Docker/Podman/k8s by checking filesystem markers,
+/// environment variables, and `/proc/1/cgroup`.
+pub fn detect_container_environment() -> ContainerEnvironment {
+    let proc_1_cgroup = std::fs::read_to_string("/proc/1/cgroup").ok();
+    detect_container_environment_from(ContainerDetectionInputs {
+        env_pairs: std::env::vars().collect(),
+        dockerenv_exists: std::path::Path::new("/.dockerenv").exists(),
+        containerenv_exists: std::path::Path::new("/run/.containerenv").exists(),
+        proc_1_cgroup: proc_1_cgroup.as_deref(),
+    })
+}
+
+/// Testable variant that takes explicit inputs instead of reading the filesystem.
+pub fn detect_container_environment_from(inputs: ContainerDetectionInputs<'_>) -> ContainerEnvironment {
+    let mut markers = Vec::new();
+    if inputs.dockerenv_exists {
+        markers.push("/.dockerenv".to_string());
+    }
+    if inputs.containerenv_exists {
+        markers.push("/run/.containerenv".to_string());
+    }
+    for (key, value) in inputs.env_pairs {
+        let normalized = key.to_ascii_lowercase();
+        if matches!(
+            normalized.as_str(),
+            "container" | "docker" | "podman" | "kubernetes_service_host"
+        ) && !value.is_empty()
+        {
+            markers.push(format!("env:{key}={value}"));
+        }
+    }
+    if let Some(cgroup) = inputs.proc_1_cgroup {
+        for needle in ["docker", "containerd", "kubepods", "podman", "libpod"] {
+            if cgroup.contains(needle) {
+                markers.push(format!("/proc/1/cgroup:{needle}"));
+            }
+        }
+    }
+    markers.sort();
+    markers.dedup();
+    ContainerEnvironment {
+        in_container: !markers.is_empty(),
+        markers,
+    }
+}
+
+/// A bash command wrapped in Linux unshare namespaces for isolation.
+pub struct LinuxSandboxCommand {
+    pub program: String,
+    pub args: Vec<String>,
+    pub env: Vec<(String, String)>,
+}
+
+/// Build a Linux sandbox command using `unshare` namespaces.
+/// Returns `None` if not on Linux, or if `unshare` is not found in PATH.
+pub fn build_linux_sandbox_command(
+    command: &str,
+    cwd: &std::path::Path,
+    use_network_isolation: bool,
+) -> Option<LinuxSandboxCommand> {
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (command, cwd, use_network_isolation);
+        return None;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // Check that unshare is available in PATH
+        let unshare_available = std::env::var_os("PATH").is_some_and(|paths| {
+            std::env::split_paths(&paths).any(|dir| dir.join("unshare").exists())
+        });
+        if !unshare_available {
+            return None;
+        }
+
+        let mut args = vec![
+            "--user".to_string(),
+            "--map-root-user".to_string(),
+            "--mount".to_string(),
+            "--ipc".to_string(),
+            "--pid".to_string(),
+            "--uts".to_string(),
+            "--fork".to_string(),
+        ];
+        if use_network_isolation {
+            args.push("--net".to_string());
+        }
+        args.push("sh".to_string());
+        args.push("-lc".to_string());
+        args.push(command.to_string());
+
+        let sandbox_home = cwd.join(".sandbox-home");
+        let sandbox_tmp = cwd.join(".sandbox-tmp");
+        let mut env = vec![
+            ("HOME".to_string(), sandbox_home.display().to_string()),
+            ("TMPDIR".to_string(), sandbox_tmp.display().to_string()),
+        ];
+        if let Ok(path) = std::env::var("PATH") {
+            env.push(("PATH".to_string(), path));
+        }
+
+        Some(LinuxSandboxCommand {
+            program: "unshare".to_string(),
+            args,
+            env,
+        })
+    }
+}
+
+#[cfg(test)]
+mod container_sandbox_tests {
+    use super::*;
+
+    #[test]
+    fn detects_container_from_dockerenv() {
+        let detected = detect_container_environment_from(ContainerDetectionInputs {
+            env_pairs: Vec::new(),
+            dockerenv_exists: true,
+            containerenv_exists: false,
+            proc_1_cgroup: None,
+        });
+        assert!(detected.in_container);
+        assert!(detected.markers.iter().any(|m| m == "/.dockerenv"));
+    }
+
+    #[test]
+    fn build_sandbox_command_includes_network_flag_when_requested() {
+        let cwd = std::path::Path::new("/workspace");
+        let with_net = build_linux_sandbox_command("printf hi", cwd, true);
+        let without_net = build_linux_sandbox_command("printf hi", cwd, false);
+
+        // On non-Linux these will both be None; on Linux with unshare available they test flags.
+        if let Some(cmd) = with_net {
+            assert_eq!(cmd.program, "unshare");
+            assert!(cmd.args.iter().any(|a| a == "--net"), "--net should be present");
+        }
+        if let Some(cmd) = without_net {
+            assert!(!cmd.args.iter().any(|a| a == "--net"), "--net should be absent");
+        }
+    }
+}
+
 pub struct WasmSandbox {
     engine: Engine,
 }

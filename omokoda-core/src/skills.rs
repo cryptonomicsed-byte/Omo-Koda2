@@ -30,6 +30,26 @@ impl std::fmt::Display for OduSource {
     }
 }
 
+/// A reference document linked from an Odu skill — Pattern 72.
+/// Mirrors Claw's `skills/*/references/` pattern.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OduReference {
+    /// Path to the reference file (relative to the skill directory)
+    pub path: PathBuf,
+    /// Human-readable description of what this reference covers
+    pub description: String,
+    /// Pre-loaded content of the reference file, if available
+    pub content: Option<String>,
+}
+
+impl OduReference {
+    pub fn load_content(&mut self) {
+        if let Ok(text) = std::fs::read_to_string(&self.path) {
+            self.content = Some(text);
+        }
+    }
+}
+
 /// An Odu module — a knowledge/skill bundle loaded from markdown with frontmatter
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OduModule {
@@ -46,6 +66,9 @@ pub struct OduModule {
     pub required_tier: u8,
     /// Invocation description (how to trigger this skill)
     pub invocation: String,
+    /// Linked reference documents from an adjacent `references/` directory — Pattern 72
+    #[serde(default)]
+    pub references: Vec<OduReference>,
 }
 
 /// Registry of discovered Odu modules with shadowing
@@ -222,6 +245,9 @@ fn parse_odu_module(path: &Path, content: &str, source: OduSource) -> Option<Odu
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
 
+    // Scan for reference documents in a sibling `references/` directory (Pattern 72)
+    let references = scan_references(path);
+
     Some(OduModule {
         name,
         version,
@@ -232,7 +258,43 @@ fn parse_odu_module(path: &Path, content: &str, source: OduSource) -> Option<Odu
         body,
         required_tier,
         invocation,
+        references,
     })
+}
+
+/// Load reference files from `<skill-stem>/references/` or `<parent>/references/`.
+fn scan_references(skill_path: &Path) -> Vec<OduReference> {
+    let mut refs = Vec::new();
+
+    // Try `<stem>/references/` (e.g. web-search/references/)
+    let stem = skill_path.file_stem().unwrap_or_default();
+    let parent = skill_path.parent().unwrap_or(Path::new("."));
+    let ref_dir = parent.join(stem).join("references");
+
+    let Ok(entries) = std::fs::read_dir(&ref_dir) else {
+        return refs;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let description = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("reference")
+            .replace('-', " ");
+        let content = std::fs::read_to_string(&path).ok();
+        refs.push(OduReference {
+            path,
+            description,
+            content,
+        });
+    }
+
+    refs.sort_by_key(|r| r.path.clone());
+    refs
 }
 
 #[cfg(test)]
@@ -275,6 +337,7 @@ This skill does something useful.
                 body: "".to_string(),
                 required_tier: 0,
                 invocation: "/read".to_string(),
+                references: vec![],
             },
         );
 

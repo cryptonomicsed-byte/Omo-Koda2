@@ -1,6 +1,7 @@
 pub mod entropy;
 pub mod fractal;
 pub mod network_guard;
+pub mod rule_engine;
 pub mod safety;
 
 use hkdf::Hkdf;

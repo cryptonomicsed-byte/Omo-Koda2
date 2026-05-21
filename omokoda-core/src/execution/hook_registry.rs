@@ -12,14 +12,27 @@ use std::path::PathBuf;
 /// All event types the hook registry can handle
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum HookEventType {
+    // Tool lifecycle
     PreToolUse,
     PostToolUse,
+    // Sampling/LLM lifecycle
     PreSampling,
     PostSampling,
+    // Session lifecycle
     SessionStart,
     SessionEnd,
+    // Think lifecycle (Pattern 67)
+    PreThink,
+    PostThink,
     OnThink,
+    // Act lifecycle (Pattern 67)
+    PreAct,
+    PostAct,
+    // System events (Pattern 67)
     OnReceipt,
+    OnError,
+    OnCompact,
+    OnDream,
     OnSettle,
 }
 
@@ -32,8 +45,15 @@ impl HookEventType {
             Self::PostSampling => "post_sampling",
             Self::SessionStart => "session_start",
             Self::SessionEnd => "session_end",
+            Self::PreThink => "pre_think",
+            Self::PostThink => "post_think",
             Self::OnThink => "on_think",
+            Self::PreAct => "pre_act",
+            Self::PostAct => "post_act",
             Self::OnReceipt => "on_receipt",
+            Self::OnError => "on_error",
+            Self::OnCompact => "on_compact",
+            Self::OnDream => "on_dream",
             Self::OnSettle => "on_settle",
         }
     }
@@ -46,11 +66,40 @@ impl HookEventType {
             "post_sampling" => Some(Self::PostSampling),
             "session_start" => Some(Self::SessionStart),
             "session_end" => Some(Self::SessionEnd),
+            "pre_think" => Some(Self::PreThink),
+            "post_think" => Some(Self::PostThink),
             "on_think" => Some(Self::OnThink),
+            "pre_act" => Some(Self::PreAct),
+            "post_act" => Some(Self::PostAct),
             "on_receipt" => Some(Self::OnReceipt),
+            "on_error" => Some(Self::OnError),
+            "on_compact" => Some(Self::OnCompact),
+            "on_dream" => Some(Self::OnDream),
             "on_settle" => Some(Self::OnSettle),
             _ => None,
         }
+    }
+
+    /// All standardized hook points in canonical order.
+    pub fn all() -> &'static [HookEventType] {
+        &[
+            Self::PreThink,
+            Self::PostThink,
+            Self::OnThink,
+            Self::PreAct,
+            Self::PostAct,
+            Self::PreToolUse,
+            Self::PostToolUse,
+            Self::PreSampling,
+            Self::PostSampling,
+            Self::SessionStart,
+            Self::SessionEnd,
+            Self::OnReceipt,
+            Self::OnError,
+            Self::OnCompact,
+            Self::OnDream,
+            Self::OnSettle,
+        ]
     }
 }
 
@@ -61,6 +110,10 @@ pub enum HookSource {
     Plugin(String),
     OduSkill(String),
     Wasm(PathBuf),
+    /// Shell script hook — Pattern 68
+    Shell(PathBuf),
+    /// Python script hook — Pattern 69
+    Python(PathBuf),
 }
 
 /// Metadata describing a registered hook
@@ -116,6 +169,83 @@ impl HookHandler for CommandHook {
     fn handle(&self, _ctx: &HookContext) -> HookOutcome {
         HookOutcome::Allow
     }
+    fn metadata(&self) -> &HookMetadata {
+        &self.meta
+    }
+}
+
+/// Shell-script hook handler — Pattern 68.
+/// Runs a `.sh` script; passes `HookContext` as JSON on stdin.
+/// Script stdout must be JSON: `{"outcome":"allow"}` / `{"outcome":"block","reason":"..."}` / `{"outcome":"warn","message":"..."}`.
+/// Empty stdout is treated as Allow. Non-zero exit without JSON is treated as Warn.
+pub struct ShellHookHandler {
+    pub meta: HookMetadata,
+    pub script_path: PathBuf,
+}
+
+impl ShellHookHandler {
+    pub fn new(meta: HookMetadata, script_path: PathBuf) -> Self {
+        Self { meta, script_path }
+    }
+
+    fn parse_outcome(output: &str) -> HookOutcome {
+        if output.is_empty() {
+            return HookOutcome::Allow;
+        }
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(output) {
+            match val.get("outcome").and_then(|v| v.as_str()).unwrap_or("allow") {
+                "block" => HookOutcome::Block(
+                    val.get("reason")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("blocked by shell hook")
+                        .to_string(),
+                ),
+                "warn" => HookOutcome::Warn(
+                    val.get("message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("shell hook warning")
+                        .to_string(),
+                ),
+                _ => HookOutcome::Allow,
+            }
+        } else {
+            HookOutcome::Allow
+        }
+    }
+}
+
+impl HookHandler for ShellHookHandler {
+    fn handle(&self, ctx: &HookContext) -> HookOutcome {
+        use std::io::Write;
+        let ctx_json = serde_json::to_string(ctx).unwrap_or_default();
+
+        let mut child = match std::process::Command::new("sh")
+            .arg(&self.script_path)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(e) => return HookOutcome::Block(format!("Failed to spawn shell hook: {}", e)),
+        };
+
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(ctx_json.as_bytes());
+        }
+
+        match child.wait_with_output() {
+            Ok(out) if out.status.success() => {
+                Self::parse_outcome(String::from_utf8_lossy(&out.stdout).trim())
+            }
+            Ok(out) => HookOutcome::Warn(format!(
+                "Shell hook exited non-zero: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            )),
+            Err(e) => HookOutcome::Block(format!("Shell hook wait failed: {}", e)),
+        }
+    }
+
     fn metadata(&self) -> &HookMetadata {
         &self.meta
     }
@@ -400,18 +530,49 @@ mod tests {
 
     #[test]
     fn test_event_type_round_trip() {
-        for event in [
-            HookEventType::PreToolUse,
-            HookEventType::PostToolUse,
-            HookEventType::PreSampling,
-            HookEventType::PostSampling,
-            HookEventType::SessionStart,
-            HookEventType::SessionEnd,
-            HookEventType::OnThink,
-            HookEventType::OnReceipt,
-            HookEventType::OnSettle,
-        ] {
-            assert_eq!(HookEventType::from_str(event.as_str()), Some(event));
+        for &event in HookEventType::all() {
+            assert_eq!(
+                HookEventType::from_str(event.as_str()),
+                Some(event),
+                "round-trip failed for {:?}",
+                event
+            );
         }
+    }
+
+    #[test]
+    fn test_all_returns_all_variants() {
+        // all() must cover every variant — update this count when adding variants
+        assert_eq!(HookEventType::all().len(), 16);
+    }
+
+    #[test]
+    fn test_new_hook_points_exist() {
+        for name in ["pre_think", "post_think", "pre_act", "post_act", "on_error", "on_compact", "on_dream"] {
+            assert!(HookEventType::from_str(name).is_some(), "{} not found", name);
+        }
+    }
+
+    #[test]
+    fn test_shell_hook_parse_allow() {
+        let out = ShellHookHandler::parse_outcome(r#"{"outcome":"allow"}"#);
+        assert_eq!(out, HookOutcome::Allow);
+    }
+
+    #[test]
+    fn test_shell_hook_parse_block() {
+        let out = ShellHookHandler::parse_outcome(r#"{"outcome":"block","reason":"not allowed"}"#);
+        assert!(matches!(out, HookOutcome::Block(r) if r == "not allowed"));
+    }
+
+    #[test]
+    fn test_shell_hook_parse_warn() {
+        let out = ShellHookHandler::parse_outcome(r#"{"outcome":"warn","message":"check this"}"#);
+        assert!(matches!(out, HookOutcome::Warn(m) if m == "check this"));
+    }
+
+    #[test]
+    fn test_shell_hook_parse_empty() {
+        assert_eq!(ShellHookHandler::parse_outcome(""), HookOutcome::Allow);
     }
 }

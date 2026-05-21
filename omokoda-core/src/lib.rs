@@ -1,3 +1,4 @@
+pub mod agents;
 pub mod background;
 pub mod bootstrap;
 pub mod bus;

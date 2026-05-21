@@ -1,0 +1,417 @@
+//! Async Hook Registry — event-driven hooks with priority ordering, source tracking,
+//! and automatic registration from skill/Odu manifests.
+//!
+//! Ports Claw-code's AsyncHookRegistry pattern: multiple handlers per event type,
+//! blocking/non-blocking distinction, and skill/frontmatter auto-registration.
+
+use crate::plugins::manifest::HookConfig;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+/// All event types the hook registry can handle
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum HookEventType {
+    PreToolUse,
+    PostToolUse,
+    PreSampling,
+    PostSampling,
+    SessionStart,
+    SessionEnd,
+    OnThink,
+    OnReceipt,
+    OnSettle,
+}
+
+impl HookEventType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::PreToolUse => "pre_tool_use",
+            Self::PostToolUse => "post_tool_use",
+            Self::PreSampling => "pre_sampling",
+            Self::PostSampling => "post_sampling",
+            Self::SessionStart => "session_start",
+            Self::SessionEnd => "session_end",
+            Self::OnThink => "on_think",
+            Self::OnReceipt => "on_receipt",
+            Self::OnSettle => "on_settle",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "pre_tool_use" => Some(Self::PreToolUse),
+            "post_tool_use" => Some(Self::PostToolUse),
+            "pre_sampling" => Some(Self::PreSampling),
+            "post_sampling" => Some(Self::PostSampling),
+            "session_start" => Some(Self::SessionStart),
+            "session_end" => Some(Self::SessionEnd),
+            "on_think" => Some(Self::OnThink),
+            "on_receipt" => Some(Self::OnReceipt),
+            "on_settle" => Some(Self::OnSettle),
+            _ => None,
+        }
+    }
+}
+
+/// Where a hook came from
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum HookSource {
+    BuiltIn,
+    Plugin(String),
+    OduSkill(String),
+    Wasm(PathBuf),
+}
+
+/// Metadata describing a registered hook
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HookMetadata {
+    pub id: String,
+    pub event: HookEventType,
+    pub source: HookSource,
+    /// Lower numbers run first
+    pub priority: i32,
+    /// If true a Block outcome stops further hook processing and returns an error
+    pub blocking: bool,
+    pub description: String,
+}
+
+/// Context passed to each hook on fire
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HookContext {
+    pub event: HookEventType,
+    pub tool_name: Option<String>,
+    pub params: Option<String>,
+    pub session_id: Option<String>,
+    pub timestamp: u64,
+}
+
+/// Result returned by a single hook handler
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum HookOutcome {
+    Allow,
+    Block(String),
+    Warn(String),
+}
+
+impl HookOutcome {
+    pub fn is_blocking(&self) -> bool {
+        matches!(self, Self::Block(_))
+    }
+}
+
+/// Synchronous hook handler — async wrappers can be added at the call site
+pub trait HookHandler: Send + Sync {
+    fn handle(&self, ctx: &HookContext) -> HookOutcome;
+    fn metadata(&self) -> &HookMetadata;
+}
+
+/// A hook that executes an external command (stub — real execution via sandbox)
+pub struct CommandHook {
+    pub meta: HookMetadata,
+    pub command: String,
+}
+
+impl HookHandler for CommandHook {
+    fn handle(&self, _ctx: &HookContext) -> HookOutcome {
+        HookOutcome::Allow
+    }
+    fn metadata(&self) -> &HookMetadata {
+        &self.meta
+    }
+}
+
+/// No-op passthrough — used for Odu skill hooks whose action happens in the skill runtime
+pub struct PassthroughHook {
+    pub meta: HookMetadata,
+}
+
+impl HookHandler for PassthroughHook {
+    fn handle(&self, _ctx: &HookContext) -> HookOutcome {
+        HookOutcome::Allow
+    }
+    fn metadata(&self) -> &HookMetadata {
+        &self.meta
+    }
+}
+
+/// Async hook registry — maps event types to ordered handler lists
+pub struct AsyncHookRegistry {
+    handlers: HashMap<HookEventType, Vec<Box<dyn HookHandler>>>,
+    registered: Vec<HookMetadata>,
+}
+
+impl Default for AsyncHookRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AsyncHookRegistry {
+    pub fn new() -> Self {
+        Self {
+            handlers: HashMap::new(),
+            registered: Vec::new(),
+        }
+    }
+
+    /// Register a handler; handlers are kept sorted by priority (ascending)
+    pub fn register(&mut self, handler: Box<dyn HookHandler>) {
+        let meta = handler.metadata().clone();
+        let event = meta.event;
+        self.registered.push(meta);
+        let vec = self.handlers.entry(event).or_default();
+        vec.push(handler);
+        vec.sort_by_key(|h| h.metadata().priority);
+    }
+
+    /// Fire all handlers for the event, returning outcomes.
+    /// Stops after the first *blocking* handler whose outcome is Block.
+    pub fn fire(&self, ctx: &HookContext) -> Vec<HookOutcome> {
+        let Some(handlers) = self.handlers.get(&ctx.event) else {
+            return Vec::new();
+        };
+        let mut outcomes = Vec::new();
+        for handler in handlers {
+            let outcome = handler.handle(ctx);
+            let stop = outcome.is_blocking() && handler.metadata().blocking;
+            outcomes.push(outcome);
+            if stop {
+                break;
+            }
+        }
+        outcomes
+    }
+
+    /// Fire and return Err if any blocking handler blocked
+    pub fn fire_and_check(&self, ctx: &HookContext) -> Result<Vec<HookOutcome>, String> {
+        let outcomes = self.fire(ctx);
+        for outcome in &outcomes {
+            if let HookOutcome::Block(reason) = outcome {
+                return Err(reason.clone());
+            }
+        }
+        Ok(outcomes)
+    }
+
+    pub fn handler_count(&self, event: HookEventType) -> usize {
+        self.handlers.get(&event).map(|v| v.len()).unwrap_or(0)
+    }
+
+    pub fn registered_metadata(&self) -> &[HookMetadata] {
+        &self.registered
+    }
+
+    pub fn hooks_for_event(&self, event: HookEventType) -> Vec<&HookMetadata> {
+        let mut v: Vec<&HookMetadata> = self
+            .registered
+            .iter()
+            .filter(|m| m.event == event)
+            .collect();
+        v.sort_by_key(|m| m.priority);
+        v
+    }
+}
+
+/// Auto-register hooks declared in a plugin manifest's hook_configs
+pub fn register_skill_hooks(
+    registry: &mut AsyncHookRegistry,
+    plugin_name: &str,
+    hook_configs: &[HookConfig],
+) {
+    for config in hook_configs {
+        let Some(event) = HookEventType::from_str(&config.event) else {
+            continue;
+        };
+        let id = format!("{}::{}", plugin_name, config.command);
+        let meta = HookMetadata {
+            id,
+            event,
+            source: HookSource::Plugin(plugin_name.to_string()),
+            priority: 0,
+            blocking: config.blocking,
+            description: format!("Plugin hook: {}", config.command),
+        };
+        registry.register(Box::new(CommandHook {
+            command: config.command.clone(),
+            meta,
+        }));
+    }
+}
+
+/// Auto-register passthrough hooks for an Odu skill across a set of event types
+pub fn register_odu_hooks(
+    registry: &mut AsyncHookRegistry,
+    skill_name: &str,
+    events: &[HookEventType],
+) {
+    for &event in events {
+        let id = format!("odu::{}::{}", skill_name, event.as_str());
+        let meta = HookMetadata {
+            id,
+            event,
+            source: HookSource::OduSkill(skill_name.to_string()),
+            priority: 10,
+            blocking: false,
+            description: format!("Odu skill hook: {} on {}", skill_name, event.as_str()),
+        };
+        registry.register(Box::new(PassthroughHook { meta }));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ctx(event: HookEventType) -> HookContext {
+        HookContext {
+            event,
+            tool_name: None,
+            params: None,
+            session_id: None,
+            timestamp: 0,
+        }
+    }
+
+    fn meta(event: HookEventType, priority: i32, blocking: bool) -> HookMetadata {
+        HookMetadata {
+            id: format!("test-{}-{}", event.as_str(), priority),
+            event,
+            source: HookSource::BuiltIn,
+            priority,
+            blocking,
+            description: "test".to_string(),
+        }
+    }
+
+    struct BlockingHook {
+        meta: HookMetadata,
+    }
+    impl HookHandler for BlockingHook {
+        fn handle(&self, _: &HookContext) -> HookOutcome {
+            HookOutcome::Block("blocked by test".to_string())
+        }
+        fn metadata(&self) -> &HookMetadata {
+            &self.meta
+        }
+    }
+
+    #[test]
+    fn test_empty_registry_returns_no_outcomes() {
+        let r = AsyncHookRegistry::new();
+        assert!(r.fire(&ctx(HookEventType::PreToolUse)).is_empty());
+    }
+
+    #[test]
+    fn test_register_and_fire_allow() {
+        let mut r = AsyncHookRegistry::new();
+        r.register(Box::new(PassthroughHook {
+            meta: meta(HookEventType::PreToolUse, 0, false),
+        }));
+        let outcomes = r.fire(&ctx(HookEventType::PreToolUse));
+        assert_eq!(outcomes, vec![HookOutcome::Allow]);
+    }
+
+    #[test]
+    fn test_blocking_hook_stops_chain() {
+        let mut r = AsyncHookRegistry::new();
+        r.register(Box::new(BlockingHook {
+            meta: meta(HookEventType::PreToolUse, 0, true),
+        }));
+        r.register(Box::new(PassthroughHook {
+            meta: meta(HookEventType::PreToolUse, 10, false),
+        }));
+        let outcomes = r.fire(&ctx(HookEventType::PreToolUse));
+        assert_eq!(outcomes.len(), 1);
+        assert!(matches!(outcomes[0], HookOutcome::Block(_)));
+    }
+
+    #[test]
+    fn test_non_blocking_block_does_not_stop_chain() {
+        let mut r = AsyncHookRegistry::new();
+        r.register(Box::new(BlockingHook {
+            meta: meta(HookEventType::OnThink, 0, false), // blocking=false
+        }));
+        r.register(Box::new(PassthroughHook {
+            meta: meta(HookEventType::OnThink, 10, false),
+        }));
+        let outcomes = r.fire(&ctx(HookEventType::OnThink));
+        assert_eq!(outcomes.len(), 2);
+    }
+
+    #[test]
+    fn test_fire_and_check_returns_err_on_block() {
+        let mut r = AsyncHookRegistry::new();
+        r.register(Box::new(BlockingHook {
+            meta: meta(HookEventType::PostToolUse, 0, true),
+        }));
+        assert!(r.fire_and_check(&ctx(HookEventType::PostToolUse)).is_err());
+    }
+
+    #[test]
+    fn test_priority_ordering() {
+        let mut r = AsyncHookRegistry::new();
+        r.register(Box::new(PassthroughHook {
+            meta: meta(HookEventType::OnThink, 5, false),
+        }));
+        r.register(Box::new(PassthroughHook {
+            meta: meta(HookEventType::OnThink, 1, false),
+        }));
+        r.register(Box::new(PassthroughHook {
+            meta: meta(HookEventType::OnThink, 3, false),
+        }));
+        let hooks = r.hooks_for_event(HookEventType::OnThink);
+        assert_eq!(hooks[0].priority, 1);
+        assert_eq!(hooks[1].priority, 3);
+        assert_eq!(hooks[2].priority, 5);
+    }
+
+    #[test]
+    fn test_register_skill_hooks() {
+        let mut r = AsyncHookRegistry::new();
+        let configs = vec![
+            HookConfig {
+                event: "pre_tool_use".to_string(),
+                command: "check.sh".to_string(),
+                blocking: true,
+            },
+            HookConfig {
+                event: "unknown_event".to_string(),
+                command: "skip.sh".to_string(),
+                blocking: false,
+            },
+        ];
+        register_skill_hooks(&mut r, "my-plugin", &configs);
+        assert_eq!(r.handler_count(HookEventType::PreToolUse), 1);
+        assert_eq!(r.handler_count(HookEventType::PostToolUse), 0);
+    }
+
+    #[test]
+    fn test_register_odu_hooks() {
+        let mut r = AsyncHookRegistry::new();
+        register_odu_hooks(
+            &mut r,
+            "odu-oracle",
+            &[HookEventType::OnReceipt, HookEventType::OnSettle],
+        );
+        assert_eq!(r.handler_count(HookEventType::OnReceipt), 1);
+        assert_eq!(r.handler_count(HookEventType::OnSettle), 1);
+    }
+
+    #[test]
+    fn test_event_type_round_trip() {
+        for event in [
+            HookEventType::PreToolUse,
+            HookEventType::PostToolUse,
+            HookEventType::PreSampling,
+            HookEventType::PostSampling,
+            HookEventType::SessionStart,
+            HookEventType::SessionEnd,
+            HookEventType::OnThink,
+            HookEventType::OnReceipt,
+            HookEventType::OnSettle,
+        ] {
+            assert_eq!(HookEventType::from_str(event.as_str()), Some(event));
+        }
+    }
+}

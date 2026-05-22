@@ -1,0 +1,6 @@
+name = "OmokodaJulia"
+uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+version = "0.1.0"
+
+[deps]
+PackageCompiler = "9b87118b-4619-50d2-8e1e-99f35a4d4d9d"

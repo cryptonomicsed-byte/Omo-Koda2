@@ -81,6 +81,80 @@ pub fn compute_reputation_decay(reputation: f64, elapsed_secs: u64) -> f64 {
     decay.min(reputation)
 }
 
+// --- SynapseAccount: atomic balance management per agent ---
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SynapseError {
+    InsufficientBalance,
+}
+
+impl std::fmt::Display for SynapseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SynapseError::InsufficientBalance => write!(f, "insufficient_synapse"),
+        }
+    }
+}
+
+impl std::error::Error for SynapseError {}
+
+/// Per-agent Synapse balance tracker.
+/// `tier` is stored as `u8` to avoid a circular dependency between
+/// the `economics` and `justice` modules.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SynapseAccount {
+    pub balance: u64,
+    pub total_burned: u64,
+    pub tier: u8,
+    pub last_decay_epoch: u64,
+}
+
+impl SynapseAccount {
+    pub fn new(initial_balance: u64, tier: u8) -> Self {
+        Self {
+            balance: initial_balance,
+            total_burned: 0,
+            tier,
+            last_decay_epoch: 0,
+        }
+    }
+
+    /// Tier-based maximum Synapse balance.
+    pub fn tier_cap(&self) -> u64 {
+        match self.tier {
+            0 => 1_000_000,
+            1 => 10_000_000,
+            2 => 30_000_000,
+            3 => 60_000_000,
+            _ => 86_000_000,
+        }
+    }
+
+    /// Atomically burn `pre_adjusted_cost` Synapse.
+    /// The caller is responsible for applying any tier multiplier BEFORE calling this.
+    /// `burn()` never re-applies the tier multiplier — it is non-refundable.
+    /// Returns `Err(InsufficientBalance)` without modifying state if balance < cost.
+    pub fn burn(&mut self, pre_adjusted_cost: u64) -> Result<(), SynapseError> {
+        if self.balance < pre_adjusted_cost {
+            return Err(SynapseError::InsufficientBalance);
+        }
+        self.balance -= pre_adjusted_cost;
+        self.total_burned += pre_adjusted_cost;
+        Ok(())
+    }
+
+    /// Earn 1000 Synapse from a Garden interaction, capped at the tier ceiling.
+    pub fn earn_from_garden(&mut self) {
+        self.balance = (self.balance + 1_000).min(self.tier_cap());
+    }
+
+    /// Earn Synapse from a tip, capped at 10,000 per event and at the tier ceiling.
+    pub fn earn_from_tip(&mut self, amount: u64) {
+        let clamped = amount.min(10_000);
+        self.balance = (self.balance + clamped).min(self.tier_cap());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

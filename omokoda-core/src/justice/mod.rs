@@ -6,6 +6,7 @@ use std::process::Command;
 pub mod hermetic;
 #[cfg(test)]
 pub mod hermetic_tests;
+pub mod tier;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HermeticEvaluation {

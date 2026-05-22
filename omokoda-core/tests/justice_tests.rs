@@ -64,7 +64,7 @@ mod justice_tests {
             .await
             .unwrap();
         steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
- // Boost budget
+        // Boost budget
 
         // Basic: very short output
         let test_file = "basic.txt";
@@ -122,7 +122,10 @@ mod justice_tests {
             reputation: 60.0,
             tier: 2,
         };
-        assert!(matches!(runner.run_pre(&ctx_high, &bus), HookDecision::Allow));
+        assert!(matches!(
+            runner.run_pre(&ctx_high, &bus),
+            HookDecision::Allow
+        ));
     }
 
     #[tokio::test]
@@ -134,7 +137,7 @@ mod justice_tests {
             .await
             .unwrap();
         steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
- // Boost budget
+        // Boost budget
         steward.set_reputation_for_test(10.0);
 
         steward.add_pre_hook(Box::new(ReputationGate {

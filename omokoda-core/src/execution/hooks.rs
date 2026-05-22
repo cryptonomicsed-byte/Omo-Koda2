@@ -2,10 +2,10 @@ use crate::interpreter::ExecutionResult;
 use crate::receipt::Receipt;
 use async_trait::async_trait;
 
-/// SwibePlugin Hook Contract
-/// Ports the onBirth, onThink, onReceipt, and onSettle hooks from Swibe.
+/// AgentPlugin — lifecycle event hooks wired into birth, think, act, and receipt.
+/// Register plugins to observe and respond to sovereign agent lifecycle events.
 #[async_trait]
-pub trait SwibePlugin: Send + Sync {
+pub trait AgentPlugin: Send + Sync {
     /// Called when an agent is born.
     async fn on_birth(&self, name: &str, entropy: &[u8; 32]);
 
@@ -20,7 +20,7 @@ pub trait SwibePlugin: Send + Sync {
 }
 
 pub struct HookManager {
-    plugins: Vec<Box<dyn SwibePlugin>>,
+    plugins: Vec<Box<dyn AgentPlugin>>,
 }
 
 impl HookManager {
@@ -30,7 +30,7 @@ impl HookManager {
         }
     }
 
-    pub fn register(&mut self, plugin: Box<dyn SwibePlugin>) {
+    pub fn register(&mut self, plugin: Box<dyn AgentPlugin>) {
         self.plugins.push(plugin);
     }
 

@@ -130,6 +130,9 @@ pub struct ConversationMessage {
     pub blocks: Vec<ContentBlock>,
     pub is_private: bool,
     pub timestamp: u64,
+    /// Token usage for this message, if recorded. Defaults to None on old data (backward-compatible).
+    #[serde(default)]
+    pub usage: Option<crate::usage::TokenUsage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -393,6 +396,7 @@ impl ConversationMessage {
             blocks: vec![ContentBlock::Text { text: content }],
             is_private,
             timestamp: current_unix_timestamp(),
+            usage: None,
         }
     }
 
@@ -402,6 +406,7 @@ impl ConversationMessage {
             blocks: vec![ContentBlock::Text { text: content }],
             is_private,
             timestamp: current_unix_timestamp(),
+            usage: None,
         }
     }
 
@@ -530,4 +535,351 @@ fn current_unix_timestamp() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("Time went backwards")
         .as_secs()
+}
+
+// ── Session Lifecycle ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SessionPhase {
+    Birth,
+    Active,
+    Hibernating,
+    Dead,
+}
+
+impl Default for SessionPhase {
+    fn default() -> Self {
+        SessionPhase::Birth
+    }
+}
+
+impl std::fmt::Display for SessionPhase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SessionPhase::Birth => write!(f, "Birth"),
+            SessionPhase::Active => write!(f, "Active"),
+            SessionPhase::Hibernating => write!(f, "Hibernating"),
+            SessionPhase::Dead => write!(f, "Dead"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RestorePoint {
+    pub id: String,
+    pub created_at: u64,
+    pub label: String,
+    pub message_count: usize,
+    pub reputation_snapshot: f64,
+    pub messages_snapshot: Vec<ConversationMessage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistoricalSession {
+    pub agent_id: AgentId,
+    pub name: String,
+    pub birth_timestamp: u64,
+    pub last_seen: u64,
+    pub phase: SessionPhase,
+    pub message_count: usize,
+    pub reputation: f64,
+}
+
+#[derive(Debug)]
+pub struct SessionHistory {
+    pub sessions: Vec<HistoricalSession>,
+}
+
+impl SessionHistory {
+    pub fn new() -> Self {
+        Self {
+            sessions: Vec::new(),
+        }
+    }
+
+    pub fn record(&mut self, session: &Session, last_seen: u64) {
+        let entry = HistoricalSession {
+            agent_id: session.agent_id.clone(),
+            name: session.name.clone(),
+            birth_timestamp: session.birth_timestamp,
+            last_seen,
+            phase: SessionPhase::Dead,
+            message_count: session.public_messages.len(),
+            reputation: session.reputation,
+        };
+        self.sessions.push(entry);
+    }
+
+    pub fn list(&self) -> &[HistoricalSession] {
+        &self.sessions
+    }
+
+    pub fn find_by_name(&self, name: &str) -> Option<&HistoricalSession> {
+        self.sessions.iter().find(|s| s.name == name)
+    }
+
+    pub fn active_sessions(&self) -> Vec<&HistoricalSession> {
+        self.sessions
+            .iter()
+            .filter(|s| s.phase == SessionPhase::Active)
+            .collect()
+    }
+}
+
+impl Default for SessionHistory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug)]
+pub struct SessionManager {
+    pub session: Session,
+    pub phase: SessionPhase,
+    pub history: SessionHistory,
+    restore_points: Vec<RestorePoint>,
+}
+
+impl SessionManager {
+    pub fn new(session: Session) -> Self {
+        Self {
+            session,
+            phase: SessionPhase::Birth,
+            history: SessionHistory::new(),
+            restore_points: Vec::new(),
+        }
+    }
+
+    pub fn activate(&mut self) -> Result<(), String> {
+        match self.phase {
+            SessionPhase::Birth | SessionPhase::Hibernating => {
+                self.phase = SessionPhase::Active;
+                Ok(())
+            }
+            ref p => Err(format!("Cannot activate from phase {}", p)),
+        }
+    }
+
+    pub fn hibernate(&mut self) -> Result<(), String> {
+        match self.phase {
+            SessionPhase::Active => {
+                self.phase = SessionPhase::Hibernating;
+                Ok(())
+            }
+            ref p => Err(format!("Cannot hibernate from phase {}", p)),
+        }
+    }
+
+    pub fn resume(&mut self) -> Result<(), String> {
+        match self.phase {
+            SessionPhase::Hibernating => {
+                self.phase = SessionPhase::Active;
+                Ok(())
+            }
+            ref p => Err(format!("Cannot resume from phase {}", p)),
+        }
+    }
+
+    pub fn terminate(&mut self) -> Result<(), String> {
+        let now = current_unix_timestamp();
+        self.history.record(&self.session, now);
+        self.phase = SessionPhase::Dead;
+        Ok(())
+    }
+
+    pub fn create_restore_point(&mut self, label: &str) -> String {
+        let now = current_unix_timestamp();
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(label.as_bytes());
+        hasher.update(&now.to_be_bytes());
+        let id = hasher.finalize().to_hex().to_string();
+
+        let rp = RestorePoint {
+            id: id.clone(),
+            created_at: now,
+            label: label.to_string(),
+            message_count: self.session.public_messages.len(),
+            reputation_snapshot: self.session.reputation,
+            messages_snapshot: self.session.public_messages.clone(),
+        };
+        self.restore_points.push(rp);
+        id
+    }
+
+    pub fn restore_to(&mut self, id: &str) -> Result<(), String> {
+        if self.phase == SessionPhase::Dead {
+            return Err("Cannot restore a Dead session".to_string());
+        }
+        let rp = self
+            .restore_points
+            .iter()
+            .find(|r| r.id == id)
+            .ok_or_else(|| format!("Restore point '{}' not found", id))?;
+        self.session.public_messages = rp.messages_snapshot.clone();
+        self.session.reputation = rp.reputation_snapshot;
+        Ok(())
+    }
+
+    pub fn restore_points(&self) -> &[RestorePoint] {
+        &self.restore_points
+    }
+
+    /// Session serialization: persists live transcript to JSONL for cross-session reload.
+    /// Each public message is one line; the session header is line 0.
+    /// Writes only the live transcript so the file can be appended on each turn rather than rewritten entirely.
+    pub fn save_to_disk(&self, base_dir: &Path) -> Result<(), String> {
+        let sessions_dir = base_dir.join(".omokoda").join("sessions");
+        fs::create_dir_all(&sessions_dir)
+            .map_err(|e| format!("create sessions dir: {}", e))?;
+
+        let path = sessions_dir.join(format!("{}.jsonl", self.session.agent_id));
+        let header = serde_json::to_string(&self.session)
+            .map_err(|e| format!("serialize session: {}", e))?;
+
+        let mut lines = vec![header];
+        for msg in &self.session.public_messages {
+            let line = serde_json::to_string(msg)
+                .map_err(|e| format!("serialize message: {}", e))?;
+            lines.push(line);
+        }
+
+        fs::write(&path, lines.join("\n"))
+            .map_err(|e| format!("write {}: {}", path.display(), e))?;
+        Ok(())
+    }
+
+    /// Restore a session from a `.omokoda/sessions/<agent_id>.jsonl` file written by
+    /// `save_to_disk`. Returns an error if the file does not exist or is malformed.
+    pub fn load_from_disk(agent_id: &AgentId, base_dir: &Path) -> Result<Self, String> {
+        let path = base_dir
+            .join(".omokoda")
+            .join("sessions")
+            .join(format!("{}.jsonl", agent_id));
+
+        let raw = fs::read_to_string(&path)
+            .map_err(|e| format!("read {}: {}", path.display(), e))?;
+
+        let mut lines = raw.lines();
+        let header_line = lines
+            .next()
+            .ok_or("empty session file")?;
+        let mut session: Session = serde_json::from_str(header_line)
+            .map_err(|e| format!("parse session header: {}", e))?;
+
+        session.public_messages.clear();
+        for line in lines {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let msg: ConversationMessage = serde_json::from_str(line)
+                .map_err(|e| format!("parse message line: {}", e))?;
+            session.public_messages.push(msg);
+        }
+
+        Ok(Self::new(session))
+    }
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+    use crate::identity::AgentId;
+
+    fn make_manager() -> SessionManager {
+        let id = AgentId::new("test-fingerprint-lifecycle");
+        let session = Session::new(id, "lifecycle-test".to_string(), 0);
+        SessionManager::new(session)
+    }
+
+    #[test]
+    fn test_activate_from_birth() {
+        let mut mgr = make_manager();
+        assert_eq!(mgr.phase, SessionPhase::Birth);
+        mgr.activate().unwrap();
+        assert_eq!(mgr.phase, SessionPhase::Active);
+    }
+
+    #[test]
+    fn test_hibernate_and_resume() {
+        let mut mgr = make_manager();
+        mgr.activate().unwrap();
+        mgr.hibernate().unwrap();
+        assert_eq!(mgr.phase, SessionPhase::Hibernating);
+        mgr.resume().unwrap();
+        assert_eq!(mgr.phase, SessionPhase::Active);
+    }
+
+    #[test]
+    fn test_terminate_records_history() {
+        let mut mgr = make_manager();
+        mgr.activate().unwrap();
+        mgr.terminate().unwrap();
+        assert_eq!(mgr.phase, SessionPhase::Dead);
+        assert_eq!(mgr.history.list().len(), 1);
+    }
+
+    #[test]
+    fn test_restore_point_roundtrip() {
+        let mut mgr = make_manager();
+        mgr.activate().unwrap();
+        // Push 3 messages
+        for i in 0..3 {
+            mgr.session
+                .public_messages
+                .push(ConversationMessage::user_text(&format!("msg {}", i)));
+        }
+        assert_eq!(mgr.session.public_messages.len(), 3);
+        let rp_id = mgr.create_restore_point("test-snapshot");
+        // Push 3 more
+        for i in 3..6 {
+            mgr.session
+                .public_messages
+                .push(ConversationMessage::user_text(&format!("msg {}", i)));
+        }
+        assert_eq!(mgr.session.public_messages.len(), 6);
+        mgr.restore_to(&rp_id).unwrap();
+        assert_eq!(mgr.session.public_messages.len(), 3);
+    }
+
+    #[test]
+    fn test_save_and_load_from_disk() {
+        let tmp = std::env::temp_dir().join(format!(
+            "omokoda_session_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .subsec_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        let id = AgentId::new("disk-persist-fingerprint");
+        let mut mgr = SessionManager::new(Session::new(id.clone(), "disk-test".to_string(), 0));
+        mgr.session
+            .public_messages
+            .push(ConversationMessage::user_text("hello from disk"));
+        mgr.session
+            .public_messages
+            .push(ConversationMessage::user_text("second message"));
+
+        mgr.save_to_disk(&tmp).unwrap();
+
+        let loaded = SessionManager::load_from_disk(&id, &tmp).unwrap();
+        assert_eq!(loaded.session.name, "disk-test");
+        assert_eq!(loaded.session.public_messages.len(), 2);
+        if let crate::session::ContentBlock::Text { text } = &loaded.session.public_messages[0].blocks[0] {
+            assert_eq!(text, "hello from disk");
+        } else {
+            panic!("unexpected block type");
+        }
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_load_from_disk_missing_file_errors() {
+        let id = AgentId::new("no-such-agent-abcd");
+        let result = SessionManager::load_from_disk(&id, std::path::Path::new("/tmp/does_not_exist_omokoda"));
+        assert!(result.is_err());
+    }
 }

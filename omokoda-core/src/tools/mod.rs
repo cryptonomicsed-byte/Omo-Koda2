@@ -6,8 +6,16 @@ use std::process::Command;
 use crate::execution::permission_enforcer::{enforce_mode, validate_path_boundary};
 use crate::sandbox::WasmSandbox;
 
+pub mod config_tool;
 pub mod file_ops;
+pub mod repl;
+pub mod retry;
 pub mod sovereign;
+pub mod streaming;
+pub mod structured_output;
+pub mod todo;
+pub mod tool_definitions;
+pub mod validation;
 
 #[derive(Debug, Clone)]
 pub struct ExecutionContext {
@@ -88,7 +96,7 @@ impl Tool for LazyTool {
         self.is_write
     }
     fn params_schema(&self) -> Option<serde_json::Value> {
-        None 
+        None
     }
     async fn execute(
         &self,
@@ -144,6 +152,14 @@ impl ToolRegistry {
         registry.register(Box::new(sovereign::SessionStatusTool));
         registry.register(Box::new(sovereign::AgentsListTool));
 
+        // Pattern-matched tools
+        registry.register(Box::new(todo::WriteTodoTool));
+        registry.register(Box::new(todo::ReadTodoTool));
+        registry.register(Box::new(structured_output::StructuredOutputTool));
+        registry.register(Box::new(repl::ReplTool));
+        registry.register(Box::new(config_tool::ConfigReadTool));
+        registry.register(Box::new(config_tool::ConfigWriteTool));
+
         registry
     }
 
@@ -172,19 +188,23 @@ impl ToolRegistry {
                 }
                 // 2. Policy check (Hide denied tools)
                 // We use a dummy input for check
-                let action = if t.name().contains("read") || t.name() == "glob" || t.name() == "grep" {
-                    "read"
-                } else if t.name().contains("write") || t.name() == "note_taking" {
-                    "write"
-                } else if t.name() == "bash" || t.name() == "wasm" {
-                    "exec"
-                } else if t.name() == "web_search" || t.name() == "web_fetch" {
-                    "net"
-                } else {
-                    "tool"
-                };
-                
-                matches!(policy.claw.check(action, "*"), crate::permissions::PermissionOutcome::Allow)
+                let action =
+                    if t.name().contains("read") || t.name() == "glob" || t.name() == "grep" {
+                        "read"
+                    } else if t.name().contains("write") || t.name() == "note_taking" {
+                        "write"
+                    } else if t.name() == "bash" || t.name() == "wasm" {
+                        "exec"
+                    } else if t.name() == "web_search" || t.name() == "web_fetch" {
+                        "net"
+                    } else {
+                        "tool"
+                    };
+
+                matches!(
+                    policy.patterns.check(action, "*"),
+                    crate::permissions::PermissionOutcome::Allow
+                )
             })
             .map(|t| t.name().to_string())
             .collect();
@@ -218,14 +238,18 @@ impl ToolRegistry {
         if let Some(schema) = tool.params_schema() {
             let instance: serde_json::Value = serde_json::from_str(params)
                 .map_err(|e| format!("Invalid JSON input for tool '{}': {}", name, e))?;
-            
+
             let compiled = jsonschema::JSONSchema::compile(&schema)
                 .map_err(|e| format!("Invalid JSON Schema for tool '{}': {}", name, e))?;
-            
+
             let validation_result = compiled.validate(&instance);
             if let Err(errors) = validation_result {
                 let error_msgs: Vec<String> = errors.map(|e| e.to_string()).collect();
-                return Err(format!("JSON Schema validation failed for tool '{}': {}", name, error_msgs.join(", ")));
+                return Err(format!(
+                    "JSON Schema validation failed for tool '{}': {}",
+                    name,
+                    error_msgs.join(", ")
+                ));
             }
         }
 
@@ -258,10 +282,133 @@ impl ToolRegistry {
     }
 }
 
+pub struct ToolSummary {
+    pub name: String,
+    pub description: String,
+    pub params_schema:
+        Option<std::collections::HashMap<String, crate::tools::tool_definitions::ToolProperty>>,
+}
+
+impl ToolRegistry {
+    pub fn get_definition(&self, name: &str) -> Option<ToolSummary> {
+        self.tools.get(name).map(|t| ToolSummary {
+            name: t.name().to_string(),
+            description: t.description().to_string(),
+            params_schema: None, // Tools can override this later
+        })
+    }
+}
+
 impl Default for ToolRegistry {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Result from a tool search query
+#[derive(Debug, Clone)]
+pub struct ToolSearchResult {
+    pub name: String,
+    pub description: String,
+    pub required_tier: u8,
+    pub score: f32,
+}
+
+impl ToolRegistry {
+    /// Fuzzy search for tools by name/description.
+    ///
+    /// Supports:
+    ///   `"select:name1,name2"` — exact match by name
+    ///   `"+required_term other terms"` — require terms starting with `+`
+    ///   `"search terms"` — fuzzy match against name and description
+    pub fn search(&self, query: &str, tier_filter: u8) -> Vec<ToolSearchResult> {
+        // Handle "select:" prefix for exact picks
+        if let Some(names) = query.strip_prefix("select:") {
+            return names
+                .split(',')
+                .filter_map(|name| {
+                    let name = name.trim();
+                    self.tools
+                        .get(name)
+                        .filter(|t| t.required_tier() <= tier_filter)
+                        .map(|t| ToolSearchResult {
+                            name: t.name().to_string(),
+                            description: t.description().to_string(),
+                            required_tier: t.required_tier(),
+                            score: 1.0,
+                        })
+                })
+                .collect();
+        }
+
+        let query_tokens = canonical_tokens(query);
+        let required_tokens: Vec<&str> = query_tokens
+            .iter()
+            .filter(|t| t.starts_with('+'))
+            .map(|t| &t[1..])
+            .collect();
+        let optional_tokens: Vec<&str> = query_tokens
+            .iter()
+            .filter(|t| !t.starts_with('+'))
+            .map(|t| t.as_str())
+            .collect();
+
+        let mut results: Vec<ToolSearchResult> = self
+            .tools
+            .values()
+            .filter(|t| t.required_tier() <= tier_filter)
+            .filter_map(|t| {
+                let tool_tokens = canonical_tokens(&format!("{} {}", t.name(), t.description()));
+
+                // All required tokens must be present
+                if !required_tokens
+                    .iter()
+                    .all(|rt| tool_tokens.iter().any(|tt| tt.contains(rt)))
+                {
+                    return None;
+                }
+
+                // Score based on optional token matches
+                let score = if optional_tokens.is_empty() {
+                    0.5 // Return all tools if no query
+                } else {
+                    let matches = optional_tokens
+                        .iter()
+                        .filter(|ot| tool_tokens.iter().any(|tt| tt.contains(*ot)))
+                        .count();
+                    if matches == 0 {
+                        return None;
+                    }
+                    matches as f32 / optional_tokens.len() as f32
+                };
+
+                Some(ToolSearchResult {
+                    name: t.name().to_string(),
+                    description: t.description().to_string(),
+                    required_tier: t.required_tier(),
+                    score,
+                })
+            })
+            .collect();
+
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        results
+    }
+}
+
+/// Normalize a string into search tokens.
+/// Strips "tool" suffix, lowercases, removes non-alphanumeric, splits on delimiters.
+pub fn canonical_tokens(s: &str) -> Vec<String> {
+    s.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric() && c != '+')
+        .filter(|s| !s.is_empty() && s.len() > 1)
+        .map(|s| s.trim_end_matches("tool").to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 impl std::fmt::Debug for ToolRegistry {

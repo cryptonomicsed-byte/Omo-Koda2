@@ -186,9 +186,15 @@ impl UsageTracker {
     }
 
     #[must_use]
-    pub fn from_session(_session: &SessionState) -> Self {
-        let tracker = Self::new();
-        // For v1, we will skip tracking private messages to avoid decryption overhead.
+    pub fn from_session(session: &SessionState) -> Self {
+        let mut tracker = Self::new();
+        // Accumulate token usage from all public messages that have usage recorded.
+        // Private messages are intentionally skipped to avoid decryption overhead.
+        for msg in &session.public_messages {
+            if let Some(usage) = msg.usage {
+                tracker.record(usage);
+            }
+        }
         tracker
     }
 

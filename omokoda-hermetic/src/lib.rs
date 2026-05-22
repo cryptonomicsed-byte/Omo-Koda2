@@ -1,5 +1,8 @@
 pub mod entropy;
 pub mod fractal;
+pub mod network_guard;
+pub mod rule_engine;
+pub mod safety;
 
 use hkdf::Hkdf;
 use serde::{Deserialize, Serialize};
@@ -70,6 +73,27 @@ impl HermeticState {
     }
     pub fn gender(&self) -> f64 {
         self.gender
+    }
+
+    #[cfg(test)]
+    pub fn from_raw(
+        mentalism: f64,
+        correspondence: f64,
+        vibration: f64,
+        polarity: f64,
+        rhythm: f64,
+        cause_effect: f64,
+        gender: f64,
+    ) -> Self {
+        Self {
+            mentalism,
+            correspondence,
+            vibration,
+            polarity,
+            rhythm,
+            cause_effect,
+            gender,
+        }
     }
 
     // Logic aliases

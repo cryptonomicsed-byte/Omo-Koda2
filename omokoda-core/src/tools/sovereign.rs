@@ -1,7 +1,7 @@
 use crate::tools::{ExecutionContext, Tool};
 use async_trait::async_trait;
 
-/// Sovereign Tier Tool List (18 Capabilities from OpenClaw)
+/// Sovereign Tier Tool List — 18 capabilities for tier-4 agents.
 /// These tools require the highest reputation tier (Sovereign).
 
 pub struct ApplyPatchTool;

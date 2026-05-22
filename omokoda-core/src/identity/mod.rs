@@ -2,6 +2,7 @@ pub mod bipon39;
 pub mod dna;
 pub mod odu;
 pub mod pet;
+pub mod user;
 pub mod vault;
 pub mod wallet;
 

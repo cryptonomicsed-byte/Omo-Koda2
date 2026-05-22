@@ -1,8 +1,13 @@
+pub mod clients;
 pub mod events {
     include!(concat!(env!("OUT_DIR"), "/omokoda.v1.rs"));
 }
 
 pub use self::events::SovereignEvent;
+pub use clients::{
+    HermeticResult, LocalObatalaStub, LocalOsunStub, LocalOyaStub, LocalSangoStub,
+    ObatalaClient, OsunClient, OyaClient, SangoClient,
+};
 use tokio::sync::broadcast;
 
 #[derive(Debug, Clone)]

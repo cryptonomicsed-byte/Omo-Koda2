@@ -1,4 +1,8 @@
+pub mod aliases;
+pub mod streaming;
+
 use crate::session::ConversationMessage;
+use crate::tools::tool_definitions::{LlmResponse, ToolCall, ToolDefinition};
 use crate::usage::TokenUsage;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -28,6 +32,39 @@ pub trait LlmProvider: Send + Sync {
         prompt: &str,
         history: &[ConversationMessage],
     ) -> Result<(String, TokenUsage), String>;
+
+    fn supports_tools(&self) -> bool {
+        false
+    }
+
+    async fn generate_with_tools(
+        &self,
+        messages: &[ConversationMessage],
+        _tools: &[ToolDefinition],
+        _private: bool,
+    ) -> Result<LlmResponse, String> {
+        // Default: ignore tools, use last user message as prompt
+        let prompt = messages
+            .iter()
+            .rev()
+            .find(|m| m.role == crate::session::MessageRole::User)
+            .map(|m| {
+                m.blocks
+                    .iter()
+                    .filter_map(|b| match b {
+                        crate::session::ContentBlock::Text { text } => Some(text.as_str()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .unwrap_or_default();
+        let (text, usage) = self.generate(&prompt, messages).await?;
+        Ok(LlmResponse::Text {
+            content: text,
+            usage,
+        })
+    }
 }
 
 pub struct ProviderRegistry {
@@ -115,6 +152,44 @@ impl ProviderRegistry {
 
     pub fn is_known_provider(&self, provider_name: &str) -> bool {
         self.get_provider(provider_name).is_some()
+    }
+
+    pub async fn complete_with_tools(
+        &self,
+        provider_name: &str,
+        messages: &[ConversationMessage],
+        tools: &[ToolDefinition],
+        private_mode: bool,
+    ) -> Result<LlmResponse, String> {
+        let provider = if provider_name.is_empty() || provider_name.eq_ignore_ascii_case("default")
+        {
+            self.providers.iter().map(Box::as_ref).find(|p| {
+                if private_mode {
+                    self.is_allowed_in_private(p.metadata())
+                } else {
+                    true
+                }
+            })
+        } else {
+            self.get_provider(provider_name)
+        };
+
+        let provider = provider.ok_or_else(|| "no provider available".to_string())?;
+
+        if private_mode && !self.is_allowed_in_private(provider.metadata()) {
+            return Err("No local provider available in /private mode (HARD FAIL)".to_string());
+        }
+
+        match tokio::time::timeout(
+            Duration::from_secs(60),
+            provider.generate_with_tools(messages, tools, private_mode),
+        )
+        .await
+        {
+            Ok(Ok(response)) => Ok(response),
+            Ok(Err(e)) => Err(format!("provider error: {}", e)),
+            Err(_) => Err("provider timed out".to_string()),
+        }
     }
 
     pub async fn think(
@@ -458,12 +533,188 @@ impl AnthropicProvider {
             model,
         }
     }
+
+    async fn generate_with_tools_impl(
+        &self,
+        messages: &[ConversationMessage],
+        tools: &[ToolDefinition],
+        _private: bool,
+    ) -> Result<LlmResponse, String> {
+        let url = format!(
+            "{}/v1/messages",
+            self.metadata.endpoint.trim_end_matches('/')
+        );
+
+        // Build messages array for the Messages API
+        let mut api_messages = Vec::new();
+        for msg in messages {
+            let role = match msg.role {
+                crate::session::MessageRole::User => "user",
+                crate::session::MessageRole::Assistant => "assistant",
+                crate::session::MessageRole::Tool => "user", // tool results go as user role
+                crate::session::MessageRole::System => continue,
+            };
+
+            let mut content_blocks = Vec::new();
+            for block in &msg.blocks {
+                match block {
+                    crate::session::ContentBlock::Text { text } => {
+                        content_blocks.push(serde_json::json!({
+                            "type": "text",
+                            "text": text
+                        }));
+                    }
+                    crate::session::ContentBlock::ToolUse { id, name, input } => {
+                        let input_value: serde_json::Value =
+                            serde_json::from_str(input).unwrap_or(serde_json::json!({}));
+                        content_blocks.push(serde_json::json!({
+                            "type": "tool_use",
+                            "id": id,
+                            "name": name,
+                            "input": input_value
+                        }));
+                    }
+                    crate::session::ContentBlock::ToolResult {
+                        tool_use_id,
+                        output,
+                        is_error,
+                    } => {
+                        content_blocks.push(serde_json::json!({
+                            "type": "tool_result",
+                            "tool_use_id": tool_use_id,
+                            "content": output,
+                            "is_error": is_error
+                        }));
+                    }
+                }
+            }
+
+            if !content_blocks.is_empty() {
+                api_messages.push(serde_json::json!({
+                    "role": role,
+                    "content": content_blocks
+                }));
+            }
+        }
+
+        // Build tools array
+        let api_tools: Vec<serde_json::Value> = tools
+            .iter()
+            .map(|t| {
+                serde_json::json!({
+                    "name": t.name,
+                    "description": t.description,
+                    "input_schema": {
+                        "type": t.input_schema.type_,
+                        "properties": t.input_schema.properties.iter().map(|(k, v)| {
+                            let mut prop = serde_json::json!({
+                                "type": v.type_
+                            });
+                            if let Some(desc) = &v.description {
+                                prop["description"] = serde_json::Value::String(desc.clone());
+                            }
+                            (k.clone(), prop)
+                        }).collect::<std::collections::HashMap<_, _>>(),
+                        "required": t.input_schema.required
+                    }
+                })
+            })
+            .collect();
+
+        let body = serde_json::json!({
+            "model": self.model,
+            "max_tokens": 4096,
+            "messages": api_messages,
+            "tools": api_tools,
+        });
+
+        let resp = self
+            .client
+            .post(&url)
+            .header("x-api-key", &self.api_key)
+            .header("anthropic-version", "2023-06-01")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let err_body = resp.text().await.unwrap_or_default();
+            return Err(format!("Anthropic status error {}: {}", status, err_body));
+        }
+
+        let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+
+        let usage = TokenUsage {
+            input_tokens: json["usage"]["input_tokens"].as_u64().unwrap_or(0) as u32,
+            output_tokens: json["usage"]["output_tokens"].as_u64().unwrap_or(0) as u32,
+            ..Default::default()
+        };
+
+        let stop_reason = json["stop_reason"].as_str().unwrap_or("");
+        let content = json["content"].as_array().cloned().unwrap_or_default();
+
+        // Collect text and tool_use blocks
+        let mut text_parts = Vec::new();
+        let mut tool_calls = Vec::new();
+
+        for block in &content {
+            match block["type"].as_str().unwrap_or("") {
+                "text" => {
+                    if let Some(t) = block["text"].as_str() {
+                        text_parts.push(t.to_string());
+                    }
+                }
+                "tool_use" => {
+                    let id = block["id"].as_str().unwrap_or("").to_string();
+                    let name = block["name"].as_str().unwrap_or("").to_string();
+                    let input =
+                        serde_json::to_string(&block["input"]).unwrap_or_else(|_| "{}".to_string());
+                    tool_calls.push(ToolCall { id, name, input });
+                }
+                _ => {}
+            }
+        }
+
+        if stop_reason == "tool_use" || !tool_calls.is_empty() {
+            let text_prefix = if text_parts.is_empty() {
+                None
+            } else {
+                Some(text_parts.join(""))
+            };
+            Ok(LlmResponse::ToolUse {
+                text_prefix,
+                calls: tool_calls,
+                usage,
+            })
+        } else {
+            Ok(LlmResponse::Text {
+                content: text_parts.join(""),
+                usage,
+            })
+        }
+    }
 }
 
 #[async_trait]
 impl LlmProvider for AnthropicProvider {
     fn metadata(&self) -> &ProviderMetadata {
         &self.metadata
+    }
+
+    fn supports_tools(&self) -> bool {
+        true
+    }
+
+    async fn generate_with_tools(
+        &self,
+        messages: &[ConversationMessage],
+        tools: &[ToolDefinition],
+        private: bool,
+    ) -> Result<LlmResponse, String> {
+        self.generate_with_tools_impl(messages, tools, private)
+            .await
     }
 
     async fn generate(
@@ -562,5 +813,49 @@ impl LlmProvider for MockProvider {
             ..Default::default()
         };
         Ok((self.response.clone(), usage))
+    }
+
+    fn supports_tools(&self) -> bool {
+        true
+    }
+
+    async fn generate_with_tools(
+        &self,
+        _messages: &[ConversationMessage],
+        _tools: &[ToolDefinition],
+        _private: bool,
+    ) -> Result<LlmResponse, String> {
+        // Test helper: if response is "tool_call:name:input", emit a ToolUse response
+        if let Some(rest) = self.response.strip_prefix("tool_call:") {
+            let parts: Vec<&str> = rest.splitn(3, ':').collect();
+            if parts.len() >= 2 {
+                return Ok(LlmResponse::ToolUse {
+                    text_prefix: None,
+                    calls: vec![ToolCall {
+                        id: "test-call-1".to_string(),
+                        name: parts[0].to_string(),
+                        input: if parts.len() > 2 {
+                            parts[2].to_string()
+                        } else {
+                            "{}".to_string()
+                        },
+                    }],
+                    usage: TokenUsage {
+                        input_tokens: 10,
+                        output_tokens: 5,
+                        ..Default::default()
+                    },
+                });
+            }
+        }
+        let usage = TokenUsage {
+            input_tokens: 10,
+            output_tokens: self.response.split_whitespace().count() as u32,
+            ..Default::default()
+        };
+        Ok(LlmResponse::Text {
+            content: self.response.clone(),
+            usage,
+        })
     }
 }

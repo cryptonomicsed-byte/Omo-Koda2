@@ -7,12 +7,12 @@ import (
 
 // NodeStatus represents the status of a node
 type NodeStatus struct {
-	NodeID         string
-	ActiveAgents   int64
-	TaskQueue      int64
-	MemoryPercent  float64
-	CPUPercent     float64
-	UptimeSeconds  int64
+	NodeID          string
+	ActiveAgents    int64
+	TaskQueue       int64
+	MemoryPercent   float64
+	CPUPercent      float64
+	UptimeSeconds   int64
 	LastHealthCheck time.Time
 }
 

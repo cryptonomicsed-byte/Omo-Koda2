@@ -1,6 +1,9 @@
 pub mod bash_validation;
 pub mod deny_list;
+pub mod hook_registry;
 pub mod hooks;
 pub mod no_resume;
 pub mod permission_enforcer;
+pub mod prompter;
+pub mod python_hook;
 pub mod risk_classifier;

@@ -17,7 +17,7 @@ pub trait StreamingProvider {
 }
 
 /// A token-level streaming event — emitted one per SSE chunk from the LLM.
-/// Adapts Claw-code's SSE streaming pattern to Omo-Koda2's agentic think loop.
+/// SSE streaming for the agentic think loop: token deltas, tool calls, completion.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StreamEvent {
     /// Partial text delta from the model

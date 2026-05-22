@@ -64,8 +64,7 @@ pub struct ConstitutionalVerdict {
     pub alignment_score: f32,
     /// Per-principle names that fell below their floor score.
     pub violations: Vec<String>,
-    /// Self-critique chain: each entry is a reasoning step explaining the alignment decision.
-    /// Inspired by Claude-2's RLAIF — the agent reasons about its own reasoning.
+    /// Self-critique chain: each evaluation produces a reasoning trace about alignment.
     pub critique_chain: Vec<String>,
 }
 

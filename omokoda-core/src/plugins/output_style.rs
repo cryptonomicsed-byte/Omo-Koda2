@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Output persona styles — adapts Claude-mirror's explanatory-output-style plugin pattern.
+/// Output persona styles: Educational, Concise, Collaborative, Socratic, Technical.
 /// Each style produces a directive injected via the `SessionStart` hook into the
 /// agent's system prompt, shaping how it communicates without changing what it does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

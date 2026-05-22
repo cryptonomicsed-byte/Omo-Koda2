@@ -1,7 +1,6 @@
-//! Agent Definition in Markdown — Pattern 71.
+//! Declarative agent definitions: YAML frontmatter + system prompt body.
 //!
-//! Agents are defined as markdown files with YAML frontmatter, mirroring
-//! Claw's `feature-dev/agents/*.md` and `pr-review-toolkit/agents/*.md` patterns.
+//! Agents are defined as markdown files with YAML frontmatter.
 //!
 //! Frontmatter schema:
 //! ```yaml

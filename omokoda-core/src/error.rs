@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-/// Unified API error taxonomy for Omo-Koda2's provider and tool layers.
-/// Adapts Claw-code's api/error.rs pattern: rich error variants + retryability signal
-/// so callers never need to inspect error strings to decide whether to retry.
+/// Provider error taxonomy with retryability signal and structured backoff.
+/// Rich error variants so callers never need to inspect error strings to decide whether to retry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ApiError {
     /// HTTP 429 / provider rate limit — always retryable

@@ -1,5 +1,4 @@
-//! Skill/Odu module discovery — hierarchical knowledge loading with shadowing.
-//! Ports Claw-code's skill loading pattern.
+//! Odu skill discovery — hierarchical .md skill files with YAML frontmatter.
 //!
 //! Search order (highest priority first):
 //!   1. Agent-local: .omokoda/agents/<id>/skills/
@@ -30,8 +29,7 @@ impl std::fmt::Display for OduSource {
     }
 }
 
-/// A reference document linked from an Odu skill — Pattern 72.
-/// Mirrors Claw's `skills/*/references/` pattern.
+/// A reference document linked from an Odu skill — three-level progressive disclosure: metadata → core → references.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OduReference {
     /// Path to the reference file (relative to the skill directory)

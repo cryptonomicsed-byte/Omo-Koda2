@@ -1,5 +1,4 @@
-//! Structured output tool — validates JSON output against a schema with retry logic.
-//! Ports Claw-code's structured output pattern.
+//! Structured output: validates JSON data against a schema before returning.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

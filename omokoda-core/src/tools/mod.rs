@@ -152,7 +152,7 @@ impl ToolRegistry {
         registry.register(Box::new(sovereign::SessionStatusTool));
         registry.register(Box::new(sovereign::AgentsListTool));
 
-        // Claw pattern tools
+        // Pattern-matched tools
         registry.register(Box::new(todo::WriteTodoTool));
         registry.register(Box::new(todo::ReadTodoTool));
         registry.register(Box::new(structured_output::StructuredOutputTool));
@@ -202,7 +202,7 @@ impl ToolRegistry {
                     };
 
                 matches!(
-                    policy.claw.check(action, "*"),
+                    policy.patterns.check(action, "*"),
                     crate::permissions::PermissionOutcome::Allow
                 )
             })

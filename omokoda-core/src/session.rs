@@ -724,10 +724,9 @@ impl SessionManager {
         &self.restore_points
     }
 
-    /// Persist the session as newline-delimited JSON to `.omokoda/sessions/<agent_id>.jsonl`.
+    /// Session serialization: persists live transcript to JSONL for cross-session reload.
     /// Each public message is one line; the session header is line 0.
-    /// Mirrors Claw-code's compact_history pattern: writes only the live transcript so the
-    /// file can be appended on each turn rather than rewritten entirely.
+    /// Writes only the live transcript so the file can be appended on each turn rather than rewritten entirely.
     pub fn save_to_disk(&self, base_dir: &Path) -> Result<(), String> {
         let sessions_dir = base_dir.join(".omokoda").join("sessions");
         fs::create_dir_all(&sessions_dir)

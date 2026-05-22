@@ -1,5 +1,4 @@
-//! Persistent todo management — task queue with status tracking.
-//! Ports Claw-code's todo tool pattern.
+//! Persistent todo list backed by `.omokoda-todos.json`.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

@@ -1,7 +1,6 @@
-//! Session compaction — compress old messages into a summary to prevent context window overflow.
-//!
-//! Ports Claw-code's compact.rs pattern: summarize old messages, keep recent N messages,
-//! merge nested summaries, extract key files / pending work / timeline.
+//! Token-aware session compaction for the think context window.
+//! Summarizes old messages, keeps recent N messages, merges nested summaries,
+//! and extracts key files / pending work / timeline.
 
 use crate::session::{ContentBlock, ConversationMessage, MessageRole, Session};
 use serde::{Deserialize, Serialize};
@@ -382,7 +381,7 @@ impl AutoCompactor {
     }
 }
 
-// ── Token-aware compaction helpers (ported from Claw-code) ───────────────────
+// ── Token-aware compaction helpers ───────────────────────────────────────────
 
 /// Preamble prepended to compact continuation messages.
 pub const COMPACT_CONTINUATION_PREAMBLE: &str =

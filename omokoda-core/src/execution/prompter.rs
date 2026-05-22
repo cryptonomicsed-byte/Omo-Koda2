@@ -1,11 +1,9 @@
 use crate::permissions::{PermissionPromptDecision, PermissionPrompter, PermissionRequest};
 use std::io::{self, BufRead, Write};
 
-/// Terminal-based prompter — presents the tool name, input, and required permission mode
-/// to the user via stdout/stdin and waits for an allow/deny decision.
-///
-/// Mirrors Claw-code's human-in-the-loop permission escalation flow, adapted for
-/// Omo-Koda2's Synapse-gated permission tier model.
+/// Interactive permission prompter for tool escalation at the act gate.
+/// Presents the tool name, input, and required permission mode via stdout/stdin
+/// and waits for an allow/deny decision.
 #[derive(Debug)]
 pub struct TerminalPrompter {
     pub agent_name: String,

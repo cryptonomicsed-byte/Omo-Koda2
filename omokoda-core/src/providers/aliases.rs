@@ -1,11 +1,10 @@
 /// Model alias resolution — maps friendly shorthand to canonical provider model IDs.
-/// Adapts Claw-code's provider client aliasing pattern so callers write "opus" not
-/// "claude-opus-4-7" and upgrades happen in one place, not scattered across configs.
+/// Upgrades happen in one place, not scattered across configs.
 
 /// Canonical Anthropic model IDs as of the current knowledge cutoff.
-pub const CLAUDE_OPUS_4_7: &str = "claude-opus-4-7";
-pub const CLAUDE_SONNET_4_6: &str = "claude-sonnet-4-6";
-pub const CLAUDE_HAIKU_4_5: &str = "claude-haiku-4-5-20251001";
+pub const ANTHROPIC_OPUS: &str = "claude-opus-4-7";
+pub const ANTHROPIC_SONNET: &str = "claude-sonnet-4-6";
+pub const ANTHROPIC_HAIKU: &str = "claude-haiku-4-5-20251001";
 
 /// Resolve a user-supplied model name or alias to the canonical provider model ID.
 /// Returns the input unchanged if no alias matches — providers receive it as-is.
@@ -17,13 +16,13 @@ pub fn resolve_model_alias(alias: &str) -> &'static str {
     // Exact aliases first
     match lower.as_str() {
         // Anthropic tiers
-        "opus" | "claude-opus" | "claude-opus-4" | "claude-opus-4-7" => CLAUDE_OPUS_4_7,
-        "sonnet" | "claude-sonnet" | "claude-sonnet-4" | "claude-sonnet-4-6" => CLAUDE_SONNET_4_6,
-        "haiku" | "claude-haiku" | "claude-haiku-4" | "claude-haiku-4-5" => CLAUDE_HAIKU_4_5,
+        "opus" | "claude-opus" | "claude-opus-4" | "claude-opus-4-7" => ANTHROPIC_OPUS,
+        "sonnet" | "claude-sonnet" | "claude-sonnet-4" | "claude-sonnet-4-6" => ANTHROPIC_SONNET,
+        "haiku" | "claude-haiku" | "claude-haiku-4" | "claude-haiku-4-5" => ANTHROPIC_HAIKU,
         // Omo-Koda2 sovereign tier aliases
-        "fast" | "cheap" => CLAUDE_HAIKU_4_5,
-        "balanced" | "default" => CLAUDE_SONNET_4_6,
-        "powerful" | "smart" | "best" => CLAUDE_OPUS_4_7,
+        "fast" | "cheap" => ANTHROPIC_HAIKU,
+        "balanced" | "default" => ANTHROPIC_SONNET,
+        "powerful" | "smart" | "best" => ANTHROPIC_OPUS,
         _ => leak_str(alias),
     }
 }
@@ -61,23 +60,23 @@ mod tests {
 
     #[test]
     fn opus_alias_resolves() {
-        assert_eq!(resolve_model_alias("opus"), CLAUDE_OPUS_4_7);
-        assert_eq!(resolve_model_alias("Opus"), CLAUDE_OPUS_4_7);
-        assert_eq!(resolve_model_alias("best"), CLAUDE_OPUS_4_7);
+        assert_eq!(resolve_model_alias("opus"), ANTHROPIC_OPUS);
+        assert_eq!(resolve_model_alias("Opus"), ANTHROPIC_OPUS);
+        assert_eq!(resolve_model_alias("best"), ANTHROPIC_OPUS);
     }
 
     #[test]
     fn sonnet_alias_resolves() {
-        assert_eq!(resolve_model_alias("sonnet"), CLAUDE_SONNET_4_6);
-        assert_eq!(resolve_model_alias("balanced"), CLAUDE_SONNET_4_6);
-        assert_eq!(resolve_model_alias("default"), CLAUDE_SONNET_4_6);
+        assert_eq!(resolve_model_alias("sonnet"), ANTHROPIC_SONNET);
+        assert_eq!(resolve_model_alias("balanced"), ANTHROPIC_SONNET);
+        assert_eq!(resolve_model_alias("default"), ANTHROPIC_SONNET);
     }
 
     #[test]
     fn haiku_alias_resolves() {
-        assert_eq!(resolve_model_alias("haiku"), CLAUDE_HAIKU_4_5);
-        assert_eq!(resolve_model_alias("fast"), CLAUDE_HAIKU_4_5);
-        assert_eq!(resolve_model_alias("cheap"), CLAUDE_HAIKU_4_5);
+        assert_eq!(resolve_model_alias("haiku"), ANTHROPIC_HAIKU);
+        assert_eq!(resolve_model_alias("fast"), ANTHROPIC_HAIKU);
+        assert_eq!(resolve_model_alias("cheap"), ANTHROPIC_HAIKU);
     }
 
     #[test]
@@ -95,9 +94,9 @@ mod tests {
     }
 
     #[test]
-    fn provider_for_claude_model() {
+    fn provider_for_anthropic_model() {
         assert_eq!(provider_for_model("opus"), "anthropic");
-        assert_eq!(provider_for_model(CLAUDE_SONNET_4_6), "anthropic");
+        assert_eq!(provider_for_model(ANTHROPIC_SONNET), "anthropic");
     }
 
     #[test]

@@ -3,9 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// IRIS routing profile — determines how the `think` primitive executes.
 /// Each profile sets LLM temperature, token budget, and response style guidance.
-///
-/// Profiles are inspired by Droidclaw's IRIS system, adapted to Omo-Koda2's
-/// 3-primitive model: IRIS only operates during `think`.
+/// Routing profiles govern how the think primitive executes; IRIS only operates during `think`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IrisProfile {
     /// Short, fast, reflexive — for greetings, one-word answers, simple lookups

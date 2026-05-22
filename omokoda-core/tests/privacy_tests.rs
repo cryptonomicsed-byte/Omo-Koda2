@@ -21,7 +21,7 @@ mod privacy_tests {
     async fn blocks_external_in_private() {
         let registry = ProviderRegistry::new();
         let claude = ProviderMetadata {
-            name: "Claude".to_string(),
+            name: "Anthropic".to_string(),
             class: ProviderClass::External,
             endpoint: "https://api.anthropic.com".to_string(),
         };
@@ -106,12 +106,12 @@ mod privacy_tests {
 
         let mut registry = ProviderRegistry::with_mock("local".to_string());
         registry.register(Box::new(ExternalProv(ProviderMetadata {
-            name: "Claude".to_string(),
+            name: "Anthropic".to_string(),
             class: ProviderClass::External,
             endpoint: "https://api.anthropic.com".to_string(),
         })));
 
-        let res = registry.think("Claude", "hello", &[], true).await;
+        let res = registry.think("Anthropic", "hello", &[], true).await;
         assert!(res.is_err());
         assert!(res.unwrap_err().contains("HARD FAIL"));
     }
@@ -135,7 +135,7 @@ mod privacy_tests {
 
         let mut registry = ProviderRegistry::with_mock("local".to_string());
         registry.register(Box::new(ExternalProv(ProviderMetadata {
-            name: "Claude".to_string(),
+            name: "Anthropic".to_string(),
             class: ProviderClass::External,
             endpoint: "https://api.anthropic.com".to_string(),
         })));
@@ -185,7 +185,7 @@ mod privacy_tests {
             endpoint: "http://localhost:1".to_string(),
         })));
         registry.register(Box::new(ExternalProv(ProviderMetadata {
-            name: "Claude".to_string(),
+            name: "Anthropic".to_string(),
             class: ProviderClass::External,
             endpoint: "https://api.anthropic.com".to_string(),
         })));

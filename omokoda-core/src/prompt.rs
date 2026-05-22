@@ -1,7 +1,5 @@
-//! System prompt construction — assembles the agent's context into a structured system prompt.
-//!
-//! Ports Claw-code's prompt.rs pattern: inject cwd, git status, date, OS, available tools,
-//! agent identity, and instructions into a coherent system prompt.
+//! System prompt assembly: injects workspace context, identity, and available tools
+//! into a coherent system prompt for the think primitive.
 
 use crate::config::FeatureFlags;
 use crate::identity::odu::OduIdentity;

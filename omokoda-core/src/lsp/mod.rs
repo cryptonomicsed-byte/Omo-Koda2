@@ -1,10 +1,6 @@
-/// LSP context enrichment — inject real-time language server diagnostics and
-/// symbol information into the agent's think phase.
-///
-/// Adapts Claw-code's lsp/ pattern: a lightweight client-side representation of
-/// LSP state that formats as a `think` prompt section, keeping the actual LSP
-/// transport decoupled so any language server (rust-analyzer, tsserver, gopls, etc.)
-/// can feed into the same prompt injection pipeline.
+/// Code-intelligence layer: diagnostics and symbol data for think context enrichment.
+/// A lightweight client-side representation of LSP state that formats as a `think` prompt section,
+/// keeping the actual LSP transport decoupled so any language server can feed into the pipeline.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

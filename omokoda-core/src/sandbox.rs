@@ -195,7 +195,7 @@ mod sandbox_adapter_tests {
     }
 }
 
-// ── Container detection + Linux sandbox (ported from Claw-code) ──────────────
+// ── Container detection + Linux namespace sandbox ─────────────────────────────
 
 /// Detected container environment markers
 #[derive(Debug, Clone, Default)]

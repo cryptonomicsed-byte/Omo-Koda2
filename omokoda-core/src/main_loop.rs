@@ -5,9 +5,8 @@ use tokio::sync::mpsc;
 use crate::query::{QueryConfig, QueryEngine, QueryState};
 use crate::usage::TokenUsage;
 
-/// Omo-Koda2 REPL slash commands — intercepted before the prompt reaches the LLM.
-/// Mirrors Claw-code's client-side command interception pattern, adapted for the
-/// sovereign agent OS primitives: identity (Odu), economy (Synapse), and reputation tiers.
+/// REPL slash-command interceptor: routes /commands before think dispatch.
+/// Covers identity (Odu), economy (Synapse), reputation tiers, and session utilities.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReplCommand {
     /// Show the agent's Odu identity (mnemonic + DNA fingerprint)

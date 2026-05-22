@@ -1,8 +1,5 @@
-//! Async Hook Registry — event-driven hooks with priority ordering, source tracking,
-//! and automatic registration from skill/Odu manifests.
-//!
-//! Ports Claw-code's AsyncHookRegistry pattern: multiple handlers per event type,
-//! blocking/non-blocking distinction, and skill/frontmatter auto-registration.
+//! Async hook registry: multiple handlers per event type with priority ordering,
+//! source tracking, and automatic registration from skill/Odu manifests.
 
 use crate::plugins::manifest::HookConfig;
 use serde::{Deserialize, Serialize};
@@ -265,14 +262,14 @@ impl HookHandler for PassthroughHook {
     }
 }
 
-// ── ClawHookRunner ────────────────────────────────────────────────────────────
-// Implements Claw-code's exit-code hook protocol:
+// ── ShellHookRunner ───────────────────────────────────────────────────────────
+// Shell hook execution: exit 0=Allow, exit 2=Deny, other=Warn
 //   exit 0  → Allow (optional message from stdout)
 //   exit 2  → Deny  (optional reason from stdout)
 //   other   → Warn  (non-blocking, warning message)
-// JSON payload is sent via stdin; env vars are set for compatibility.
+// JSON payload is sent via stdin; env vars carry additional context.
 
-/// Result returned by `ClawHookRunner`
+/// Result returned by `ShellHookRunner`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HookRunResult {
     denied: bool,
@@ -302,11 +299,11 @@ impl HookRunResult {
     }
 }
 
-/// Runs a list of shell commands using Claw-code's exit-code hook protocol.
+/// Runs a list of shell commands using the sovereign hook protocol.
 /// Commands receive a JSON payload on stdin and communicate via exit code + stdout.
-pub struct ClawHookRunner;
+pub struct ShellHookRunner;
 
-impl ClawHookRunner {
+impl ShellHookRunner {
     /// Run pre-tool-use hooks.
     /// `commands` — list of shell command strings to execute in order.
     #[must_use]
@@ -378,12 +375,12 @@ impl ClawHookRunner {
                 is_error,
                 &payload,
             ) {
-                ClawCommandOutcome::Allow { message } => {
+                ShellCommandOutcome::Allow { message } => {
                     if let Some(msg) = message {
                         messages.push(msg);
                     }
                 }
-                ClawCommandOutcome::Deny { message } => {
+                ShellCommandOutcome::Deny { message } => {
                     let msg = message.unwrap_or_else(|| {
                         format!("{event_name} hook denied tool `{tool_name}`")
                     });
@@ -393,7 +390,7 @@ impl ClawHookRunner {
                         messages,
                     };
                 }
-                ClawCommandOutcome::Warn { message } => messages.push(message),
+                ShellCommandOutcome::Warn { message } => messages.push(message),
             }
         }
 
@@ -408,7 +405,7 @@ impl ClawHookRunner {
         tool_output: Option<&str>,
         is_error: bool,
         payload: &str,
-    ) -> ClawCommandOutcome {
+    ) -> ShellCommandOutcome {
         use std::io::Write;
 
         // Use `sh <path>` if the command is a path that exists; otherwise `sh -lc <cmd>`
@@ -438,7 +435,7 @@ impl ClawHookRunner {
         let mut child = match child_cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
-                return ClawCommandOutcome::Warn {
+                return ShellCommandOutcome::Warn {
                     message: format!(
                         "{event_name} hook `{command}` failed to start for `{tool_name}`: {e}"
                     ),
@@ -456,19 +453,19 @@ impl ClawHookRunner {
                 let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
                 let message = (!stdout.is_empty()).then_some(stdout);
                 match out.status.code() {
-                    Some(0) => ClawCommandOutcome::Allow { message },
-                    Some(2) => ClawCommandOutcome::Deny { message },
-                    Some(code) => ClawCommandOutcome::Warn {
+                    Some(0) => ShellCommandOutcome::Allow { message },
+                    Some(2) => ShellCommandOutcome::Deny { message },
+                    Some(code) => ShellCommandOutcome::Warn {
                         message: Self::format_warning(command, code, message.as_deref(), &stderr),
                     },
-                    None => ClawCommandOutcome::Warn {
+                    None => ShellCommandOutcome::Warn {
                         message: format!(
                             "{event_name} hook `{command}` terminated by signal while handling `{tool_name}`"
                         ),
                     },
                 }
             }
-            Err(e) => ClawCommandOutcome::Warn {
+            Err(e) => ShellCommandOutcome::Warn {
                 message: format!(
                     "{event_name} hook `{command}` failed to start for `{tool_name}`: {e}"
                 ),
@@ -496,7 +493,7 @@ impl ClawHookRunner {
     }
 }
 
-enum ClawCommandOutcome {
+enum ShellCommandOutcome {
     Allow { message: Option<String> },
     Deny { message: Option<String> },
     Warn { message: String },
@@ -813,12 +810,12 @@ mod tests {
         assert_eq!(ShellHookHandler::parse_outcome(""), HookOutcome::Allow);
     }
 
-    // ── ClawHookRunner tests ──────────────────────────────────────────────────
+    // ── ShellHookRunner tests ─────────────────────────────────────────────────
 
     #[test]
-    fn claw_runner_allows_exit_zero_captures_stdout() {
+    fn shell_runner_allows_exit_zero_captures_stdout() {
         let cmds = vec!["printf 'hook ok'".to_string()];
-        let result = ClawHookRunner::run_pre_tool_use(
+        let result = ShellHookRunner::run_pre_tool_use(
             &cmds,
             "Read",
             r#"{"path":"README.md"}"#,
@@ -833,9 +830,9 @@ mod tests {
     }
 
     #[test]
-    fn claw_runner_denies_exit_two() {
+    fn shell_runner_denies_exit_two() {
         let cmds = vec!["printf 'blocked'; exit 2".to_string()];
-        let result = ClawHookRunner::run_pre_tool_use(
+        let result = ShellHookRunner::run_pre_tool_use(
             &cmds,
             "Bash",
             r#"{"command":"rm -rf /"}"#,
@@ -850,9 +847,9 @@ mod tests {
     }
 
     #[test]
-    fn claw_runner_warns_for_other_non_zero() {
+    fn shell_runner_warns_for_other_non_zero() {
         let cmds = vec!["printf 'warn msg'; exit 1".to_string()];
-        let result = ClawHookRunner::run_pre_tool_use(
+        let result = ShellHookRunner::run_pre_tool_use(
             &cmds,
             "Edit",
             r#"{"file":"src/lib.rs"}"#,

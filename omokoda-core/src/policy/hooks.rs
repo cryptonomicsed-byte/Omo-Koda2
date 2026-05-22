@@ -14,7 +14,7 @@ pub enum HookPhase {
     SessionEnd,
 }
 
-/// Exit-code protocol (Claw-code pattern):
+/// Shell hook exit-code protocol:
 /// - 0  → Allow (continue normally)
 /// - 2  → Deny  (block the action)
 /// - anything else → Warn (proceed with caution, surface message)

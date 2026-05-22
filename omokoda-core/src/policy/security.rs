@@ -100,8 +100,7 @@ fn compiled_rules() -> &'static Vec<(Regex, &'static Rule)> {
     })
 }
 
-/// Pre-flight security scanner — run before `HermeticGate` so the security layer
-/// fires before the ethics layer. Adapts Claude-mirror's security-guidance pattern:
+/// Pre-flight security scanner — fires before the ethics layer as a fast local pre-act security check:
 /// regex-based, zero-allocation for clean inputs, exhaustive scan for violations.
 pub struct SecurityScanner;
 

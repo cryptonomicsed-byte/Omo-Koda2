@@ -39,7 +39,6 @@ impl PluginDiscovery {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     fn make_manifest_json(name: &str) -> String {
         format!(
             r#"{{

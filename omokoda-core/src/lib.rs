@@ -35,7 +35,10 @@ pub mod tasks;
 pub mod tools;
 pub mod usage;
 
+pub use identity::user::{IdentityError, PrivacyMode, UserIdentity};
 pub use identity::AgentId;
+pub use steward::dispatch::{DispatchError, PrimitiveDispatcher};
+pub use steward::privacy::PrivacyEnforcer;
 pub use intent::{
     IntentClass, IntentCompilation, IntentCompileContext, IntentCompiler, IntentPlan,
     SubAgentSuggestion,

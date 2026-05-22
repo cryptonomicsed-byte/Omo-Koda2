@@ -157,10 +157,12 @@ We are giving humanity reliable, sovereign digital partners — each with privat
 | Justice / On-Chain | Move | omokoda-sui | ✅ Active |
 | Human Interface | TypeScript | omokoda-frontend | ✅ Active |
 | Economic Simulation | Python | omokoda-simulation | ✅ Active |
+| User Identity (Sui wallet/zkLogin/seed) | Rust | omokoda-core/identity/user.rs | ✅ Implemented |
+| Privacy Enforcer (provider/storage/hive gates) | Rust | omokoda-core/steward/privacy.rs | ✅ Implemented |
+| Primitive Dispatcher (birth/think/act validation) | Rust | omokoda-core/steward/dispatch.rs | ✅ Implemented |
 | Memory Service | Julia | omokoda-julia | 🔲 Planned (Wave 21) |
 | Wisdom / Ethics Service | Lisp | omokoda-lisp | 🔲 Planned (Wave 22) |
 | Private Memory (Walrus + MemWal) | Move/Rust | omokoda-sui + omokoda-core | 🔲 Planned |
 | Seal (private memory policy) | Move | omokoda-sui | 🔲 Planned |
 | Nautilus TEE processing | Rust/WASM | omokoda-core | 🔲 Planned |
-| User Identification (Sui wallet/zkLogin) | Rust | omokoda-core/identity | 🔲 Planned |
 | Public Hive Mind aggregation | Elixir/Julia | omokoda-swarm + omokoda-julia | 🔲 Planned |

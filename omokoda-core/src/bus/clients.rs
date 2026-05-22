@@ -212,7 +212,7 @@ impl YemojaClient for LocalYemojaStub {
 #[async_trait]
 impl OgunClient for LocalOgunStub {
     async fn execute_tool(&self, tool_name: &str, _input_json: &str) -> Result<String, String> {
-        Ok(format!(r#"{{"stub": true, "tool": "{}"}}"#, tool_name))
+        Ok(format!(r#"{{"stub": true, "tool": "{}"}}", tool_name))
     }
 }
 

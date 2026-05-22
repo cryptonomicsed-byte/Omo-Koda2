@@ -1,5 +1,7 @@
 pub mod constitution;
+pub mod dispatch;
 pub mod iris;
+pub mod privacy;
 pub mod soul;
 
 pub use constitution::{

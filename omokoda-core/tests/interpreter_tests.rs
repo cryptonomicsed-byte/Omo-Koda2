@@ -55,7 +55,7 @@ mod interpreter_tests {
             .await
             .unwrap();
         steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
- // Boost budget
+        // Boost budget
 
         let stmts = parse(r#"think "hello world""#).unwrap();
         let result = steward.dispatch(stmts[0].clone()).await.unwrap();
@@ -75,7 +75,7 @@ mod interpreter_tests {
             .await
             .unwrap();
         steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
- // Boost budget
+        // Boost budget
 
         let (tx, mut rx) = mpsc::channel(10);
         let stmt = parse(r#"think "hello world""#).unwrap()[0].clone();
@@ -110,7 +110,7 @@ mod interpreter_tests {
             .await
             .unwrap();
         steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
- // Boost budget
+        // Boost budget
         let test_file = "test_act_event.txt";
         std::fs::write(test_file, "content").unwrap();
 
@@ -139,7 +139,7 @@ mod interpreter_tests {
             .await
             .unwrap();
         steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
- // Boost budget
+        // Boost budget
 
         let stmts = parse(r#"think "secret""#).unwrap();
         let result = steward.dispatch(stmts[0].clone()).await.unwrap();
@@ -155,7 +155,7 @@ mod interpreter_tests {
             .await
             .unwrap();
         steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
- // Boost budget
+        // Boost budget
 
         let stmts = parse(r#"think "share this" /publish"#).unwrap();
         let result = steward.dispatch(stmts[0].clone()).await.unwrap();
@@ -173,7 +173,7 @@ mod interpreter_tests {
             .await
             .unwrap();
         steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
- // Boost budget
+        // Boost budget
         steward
             .dispatch(parse(r#"/configure provider:ollama"#).unwrap()[0].clone())
             .await
@@ -192,7 +192,7 @@ mod interpreter_tests {
             .await
             .unwrap();
         steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
- // Boost budget
+        // Boost budget
 
         let result = steward
             .dispatch(parse(r#"/configure provider:unknown"#).unwrap()[0].clone())
@@ -209,7 +209,7 @@ mod interpreter_tests {
             .await
             .unwrap();
         steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
- // Boost budget
+        // Boost budget
 
         let test_file = "test_act_receipt.txt";
         std::fs::write(test_file, "content").unwrap();
@@ -232,7 +232,7 @@ mod interpreter_tests {
             .await
             .unwrap();
         steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
- // Boost budget
+        // Boost budget
 
         let test_file = "test_act_rep.txt";
         std::fs::write(test_file, "content").unwrap();
@@ -257,7 +257,7 @@ mod interpreter_tests {
             .await
             .unwrap();
         steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
- // Boost budget
+        // Boost budget
 
         let test_file = "test_act_rep_grows.txt";
         std::fs::write(test_file, "content").unwrap();
@@ -287,7 +287,7 @@ mod interpreter_tests {
             .await
             .unwrap();
         steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
- // Boost budget
+        // Boost budget
 
         let stmts = parse(r#"act "agent_orchestration" "task""#).unwrap();
         let result = steward.dispatch(stmts[0].clone()).await;
@@ -302,7 +302,7 @@ mod interpreter_tests {
             .await
             .unwrap();
         steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
- // Boost budget
+        // Boost budget
 
         steward.set_reputation_for_test(10.0);
         steward.apply_daily_decay(1); // 1 day inactive
@@ -319,7 +319,7 @@ mod interpreter_tests {
             .await
             .unwrap();
         steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
- // Boost budget
+        // Boost budget
 
         steward.set_reputation_for_test(0.001);
         steward.apply_daily_decay(100); // massive inactivity
@@ -355,7 +355,7 @@ act "read_file" "test_multi.txt""#;
             .await
             .unwrap();
         steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
- // Boost budget
+        // Boost budget
 
         let test_file = "test_persist.txt";
         std::fs::write(test_file, "content").unwrap();
@@ -403,7 +403,7 @@ act "read_file" "test_multi.txt""#;
             .await
             .unwrap();
         steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
- // Boost budget
+        // Boost budget
 
         let test_file = "test_act_read.txt";
         std::fs::write(test_file, "real file content").unwrap();
@@ -462,7 +462,7 @@ act "read_file" "test_multi.txt""#;
             .await
             .unwrap();
         steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
- // Boost budget
+        // Boost budget
 
         steward
             .dispatch(parse(r#"think "secret thought""#).unwrap()[0].clone())

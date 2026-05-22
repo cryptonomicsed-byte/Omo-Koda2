@@ -88,7 +88,7 @@ impl Tool for LazyTool {
         self.is_write
     }
     fn params_schema(&self) -> Option<serde_json::Value> {
-        None 
+        None
     }
     async fn execute(
         &self,
@@ -172,19 +172,23 @@ impl ToolRegistry {
                 }
                 // 2. Policy check (Hide denied tools)
                 // We use a dummy input for check
-                let action = if t.name().contains("read") || t.name() == "glob" || t.name() == "grep" {
-                    "read"
-                } else if t.name().contains("write") || t.name() == "note_taking" {
-                    "write"
-                } else if t.name() == "bash" || t.name() == "wasm" {
-                    "exec"
-                } else if t.name() == "web_search" || t.name() == "web_fetch" {
-                    "net"
-                } else {
-                    "tool"
-                };
-                
-                matches!(policy.claw.check(action, "*"), crate::permissions::PermissionOutcome::Allow)
+                let action =
+                    if t.name().contains("read") || t.name() == "glob" || t.name() == "grep" {
+                        "read"
+                    } else if t.name().contains("write") || t.name() == "note_taking" {
+                        "write"
+                    } else if t.name() == "bash" || t.name() == "wasm" {
+                        "exec"
+                    } else if t.name() == "web_search" || t.name() == "web_fetch" {
+                        "net"
+                    } else {
+                        "tool"
+                    };
+
+                matches!(
+                    policy.claw.check(action, "*"),
+                    crate::permissions::PermissionOutcome::Allow
+                )
             })
             .map(|t| t.name().to_string())
             .collect();
@@ -218,14 +222,18 @@ impl ToolRegistry {
         if let Some(schema) = tool.params_schema() {
             let instance: serde_json::Value = serde_json::from_str(params)
                 .map_err(|e| format!("Invalid JSON input for tool '{}': {}", name, e))?;
-            
+
             let compiled = jsonschema::JSONSchema::compile(&schema)
                 .map_err(|e| format!("Invalid JSON Schema for tool '{}': {}", name, e))?;
-            
+
             let validation_result = compiled.validate(&instance);
             if let Err(errors) = validation_result {
                 let error_msgs: Vec<String> = errors.map(|e| e.to_string()).collect();
-                return Err(format!("JSON Schema validation failed for tool '{}': {}", name, error_msgs.join(", ")));
+                return Err(format!(
+                    "JSON Schema validation failed for tool '{}': {}",
+                    name,
+                    error_msgs.join(", ")
+                ));
             }
         }
 

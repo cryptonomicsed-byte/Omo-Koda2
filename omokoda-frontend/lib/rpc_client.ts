@@ -71,11 +71,11 @@ export class RustRpcClient {
       this.ws = new WebSocket(this.url);
       this.ws.onmessage = (event) => this.handleMessage(event);
       this.ws.onclose = () => {
-        for (const [id, req] of this.pending) {
+        this.pending.forEach((req, id) => {
           req.reject(new Error('WebSocket closed'));
           clearTimeout(req.timer);
           this.pending.delete(id);
-        }
+        });
       };
     }
     return this.ws;

@@ -1,8 +1,8 @@
+use chrono::{Duration, Utc};
 use omokoda_core::justice::tier::Tier;
 use omokoda_core::reputation::{
     can_promote_tier, daily_gain_multiplier, MAX_ACTIONS_PER_DAY, MIN_DAYS_BETWEEN_PROMOTIONS,
 };
-use chrono::{Duration, Utc};
 
 // --- BB step limits ---
 
@@ -152,7 +152,11 @@ fn daily_multiplier_beyond_cap_is_zero() {
 fn daily_multiplier_at_49_approximately_0_778() {
     let m = daily_gain_multiplier(49);
     // 0.995^49 ≈ 0.7817
-    assert!(m > 0.75 && m < 0.85, "multiplier at 49 should be ~0.78, got {}", m);
+    assert!(
+        m > 0.75 && m < 0.85,
+        "multiplier at 49 should be ~0.78, got {}",
+        m
+    );
 }
 
 // --- Tier round-trip ---

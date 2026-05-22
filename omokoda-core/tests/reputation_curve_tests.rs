@@ -1,6 +1,6 @@
 use omokoda_core::reputation::{
-    difficulty, daily_gain_multiplier, reputation_gain, tier_for,
-    DIMINISHING_RETURNS_BASE, MAX_ACTIONS_PER_DAY,
+    daily_gain_multiplier, difficulty, reputation_gain, tier_for, DIMINISHING_RETURNS_BASE,
+    MAX_ACTIONS_PER_DAY,
 };
 
 // --- difficulty formula: 1.0 / (1.0 + rep/25.0) ---
@@ -8,27 +8,43 @@ use omokoda_core::reputation::{
 #[test]
 fn difficulty_at_zero_is_1() {
     let d = difficulty(0.0);
-    assert!((d - 1.0).abs() < 1e-10, "difficulty(0) should be 1.0, got {}", d);
+    assert!(
+        (d - 1.0).abs() < 1e-10,
+        "difficulty(0) should be 1.0, got {}",
+        d
+    );
 }
 
 #[test]
 fn difficulty_at_25_is_0_5() {
     let d = difficulty(25.0);
-    assert!((d - 0.5).abs() < 1e-10, "difficulty(25) should be 0.5, got {}", d);
+    assert!(
+        (d - 0.5).abs() < 1e-10,
+        "difficulty(25) should be 0.5, got {}",
+        d
+    );
 }
 
 #[test]
 fn difficulty_at_50_is_approx_0_333() {
     let d = difficulty(50.0);
     let expected = 1.0 / 3.0;
-    assert!((d - expected).abs() < 1e-6, "difficulty(50) should be ~0.333, got {}", d);
+    assert!(
+        (d - expected).abs() < 1e-6,
+        "difficulty(50) should be ~0.333, got {}",
+        d
+    );
 }
 
 #[test]
 fn difficulty_at_75_is_0_25() {
     let d = difficulty(75.0);
     let expected = 1.0 / 4.0;
-    assert!((d - expected).abs() < 1e-10, "difficulty(75) should be 0.25, got {}", d);
+    assert!(
+        (d - expected).abs() < 1e-10,
+        "difficulty(75) should be 0.25, got {}",
+        d
+    );
 }
 
 #[test]
@@ -59,7 +75,10 @@ fn reputation_gain_zero_multiplier_is_zero() {
 fn reputation_gain_scales_with_difficulty() {
     let low_rep = reputation_gain(0.1, 0.0, 1.0);
     let high_rep = reputation_gain(0.1, 100.0, 1.0);
-    assert!(low_rep > high_rep, "gain should be higher at low reputation");
+    assert!(
+        low_rep > high_rep,
+        "gain should be higher at low reputation"
+    );
 }
 
 // --- tier_for: must match EXACT existing thresholds (these are tested by interpreter_tests) ---
@@ -121,7 +140,11 @@ fn daily_multiplier_50_is_zero() {
 #[test]
 fn daily_multiplier_49_is_above_zero() {
     let m = daily_gain_multiplier(49);
-    assert!(m > 0.0 && m < 1.0, "multiplier at 49 should be (0,1), got {}", m);
+    assert!(
+        m > 0.0 && m < 1.0,
+        "multiplier at 49 should be (0,1), got {}",
+        m
+    );
 }
 
 #[test]

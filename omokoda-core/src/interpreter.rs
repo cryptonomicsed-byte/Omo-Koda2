@@ -363,16 +363,24 @@ impl AgentCore {
             new_reputation: self.snapshot.reputation,
         });
 
-        self.snapshot.pet_identity =
-            PetIdentity::derive(&self.snapshot.odu_identity, &self.snapshot.hermetic_state, self.tier());
+        self.snapshot.pet_identity = PetIdentity::derive(
+            &self.snapshot.odu_identity,
+            &self.snapshot.hermetic_state,
+            self.tier(),
+        );
         self.snapshot.session.reputation = self.snapshot.reputation;
     }
 
-    pub fn add_memory(&mut self, text: String, scope: MemoryScope, importance: f32) -> Result<(), String> {
+    pub fn add_memory(
+        &mut self,
+        text: String,
+        scope: MemoryScope,
+        importance: f32,
+    ) -> Result<(), String> {
         let id = uuid::Uuid::new_v4().to_string();
         let created_time = current_unix_timestamp();
         let content_hash = blake3::hash(text.as_bytes()).into();
-        
+
         let mut entry = MemoryEntry {
             id,
             scope,
@@ -389,16 +397,19 @@ impl AgentCore {
         }
 
         self.memory.push(entry);
-        
+
         let engine = crate::memory::MemoryEngine::new();
         engine.process_working_memory(&mut self.memory);
-        
+
         Ok(())
     }
 
     fn encrypt_memory_entry(&mut self, entry: &mut MemoryEntry) -> Result<(), String> {
-        use chacha20poly1305::{aead::{Aead, KeyInit}, ChaCha20Poly1305, Nonce};
-        
+        use chacha20poly1305::{
+            aead::{Aead, KeyInit},
+            ChaCha20Poly1305, Nonce,
+        };
+
         let text = entry.text.as_ref().ok_or("no text to encrypt")?;
         let cipher = ChaCha20Poly1305::new(&self.current_memory_key.into());
         let mut nonce_bytes = [0u8; 12];
@@ -406,12 +417,13 @@ impl AgentCore {
         nonce_bytes.copy_from_slice(&key_hash[..12]);
         let nonce = Nonce::from_slice(&nonce_bytes);
 
-        let ciphertext = cipher.encrypt(nonce, text.as_bytes())
+        let ciphertext = cipher
+            .encrypt(nonce, text.as_bytes())
             .map_err(|e| format!("memory encryption failed: {e}"))?;
-        
+
         entry.ciphertext = Some(ciphertext);
         entry.zeroize_text();
-        
+
         Ok(())
     }
 
@@ -424,7 +436,8 @@ impl AgentCore {
 
     fn rotate_memory_key(&mut self) {
         use crate::memory::odu_keys::OduKeys;
-        let hermetic_seed = blake3::derive_key("omokoda:hermetic_seed", self.snapshot.odu_seed.as_bytes());
+        let hermetic_seed =
+            blake3::derive_key("omokoda:hermetic_seed", self.snapshot.odu_seed.as_bytes());
 
         let epoch_nonce = [0u8; 32];
         self.current_memory_key = OduKeys::rotate_key(
@@ -809,8 +822,13 @@ impl Steward {
                         hermetic: agent.hermetic_state(),
                         available_tools: &[],
                     };
-                    let exec_ctx = compile_ctx.to_exec_context(agent.id().clone(), agent.name().to_string(), agent.snapshot.session.config.default_sandbox);
-                    self.tools.list_available(&exec_ctx, &self.permission_policy)
+                    let exec_ctx = compile_ctx.to_exec_context(
+                        agent.id().clone(),
+                        agent.name().to_string(),
+                        agent.snapshot.session.config.default_sandbox,
+                    );
+                    self.tools
+                        .list_available(&exec_ctx, &self.permission_policy)
                 };
                 let compilation = IntentCompiler::compile(
                     &prompt,
@@ -832,7 +850,10 @@ impl Steward {
                     reputation,
                     tier,
                 };
-                let hook_decision = self.justice.hook_runner.run_pre(&compile_hook_ctx, &self.event_bus);
+                let hook_decision = self
+                    .justice
+                    .hook_runner
+                    .run_pre(&compile_hook_ctx, &self.event_bus);
 
                 let (response, usage) = match hook_decision {
                     crate::justice::HookDecision::Deny(reason) => (
@@ -858,7 +879,11 @@ impl Steward {
                     reputation,
                     tier,
                 };
-                let response = match self.justice.hook_runner.run_post(&post_hook_ctx, &self.event_bus) {
+                let response = match self
+                    .justice
+                    .hook_runner
+                    .run_post(&post_hook_ctx, &self.event_bus)
+                {
                     crate::justice::HookDecision::Deny(reason) => {
                         format!("Intent post-validation refused by Justice hook: {reason}")
                     }
@@ -1076,17 +1101,28 @@ impl Steward {
 
                 let (output, tool_usage) = match self
                     .tools
-                    .execute(&tool, &params, context, &self.permission_policy, self.permission_prompter.as_deref_mut().map(|p| p as &mut dyn crate::permissions::PermissionPrompter))
-                    .await {
+                    .execute(
+                        &tool,
+                        &params,
+                        context,
+                        &self.permission_policy,
+                        self.permission_prompter
+                            .as_deref_mut()
+                            .map(|p| p as &mut dyn crate::permissions::PermissionPrompter),
+                    )
+                    .await
+                {
                     Ok(res) => res,
                     Err(e) => {
                         if e.contains("Private Access Violation") {
                             let event = SovereignEvent {
-                                event: Some(sovereign_event::Event::Denial(crate::bus::events::Denial {
-                                    tool: tool.clone(),
-                                    reason: "runtime_private_boundary_violation".to_string(),
-                                    resource: params.clone(),
-                                })),
+                                event: Some(sovereign_event::Event::Denial(
+                                    crate::bus::events::Denial {
+                                        tool: tool.clone(),
+                                        reason: "runtime_private_boundary_violation".to_string(),
+                                        resource: params.clone(),
+                                    },
+                                )),
                             };
                             let _ = self.event_bus.publish(event);
                         }
@@ -1099,7 +1135,9 @@ impl Steward {
                 let cost = crate::usage::estimate_tool_cost(&tool);
                 {
                     let agent_mut = self.ensure_born_mut()?;
-                    agent_mut.burn_synapse(cost).map_err(|e| format!("Budget failure: {}", e))?;
+                    agent_mut
+                        .burn_synapse(cost)
+                        .map_err(|e| format!("Budget failure: {}", e))?;
                 }
 
                 let cooldown_duration = match tool.as_str() {
@@ -1130,7 +1168,11 @@ impl Steward {
                     reputation: new_rep,
                     tier: tier_for(new_rep),
                 };
-                match self.justice.hook_runner.run_post(&post_hook_ctx, &self.event_bus) {
+                match self
+                    .justice
+                    .hook_runner
+                    .run_post(&post_hook_ctx, &self.event_bus)
+                {
                     crate::justice::HookDecision::Deny(reason) => {
                         return Err(format!("Post-act hook denied: {}", reason))
                     }
@@ -1160,7 +1202,10 @@ impl Steward {
                     &signing_key,
                 );
 
-                agent_mut.receipts_mut().record_action_receipt(receipt.clone()).map_err(|e| format!("failed to record receipt: {}", e))?;
+                agent_mut
+                    .receipts_mut()
+                    .record_action_receipt(receipt.clone())
+                    .map_err(|e| format!("failed to record receipt: {}", e))?;
 
                 // Session history
                 agent_mut.add_message(ConversationMessage {
@@ -1203,11 +1248,10 @@ impl Steward {
                     tool_output: Some(output),
                 })
             }
-            Statement::SlashCmd { command, arg } => {
-                match command.as_str() {
-                    "status" => {
-                        let agent = self.ensure_born()?;
-                        let status = format!(
+            Statement::SlashCmd { command, arg } => match command.as_str() {
+                "status" => {
+                    let agent = self.ensure_born()?;
+                    let status = format!(
                             "Agent Name: {}\nAgent ID: {}\nTier: {}\nReputation: {:.3}\nDNA: {}\nPet: {}\nOrisha: {}\nProfile: {}\nReceipts: {}\n",
                             agent.name(),
                             agent.id(),
@@ -1219,188 +1263,175 @@ impl Steward {
                             agent.personality().personality_summary,
                             agent.receipts().count()
                         );
-                        Ok(ExecutionResult {
-                            receipt: None,
-                            private_mode: false,
-                            tool_output: Some(status),
-                        })
-                    }
-                    "help" => {
-                        let help = "Omokoda CLI Help:\nAvailable commands: birth, think, act, /status, /help, /tools, /private, /publish, /sandbox, /transfer, /configure, /unlock, /seal";
-                        Ok(ExecutionResult {
-                            receipt: None,
-                            private_mode: false,
-                            tool_output: Some(help.to_string()),
-                        })
-                    }
-                    "tools" => {
-                        let agent = self.ensure_born()?;
-                        let context = ExecutionContext {
-                            agent_id: agent.id().clone(),
-                            name: agent.name().to_string(),
-                            tier: agent.tier(),
-                            reputation: agent.reputation(),
-                            odu_identity: agent.snapshot.odu_identity.clone(),
-                            workspace_root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-                            sandbox_mode: agent.snapshot.session.config.default_sandbox,
-                        };
-                        let tools = self.tools.list_available(&context, &self.permission_policy);
-                        let tools_list = tools
-                            .iter()
-                            .map(|t| format!("- {}", t))
-                            .collect::<Vec<_>>()
-                            .join("\n");
-                        let output = format!("Allowed tools for Tier {}:\n{}", context.tier, tools_list);
-                        Ok(ExecutionResult {
-                            receipt: None,
-                            private_mode: false,
-                            tool_output: Some(output),
-                        })
-                    }
-                    "configure" => {
-                        let arg_str = arg.ok_or_else(|| {
-                            "configure requires an argument (e.g. provider:mock)".to_string()
-                        })?;
-                        if let Some((key, value)) = arg_str.split_once(':') {
-                            match key {
-                                "provider" => {
-                                    if !self.providers.is_known_provider(value)
-                                        && !value.eq_ignore_ascii_case("default")
-                                    {
-                                        let available = self.providers.provider_names().join(", ");
-                                        return Err(format!(
-                                            "unknown provider '{}'. available: {}",
-                                            value, available
-                                        ));
-                                    }
-                                    let agent = self.ensure_born_mut()?;
-                                    agent.session_mut().config.default_provider = value.to_string();
-                                    self.auto_save();
-                                    Ok(ExecutionResult {
-                                        receipt: None,
-                                        private_mode: false,
-                                        tool_output: Some(format!(
-                                            "Configured provider to {}",
-                                            value
-                                        )),
-                                    })
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(status),
+                    })
+                }
+                "help" => {
+                    let help = "Omokoda CLI Help:\nAvailable commands: birth, think, act, /status, /help, /tools, /private, /publish, /sandbox, /transfer, /configure, /unlock, /seal";
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(help.to_string()),
+                    })
+                }
+                "tools" => {
+                    let agent = self.ensure_born()?;
+                    let context = ExecutionContext {
+                        agent_id: agent.id().clone(),
+                        name: agent.name().to_string(),
+                        tier: agent.tier(),
+                        reputation: agent.reputation(),
+                        odu_identity: agent.snapshot.odu_identity.clone(),
+                        workspace_root: std::env::current_dir()
+                            .unwrap_or_else(|_| PathBuf::from(".")),
+                        sandbox_mode: agent.snapshot.session.config.default_sandbox,
+                    };
+                    let tools = self.tools.list_available(&context, &self.permission_policy);
+                    let tools_list = tools
+                        .iter()
+                        .map(|t| format!("- {}", t))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    let output =
+                        format!("Allowed tools for Tier {}:\n{}", context.tier, tools_list);
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(output),
+                    })
+                }
+                "configure" => {
+                    let arg_str = arg.ok_or_else(|| {
+                        "configure requires an argument (e.g. provider:mock)".to_string()
+                    })?;
+                    if let Some((key, value)) = arg_str.split_once(':') {
+                        match key {
+                            "provider" => {
+                                if !self.providers.is_known_provider(value)
+                                    && !value.eq_ignore_ascii_case("default")
+                                {
+                                    let available = self.providers.provider_names().join(", ");
+                                    return Err(format!(
+                                        "unknown provider '{}'. available: {}",
+                                        value, available
+                                    ));
                                 }
-                                "privacy" => {
-                                    let parsed = match value {
-                                        "true" | "on" | "yes" => true,
-                                        "false" | "off" | "no" => false,
-                                        _ => {
-                                            return Err(
-                                                "privacy must be true/on/yes or false/off/no"
-                                                    .to_string(),
-                                            )
-                                        }
-                                    };
-                                    let agent = self.ensure_born_mut()?;
-                                    agent.session_mut().config.default_privacy = parsed;
-                                    self.auto_save();
-                                    Ok(ExecutionResult {
-                                        receipt: None,
-                                        private_mode: false,
-                                        tool_output: Some(format!(
-                                            "Configured privacy to {}",
-                                            parsed
-                                        )),
-                                    })
-                                }
-                                "sandbox" => {
-                                    let parsed = match value {
-                                        "true" | "on" | "yes" => true,
-                                        "false" | "off" | "no" => false,
-                                        _ => {
-                                            return Err(
-                                                "sandbox must be true/on/yes or false/off/no"
-                                                    .to_string(),
-                                            )
-                                        }
-                                    };
-                                    let agent = self.ensure_born_mut()?;
-                                    agent.session_mut().config.default_sandbox = parsed;
-                                    self.auto_save();
-                                    Ok(ExecutionResult {
-                                        receipt: None,
-                                        private_mode: false,
-                                        tool_output: Some(format!(
-                                            "Configured sandbox to {}",
-                                            parsed
-                                        )),
-                                    })
-                                }
-                                _ => Err(format!("Unknown configuration key: {}", key)),
+                                let agent = self.ensure_born_mut()?;
+                                agent.session_mut().config.default_provider = value.to_string();
+                                self.auto_save();
+                                Ok(ExecutionResult {
+                                    receipt: None,
+                                    private_mode: false,
+                                    tool_output: Some(format!("Configured provider to {}", value)),
+                                })
                             }
-                        } else {
-                            Err("Invalid configuration format. Use key:value".to_string())
+                            "privacy" => {
+                                let parsed = match value {
+                                    "true" | "on" | "yes" => true,
+                                    "false" | "off" | "no" => false,
+                                    _ => {
+                                        return Err("privacy must be true/on/yes or false/off/no"
+                                            .to_string())
+                                    }
+                                };
+                                let agent = self.ensure_born_mut()?;
+                                agent.session_mut().config.default_privacy = parsed;
+                                self.auto_save();
+                                Ok(ExecutionResult {
+                                    receipt: None,
+                                    private_mode: false,
+                                    tool_output: Some(format!("Configured privacy to {}", parsed)),
+                                })
+                            }
+                            "sandbox" => {
+                                let parsed = match value {
+                                    "true" | "on" | "yes" => true,
+                                    "false" | "off" | "no" => false,
+                                    _ => {
+                                        return Err("sandbox must be true/on/yes or false/off/no"
+                                            .to_string())
+                                    }
+                                };
+                                let agent = self.ensure_born_mut()?;
+                                agent.session_mut().config.default_sandbox = parsed;
+                                self.auto_save();
+                                Ok(ExecutionResult {
+                                    receipt: None,
+                                    private_mode: false,
+                                    tool_output: Some(format!("Configured sandbox to {}", parsed)),
+                                })
+                            }
+                            _ => Err(format!("Unknown configuration key: {}", key)),
                         }
+                    } else {
+                        Err("Invalid configuration format. Use key:value".to_string())
                     }
-                    "seal" => {
-                        let password = normalize_secret_arg(
-                            arg.ok_or_else(|| "seal requires a password".to_string())?,
-                        );
-                        let agent = self.ensure_born_mut()?;
+                }
+                "seal" => {
+                    let password = normalize_secret_arg(
+                        arg.ok_or_else(|| "seal requires a password".to_string())?,
+                    );
+                    let agent = self.ensure_born_mut()?;
 
-                        let private_data = agent
-                            .private_data
-                            .take()
-                            .ok_or_else(|| "agent already sealed".to_string())?;
+                    let private_data = agent
+                        .private_data
+                        .take()
+                        .ok_or_else(|| "agent already sealed".to_string())?;
 
-                        let key = derive_unlock_key(&password, agent.public_key())?;
+                    let key = derive_unlock_key(&password, agent.public_key())?;
 
-                        let odu_seed = agent.odu_seed().clone();
-                        let res = agent
+                    let odu_seed = agent.odu_seed().clone();
+                    let res =
+                        agent
                             .session_mut()
                             .seal_private(&private_data, &odu_seed, key.expose());
-                        
-                        if let Err(e) = res {
-                            agent.private_data = Some(private_data);
-                            return Err(e);
-                        }
 
-                        self.unlock_key = None;
-                        self.auto_save();
-
-                        Ok(ExecutionResult {
-                            receipt: None,
-                            private_mode: false,
-                            tool_output: Some("Agent private memory sealed.".to_string()),
-                        })
-                    }
-                    "unlock" => {
-                        let password = normalize_secret_arg(
-                            arg.ok_or_else(|| "unlock requires a password".to_string())?,
-                        );
-                        let agent = self.ensure_born_mut()?;
-
-                        if agent.private_data.is_some() {
-                            return Err("agent already unlocked".to_string());
-                        }
-
-                        let key = derive_unlock_key(&password, agent.public_key())?;
-
-                        let odu_seed = agent.odu_seed().clone();
-                        let private_data = agent
-                            .session()
-                            .unseal_private(&odu_seed, key.expose())?;
+                    if let Err(e) = res {
                         agent.private_data = Some(private_data);
-                        self.unlock_key = Some(key);
-                        self.auto_save();
-
-                        Ok(ExecutionResult {
-                            receipt: None,
-                            private_mode: false,
-                            tool_output: Some("Agent private memory unlocked.".to_string()),
-                        })
+                        return Err(e);
                     }
-                    _ => Err(format!(
-                        "Slash command '/{}' not yet implemented in Steward",
-                        command
-                    )),
+
+                    self.unlock_key = None;
+                    self.auto_save();
+
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some("Agent private memory sealed.".to_string()),
+                    })
                 }
-            }
+                "unlock" => {
+                    let password = normalize_secret_arg(
+                        arg.ok_or_else(|| "unlock requires a password".to_string())?,
+                    );
+                    let agent = self.ensure_born_mut()?;
+
+                    if agent.private_data.is_some() {
+                        return Err("agent already unlocked".to_string());
+                    }
+
+                    let key = derive_unlock_key(&password, agent.public_key())?;
+
+                    let odu_seed = agent.odu_seed().clone();
+                    let private_data = agent.session().unseal_private(&odu_seed, key.expose())?;
+                    agent.private_data = Some(private_data);
+                    self.unlock_key = Some(key);
+                    self.auto_save();
+
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some("Agent private memory unlocked.".to_string()),
+                    })
+                }
+                _ => Err(format!(
+                    "Slash command '/{}' not yet implemented in Steward",
+                    command
+                )),
+            },
         }
     }
 
@@ -1595,9 +1626,12 @@ impl Steward {
                 &call.params,
                 context,
                 &self.permission_policy,
-                self.permission_prompter.as_deref_mut().map(|p| p as &mut dyn crate::permissions::PermissionPrompter),
+                self.permission_prompter
+                    .as_deref_mut()
+                    .map(|p| p as &mut dyn crate::permissions::PermissionPrompter),
             )
-            .await {
+            .await
+        {
             Ok(res) => res,
             Err(e) => {
                 if e.contains("Private Access Violation") {
@@ -1619,7 +1653,9 @@ impl Steward {
         let cost = crate::usage::estimate_tool_cost(&tool);
         {
             let agent_mut = self.ensure_born_mut()?;
-            agent_mut.burn_synapse(cost).map_err(|e| format!("Budget failure: {}", e))?;
+            agent_mut
+                .burn_synapse(cost)
+                .map_err(|e| format!("Budget failure: {}", e))?;
         }
 
         let cooldown_duration = match tool.as_str() {
@@ -1628,7 +1664,6 @@ impl Steward {
             _ => 0,
         };
         self.rhythm_tracker.set(&tool, cooldown_duration);
-
 
         // Justice module: Reputation update
         let current_rep = self.reputation();
@@ -1650,7 +1685,11 @@ impl Steward {
             reputation: new_rep,
             tier: tier_for(new_rep),
         };
-        match self.justice.hook_runner.run_post(&post_hook_ctx, &self.event_bus) {
+        match self
+            .justice
+            .hook_runner
+            .run_post(&post_hook_ctx, &self.event_bus)
+        {
             crate::justice::HookDecision::Deny(reason) => {
                 return Err(format!("Post-act hook denied: {}", reason))
             }
@@ -1727,7 +1766,10 @@ impl Steward {
             &merkle_root,
             &signing_key,
         );
-        agent_mut.receipts_mut().record_action_receipt(receipt.clone()).map_err(|e| format!("failed to record receipt: {}", e))?;
+        agent_mut
+            .receipts_mut()
+            .record_action_receipt(receipt.clone())
+            .map_err(|e| format!("failed to record receipt: {}", e))?;
         Ok(receipt)
     }
 
@@ -1752,8 +1794,14 @@ impl Steward {
                     hermetic: agent.hermetic_state(),
                     available_tools: &[],
                 };
-                let exec_ctx = compile_ctx.to_exec_context(agent.id().clone(), agent.name().to_string(), agent.snapshot.session.config.default_sandbox);
-                let available_tools = self.tools.list_available(&exec_ctx, &self.permission_policy);
+                let exec_ctx = compile_ctx.to_exec_context(
+                    agent.id().clone(),
+                    agent.name().to_string(),
+                    agent.snapshot.session.config.default_sandbox,
+                );
+                let available_tools = self
+                    .tools
+                    .list_available(&exec_ctx, &self.permission_policy);
                 let compilation = IntentCompiler::compile(
                     prompt,
                     modifiers,
@@ -1788,10 +1836,12 @@ impl Steward {
 
         let stmt = stmt;
         let mut iterations = 0;
-        let max_iterations = 16; 
-        
+        let max_iterations = 16;
+
         let audit_after_success = audit_event_for_success(&stmt);
-        let result = self.dispatch_with_guard(stmt, &sink, &mut iterations, max_iterations).await;
+        let result = self
+            .dispatch_with_guard(stmt, &sink, &mut iterations, max_iterations)
+            .await;
 
         match &result {
             Ok(exec) => {

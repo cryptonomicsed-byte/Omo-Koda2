@@ -1,5 +1,5 @@
 use std::path::Path;
-use wasmtime::{Engine, Store, Module, Linker};
+use wasmtime::{Engine, Linker, Module, Store};
 use wasmtime_wasi::WasiCtxBuilder;
 
 pub struct WasmSandbox {
@@ -35,11 +35,13 @@ impl WasmSandbox {
             .instantiate(&mut store, &module)
             .map_err(|e| format!("failed to instantiate: {}", e))?;
 
-        let func = instance.get_typed_func::<(), ()>(&mut store, "_start")
+        let func = instance
+            .get_typed_func::<(), ()>(&mut store, "_start")
             .or_else(|_| instance.get_typed_func::<(), ()>(&mut store, "main"))
             .map_err(|_| "module lacks _start or main".to_string())?;
 
-        func.call(&mut store, ()).map_err(|e| format!("execution error: {}", e))?;
+        func.call(&mut store, ())
+            .map_err(|e| format!("execution error: {}", e))?;
 
         Ok("WASM execution completed".to_string())
     }

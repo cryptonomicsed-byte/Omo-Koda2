@@ -1534,6 +1534,8 @@ impl Steward {
         }
     }
 
+    /// Administrative enforcement hook — applies an ethics-violation reputation penalty.
+    /// Not a primitive. Invoked by the justice system or administrative slash commands only.
     pub fn slash_ethics(&mut self) -> Result<(), String> {
         let current_rep = self.reputation();
         let new_rep = self.justice.check_ethics_violation(current_rep);
@@ -1543,6 +1545,8 @@ impl Steward {
         Ok(())
     }
 
+    /// Administrative enforcement hook — applies a budget-overrun reputation penalty.
+    /// Not a primitive. Invoked by the justice system or administrative slash commands only.
     pub fn slash_budget(&mut self) -> Result<(), String> {
         let current_rep = self.reputation();
         let new_rep = self.justice.check_budget_overrun(current_rep);
@@ -2017,8 +2021,10 @@ impl Steward {
             .ok_or_else(|| "agent must be born first".to_string())
     }
 
-    /// Agentic think: LLM can request tools, get results, continue reasoning (up to max_turns)
-    pub async fn think_agentic(
+    /// Agentic think: LLM can request tools, get results, continue reasoning (up to max_turns).
+    /// This is an internal multi-turn loop around the `think` primitive — not a separate primitive.
+    /// Callers outside omokoda-core must route through `dispatch()` with a Think statement.
+    pub(crate) async fn think_agentic(
         &mut self,
         prompt: String,
         private: bool,

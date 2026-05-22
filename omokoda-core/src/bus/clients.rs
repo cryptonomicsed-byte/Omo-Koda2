@@ -212,7 +212,8 @@ impl YemojaClient for LocalYemojaStub {
 #[async_trait]
 impl OgunClient for LocalOgunStub {
     async fn execute_tool(&self, tool_name: &str, _input_json: &str) -> Result<String, String> {
-        Ok(format!(r#"{{"stub": true, "tool": "{}"}}", tool_name))
+        Ok(serde_json::to_string(&serde_json::json!({"stub": true, "tool": tool_name}))
+            .unwrap_or_default())
     }
 }
 
@@ -276,7 +277,7 @@ mod tests {
     #[tokio::test]
     async fn ogun_stub_returns_stub_json() {
         let stub = LocalOgunStub;
-        let result = stub.execute_tool("data_transform", r#"{"input": "x"}"#).await;
+        let result = stub.execute_tool("data_transform", "{}").await;
         assert!(result.is_ok());
         let json = result.unwrap();
         assert!(json.contains("stub"));

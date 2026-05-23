@@ -27,11 +27,8 @@ jobs:
       - name: Fallback to vendored Bipon39 stub
         if: steps.checkout_bipon39.outcome == 'failure'
         run: cp -r Omo-Koda2/bipon39-stub/. Bipon39-Rust/
-      - name: Checkout Ifascript
-        uses: actions/checkout@v4
-        with:
-          repository: omo-koda/ifascript
-          path: Ifascript
+      - name: Set up Ifascript stub
+        run: cp -r Omo-Koda2/ifascript-stub/. Ifascript/
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:

@@ -1,0 +1,8 @@
+[package]
+name        = "ifascript"
+version     = "0.1.0"
+edition     = "2021"
+description = "IfáScript — vendored CI stub (used when omo-koda/ifascript has compile issues)"
+
+[dependencies]
+once_cell = "1.18"

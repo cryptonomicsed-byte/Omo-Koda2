@@ -19,12 +19,13 @@ jobs:
       - name: Checkout Bipon39-Rust
         uses: actions/checkout@v4
         with:
-          repository: Bino-Elgua/Bipon39-Rust
+          repository: omo-koda/Bipon39-Rust
           path: Bipon39-Rust
+          token: ${{ secrets.OMO_KODA_PAT || github.token }}
       - name: Checkout Ifascript
         uses: actions/checkout@v4
         with:
-          repository: Bino-Elgua/Ifascript
+          repository: omo-koda/ifascript
           path: Ifascript
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -96,7 +97,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: python3 -m pip install -r omokoda-simulation/requirements.txt --quiet
-      - run: python3 -m py_compile omokoda-simulation/simulation.py
+      - run: python3 -m py_compile omokoda-simulation/simulation.py omokoda-simulation/executor.py
 
   node:
     name: Node

@@ -12,3 +12,7 @@ omokoda-frontend/tsconfig.tsbuildinfo
 
 # Sui Move build artifacts
 omokoda-sui/build/
+
+# Python cache
+__pycache__/
+*.pyc

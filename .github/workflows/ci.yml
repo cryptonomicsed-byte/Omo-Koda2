@@ -17,11 +17,16 @@ jobs:
         with:
           path: Omo-Koda2
       - name: Checkout Bipon39-Rust
+        id: checkout_bipon39
         uses: actions/checkout@v4
+        continue-on-error: true
         with:
           repository: omo-koda/Bipon39-Rust
           path: Bipon39-Rust
           token: ${{ secrets.OMO_KODA_PAT || github.token }}
+      - name: Fallback to vendored Bipon39 stub
+        if: steps.checkout_bipon39.outcome == 'failure'
+        run: cp -r Omo-Koda2/bipon39-stub/. Bipon39-Rust/
       - name: Checkout Ifascript
         uses: actions/checkout@v4
         with:

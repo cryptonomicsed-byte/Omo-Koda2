@@ -1,6 +1,6 @@
+use crate::plugins::manifest::PluginManifest;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-use crate::plugins::manifest::PluginManifest;
 
 #[derive(Debug, Clone)]
 pub struct DiscoveredPlugin {
@@ -21,8 +21,7 @@ impl PluginDiscovery {
             .into_iter()
             .filter_map(|entry| entry.ok())
             .filter(|e| {
-                e.file_type().is_dir()
-                    && e.file_name().to_string_lossy() == ".omokoda-plugin"
+                e.file_type().is_dir() && e.file_name().to_string_lossy() == ".omokoda-plugin"
             })
             .filter_map(|dir| {
                 let manifest_path = dir.path().join("plugin.json");
@@ -40,7 +39,7 @@ impl PluginDiscovery {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugins::manifest::{PluginType, LifecycleConfig};
+    use crate::plugins::manifest::{LifecycleConfig, PluginType};
 
     fn make_manifest_json(name: &str) -> String {
         format!(

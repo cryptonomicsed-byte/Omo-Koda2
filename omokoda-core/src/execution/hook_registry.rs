@@ -190,7 +190,11 @@ impl ShellHookHandler {
             return HookOutcome::Allow;
         }
         if let Ok(val) = serde_json::from_str::<serde_json::Value>(output) {
-            match val.get("outcome").and_then(|v| v.as_str()).unwrap_or("allow") {
+            match val
+                .get("outcome")
+                .and_then(|v| v.as_str())
+                .unwrap_or("allow")
+            {
                 "block" => HookOutcome::Block(
                     val.get("reason")
                         .and_then(|v| v.as_str())
@@ -312,14 +316,7 @@ impl ShellHookRunner {
         tool_name: &str,
         tool_input: &str,
     ) -> HookRunResult {
-        Self::run_commands(
-            commands,
-            "PreToolUse",
-            tool_name,
-            tool_input,
-            None,
-            false,
-        )
+        Self::run_commands(commands, "PreToolUse", tool_name, tool_input, None, false)
     }
 
     /// Run post-tool-use hooks.
@@ -381,9 +378,8 @@ impl ShellHookRunner {
                     }
                 }
                 ShellCommandOutcome::Deny { message } => {
-                    let msg = message.unwrap_or_else(|| {
-                        format!("{event_name} hook denied tool `{tool_name}`")
-                    });
+                    let msg = message
+                        .unwrap_or_else(|| format!("{event_name} hook denied tool `{tool_name}`"));
                     messages.push(msg);
                     return HookRunResult {
                         denied: true,
@@ -782,8 +778,20 @@ mod tests {
 
     #[test]
     fn test_new_hook_points_exist() {
-        for name in ["pre_think", "post_think", "pre_act", "post_act", "on_error", "on_compact", "on_dream"] {
-            assert!(HookEventType::from_str(name).is_some(), "{} not found", name);
+        for name in [
+            "pre_think",
+            "post_think",
+            "pre_act",
+            "post_act",
+            "on_error",
+            "on_compact",
+            "on_dream",
+        ] {
+            assert!(
+                HookEventType::from_str(name).is_some(),
+                "{} not found",
+                name
+            );
         }
     }
 
@@ -815,11 +823,7 @@ mod tests {
     #[test]
     fn shell_runner_allows_exit_zero_captures_stdout() {
         let cmds = vec!["printf 'hook ok'".to_string()];
-        let result = ShellHookRunner::run_pre_tool_use(
-            &cmds,
-            "Read",
-            r#"{"path":"README.md"}"#,
-        );
+        let result = ShellHookRunner::run_pre_tool_use(&cmds, "Read", r#"{"path":"README.md"}"#);
         assert!(!result.is_denied());
         // Login shells may emit profile noise (e.g. nvm); check that the payload is present
         assert!(
@@ -832,11 +836,7 @@ mod tests {
     #[test]
     fn shell_runner_denies_exit_two() {
         let cmds = vec!["printf 'blocked'; exit 2".to_string()];
-        let result = ShellHookRunner::run_pre_tool_use(
-            &cmds,
-            "Bash",
-            r#"{"command":"rm -rf /"}"#,
-        );
+        let result = ShellHookRunner::run_pre_tool_use(&cmds, "Bash", r#"{"command":"rm -rf /"}"#);
         assert!(result.is_denied());
         // Login shells may prepend profile noise; assert the denial message is present
         assert!(
@@ -849,14 +849,13 @@ mod tests {
     #[test]
     fn shell_runner_warns_for_other_non_zero() {
         let cmds = vec!["printf 'warn msg'; exit 1".to_string()];
-        let result = ShellHookRunner::run_pre_tool_use(
-            &cmds,
-            "Edit",
-            r#"{"file":"src/lib.rs"}"#,
-        );
+        let result = ShellHookRunner::run_pre_tool_use(&cmds, "Edit", r#"{"file":"src/lib.rs"}"#);
         assert!(!result.is_denied());
         assert!(
-            result.messages().iter().any(|m| m.contains("allowing tool execution to continue")),
+            result
+                .messages()
+                .iter()
+                .any(|m| m.contains("allowing tool execution to continue")),
             "expected warning message, got: {:?}",
             result.messages()
         );

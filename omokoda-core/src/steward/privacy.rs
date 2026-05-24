@@ -6,7 +6,10 @@ pub struct PrivacyEnforcer;
 
 impl PrivacyEnforcer {
     /// Returns Err if a non-local provider is attempted while user requires local-only inference.
-    pub fn check_provider_allowed(mode: &PrivacyMode, provider_is_local: bool) -> Result<(), String> {
+    pub fn check_provider_allowed(
+        mode: &PrivacyMode,
+        provider_is_local: bool,
+    ) -> Result<(), String> {
         if *mode != PrivacyMode::Public && !provider_is_local {
             Err(format!(
                 "HARD FAIL: {:?} mode requires a local provider — external inference not permitted",

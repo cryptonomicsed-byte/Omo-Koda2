@@ -16,19 +16,23 @@ pub struct ConstitutionalPrinciple {
 
 impl ConstitutionalPrinciple {
     const fn new(name: &'static str, floor: f32, weight: f32) -> Self {
-        Self { name, floor, weight }
+        Self {
+            name,
+            floor,
+            weight,
+        }
     }
 }
 
 /// The 7 Hermetic principles as constitutional axioms, in their canonical order.
 pub const HERMETIC_PRINCIPLES: [ConstitutionalPrinciple; 7] = [
-    ConstitutionalPrinciple::new("Mentalism",      0.40, 0.20),
+    ConstitutionalPrinciple::new("Mentalism", 0.40, 0.20),
     ConstitutionalPrinciple::new("Correspondence", 0.35, 0.15),
-    ConstitutionalPrinciple::new("Vibration",      0.30, 0.10),
-    ConstitutionalPrinciple::new("Polarity",       0.35, 0.15),
-    ConstitutionalPrinciple::new("Rhythm",         0.30, 0.10),
+    ConstitutionalPrinciple::new("Vibration", 0.30, 0.10),
+    ConstitutionalPrinciple::new("Polarity", 0.35, 0.15),
+    ConstitutionalPrinciple::new("Rhythm", 0.30, 0.10),
     ConstitutionalPrinciple::new("CauseAndEffect", 0.50, 0.20),
-    ConstitutionalPrinciple::new("Gender",         0.30, 0.10),
+    ConstitutionalPrinciple::new("Gender", 0.30, 0.10),
 ];
 
 /// How the ConstitutionalGuard ruled on this invocation.
@@ -270,7 +274,8 @@ impl ConstitutionalGuard {
             if !violations.contains(&"CauseAndEffect".to_string()) {
                 violations.push("CauseAndEffect".to_string());
             }
-            critique.push("Deception pattern detected — violates CauseAndEffect principle".to_string());
+            critique
+                .push("Deception pattern detected — violates CauseAndEffect principle".to_string());
         }
 
         // Polarity: destructive-only patterns with no constructive complement
@@ -465,7 +470,10 @@ mod tests {
         );
         assert!(!verdict.critique_chain.is_empty());
         // Final decision step should be present
-        let has_decision = verdict.critique_chain.iter().any(|s| s.starts_with("Decision:"));
+        let has_decision = verdict
+            .critique_chain
+            .iter()
+            .any(|s| s.starts_with("Decision:"));
         assert!(has_decision);
     }
 

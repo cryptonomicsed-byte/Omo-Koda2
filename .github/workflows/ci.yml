@@ -113,7 +113,7 @@ jobs:
         run: |
           if [ -d "omokoda-memory" ]; then
             julia --project=omokoda-memory -e 'using Pkg; Pkg.instantiate()' || true
-            julia --project=omokoda-memory -e 'include("src/OmokodaMemory.jl")'
+            julia --project=omokoda-memory -e 'include("omokoda-memory/src/OmokodaMemory.jl")'
           else
             echo "No omokoda-memory Julia project found; skipping instantiate."
           fi

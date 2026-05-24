@@ -6,7 +6,10 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ApiError {
     /// HTTP 429 / provider rate limit — always retryable
-    RateLimit { message: String, retry_after_secs: Option<u64> },
+    RateLimit {
+        message: String,
+        retry_after_secs: Option<u64>,
+    },
     /// HTTP 5xx — retryable (transient server fault)
     ServerError { status: u16, message: String },
     /// HTTP 408 / network timeout — retryable
@@ -50,7 +53,11 @@ impl ApiError {
             return None;
         }
         // Honour provider-supplied retry-after header when present
-        if let Self::RateLimit { retry_after_secs: Some(secs), .. } = self {
+        if let Self::RateLimit {
+            retry_after_secs: Some(secs),
+            ..
+        } = self
+        {
             return Some(secs.saturating_mul(1000));
         }
         Some(config.delay_for_attempt(attempt))
@@ -180,7 +187,10 @@ mod tests {
         let e = ApiError::from_http(429, r#"{"retry_after":5}"#);
         assert!(matches!(
             e,
-            ApiError::RateLimit { retry_after_secs: Some(5), .. }
+            ApiError::RateLimit {
+                retry_after_secs: Some(5),
+                ..
+            }
         ));
         assert!(e.is_retryable());
     }

@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -82,12 +82,14 @@ mod tests {
 
     #[test]
     fn find_server_returns_correct_entry() {
-        let manifest = McpManifest::from_json(r#"{
+        let manifest = McpManifest::from_json(
+            r#"{
             "servers": [
                 {"name": "alpha", "transport": {"type": "stdio"}},
                 {"name": "beta", "transport": {"type": "http", "url": "http://localhost:8080"}}
             ]
-        }"#)
+        }"#,
+        )
         .unwrap();
 
         assert!(manifest.find_server("alpha").is_some());

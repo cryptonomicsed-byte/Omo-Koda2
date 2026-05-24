@@ -85,9 +85,18 @@ impl AgentDefinition {
 
         Some(Self {
             name,
-            role: frontmatter.get("role").cloned().unwrap_or_else(|| "assistant".to_string()),
-            model: frontmatter.get("model").cloned().unwrap_or_else(|| "sonnet".to_string()),
-            tier: frontmatter.get("tier").and_then(|s| s.parse().ok()).unwrap_or(0),
+            role: frontmatter
+                .get("role")
+                .cloned()
+                .unwrap_or_else(|| "assistant".to_string()),
+            model: frontmatter
+                .get("model")
+                .cloned()
+                .unwrap_or_else(|| "sonnet".to_string()),
+            tier: frontmatter
+                .get("tier")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0),
             description: frontmatter.get("description").cloned().unwrap_or_default(),
             tools,
             hooks: Vec::new(), // hook parsing left to registry scan
@@ -151,11 +160,8 @@ impl AgentRegistry {
     }
 
     pub fn list_by_role(&self, role: &str) -> Vec<&AgentDefinition> {
-        let mut agents: Vec<&AgentDefinition> = self
-            .agents
-            .values()
-            .filter(|a| a.role == role)
-            .collect();
+        let mut agents: Vec<&AgentDefinition> =
+            self.agents.values().filter(|a| a.role == role).collect();
         agents.sort_by_key(|a| &a.name);
         agents
     }
@@ -220,7 +226,11 @@ You are an expert code reviewer. Focus on correctness and security.
     fn test_list_by_role() {
         let mut registry = AgentRegistry::new();
 
-        for (name, role) in [("alpha", "reviewer"), ("beta", "writer"), ("gamma", "reviewer")] {
+        for (name, role) in [
+            ("alpha", "reviewer"),
+            ("beta", "writer"),
+            ("gamma", "reviewer"),
+        ] {
             registry.register(AgentDefinition {
                 name: name.to_string(),
                 role: role.to_string(),

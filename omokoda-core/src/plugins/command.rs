@@ -25,8 +25,8 @@ impl CommandDef {
             argument_hint: Option<String>,
         }
 
-        let header: Header = serde_yaml::from_str(&frontmatter)
-            .map_err(|e| format!("YAML parse error: {e}"))?;
+        let header: Header =
+            serde_yaml::from_str(&frontmatter).map_err(|e| format!("YAML parse error: {e}"))?;
 
         let name = header.name.ok_or("missing required field: name")?;
 

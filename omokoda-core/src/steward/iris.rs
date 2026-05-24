@@ -50,9 +50,21 @@ impl IrisParams {
         let (temp, tokens, style) = match profile {
             IrisProfile::Reflex => (0.3, 256, "Be extremely concise. One sentence max."),
             IrisProfile::Balanced => (0.7, 1024, "Balance clarity and depth."),
-            IrisProfile::Sharp => (0.2, 2048, "Maximum technical precision. Show your reasoning."),
-            IrisProfile::Deep => (0.8, 4096, "Think deeply. Explore all angles before concluding."),
-            IrisProfile::Gentle => (0.9, 1024, "Lead with empathy. Be warm, patient, and supportive."),
+            IrisProfile::Sharp => (
+                0.2,
+                2048,
+                "Maximum technical precision. Show your reasoning.",
+            ),
+            IrisProfile::Deep => (
+                0.8,
+                4096,
+                "Think deeply. Explore all angles before concluding.",
+            ),
+            IrisProfile::Gentle => (
+                0.9,
+                1024,
+                "Lead with empathy. Be warm, patient, and supportive.",
+            ),
         };
         Self {
             profile,
@@ -91,9 +103,22 @@ impl IrisEngine {
         }
 
         // Distress signals → Gentle
-        let distress = ["exhausted", "stressed", "overwhelmed", "sad", "anxious",
-                        "hurt", "scared", "alone", "desperate", "hopeless", "crying",
-                        "worried", "afraid", "confused about feelings"];
+        let distress = [
+            "exhausted",
+            "stressed",
+            "overwhelmed",
+            "sad",
+            "anxious",
+            "hurt",
+            "scared",
+            "alone",
+            "desperate",
+            "hopeless",
+            "crying",
+            "worried",
+            "afraid",
+            "confused about feelings",
+        ];
         if distress.iter().any(|d| lower.contains(d)) {
             return IrisProfile::Gentle;
         }
@@ -104,10 +129,30 @@ impl IrisEngine {
         }
 
         // Technical/code signals → Sharp
-        let technical = ["error", "bug", "fix", "debug", "implement", "compile",
-                         "build", "test", "deploy", "function", "struct", "algorithm",
-                         "optimize", "refactor", "architecture", "api", "database",
-                         "exception", "panic", "crash", "stack trace", "lint"];
+        let technical = [
+            "error",
+            "bug",
+            "fix",
+            "debug",
+            "implement",
+            "compile",
+            "build",
+            "test",
+            "deploy",
+            "function",
+            "struct",
+            "algorithm",
+            "optimize",
+            "refactor",
+            "architecture",
+            "api",
+            "database",
+            "exception",
+            "panic",
+            "crash",
+            "stack trace",
+            "lint",
+        ];
         if technical.iter().any(|t| lower.contains(t)) {
             return IrisProfile::Sharp;
         }
@@ -197,7 +242,10 @@ mod tests {
             connection: 0.5,
             focus: 0.3,
         };
-        assert_eq!(IrisEngine::route("I need help", &stressed), IrisProfile::Gentle);
+        assert_eq!(
+            IrisEngine::route("I need help", &stressed),
+            IrisProfile::Gentle
+        );
     }
 
     #[test]

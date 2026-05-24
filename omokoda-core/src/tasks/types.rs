@@ -79,11 +79,17 @@ impl TaskKind {
     }
 
     pub fn is_write(&self) -> bool {
-        matches!(self, Self::Act { .. } | Self::Agent { .. } | Self::Delegate { .. })
+        matches!(
+            self,
+            Self::Act { .. } | Self::Agent { .. } | Self::Delegate { .. }
+        )
     }
 
     pub fn is_async(&self) -> bool {
-        matches!(self, Self::Dream { .. } | Self::Background { .. } | Self::Delegate { .. })
+        matches!(
+            self,
+            Self::Dream { .. } | Self::Background { .. } | Self::Delegate { .. }
+        )
     }
 }
 

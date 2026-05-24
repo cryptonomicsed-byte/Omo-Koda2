@@ -19,10 +19,7 @@ pub enum RetryOutcome<T> {
 ///
 /// Called FROM WITHIN `think` (provider calls) and `act` (tool network calls).
 /// Never retries on success.
-pub async fn with_retry<T, F, Fut>(
-    config: &RetryConfig,
-    mut operation: F,
-) -> Result<T, ApiError>
+pub async fn with_retry<T, F, Fut>(config: &RetryConfig, mut operation: F) -> Result<T, ApiError>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<T, ApiError>>,
@@ -41,7 +38,9 @@ where
         }
     }
 
-    Err(last_error.unwrap_or_else(|| ApiError::NetworkError { message: "retry exhausted".to_string() }))
+    Err(last_error.unwrap_or_else(|| ApiError::NetworkError {
+        message: "retry exhausted".to_string(),
+    }))
 }
 
 /// Configuration for retry behaviour.
@@ -103,25 +102,28 @@ impl Default for RetryConfig {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
 
     fn retryable_err() -> ApiError {
-        ApiError::NetworkError { message: "transient".to_string() }
+        ApiError::NetworkError {
+            message: "transient".to_string(),
+        }
     }
 
     fn fatal_err() -> ApiError {
-        ApiError::ClientError { status: 400, message: "bad request".to_string() }
+        ApiError::ClientError {
+            status: 400,
+            message: "bad request".to_string(),
+        }
     }
 
     #[tokio::test]
     async fn succeeds_on_first_attempt() {
         let config = RetryConfig::once();
-        let result: Result<u32, ApiError> =
-            with_retry(&config, || async { Ok(42) }).await;
+        let result: Result<u32, ApiError> = with_retry(&config, || async { Ok(42) }).await;
         assert_eq!(result.unwrap(), 42);
     }
 
@@ -130,7 +132,12 @@ mod tests {
         let call_count = Arc::new(Mutex::new(0u32));
         let config = RetryConfig {
             max_attempts: 4,
-            backoff: BackoffConfig { base_ms: 1, max_ms: 10, jitter: 0.0, max_attempts: 4 },
+            backoff: BackoffConfig {
+                base_ms: 1,
+                max_ms: 10,
+                jitter: 0.0,
+                max_attempts: 4,
+            },
         };
         let cc = call_count.clone();
         let result: Result<u32, ApiError> = with_retry(&config, || {
@@ -155,7 +162,12 @@ mod tests {
         let call_count = Arc::new(Mutex::new(0u32));
         let config = RetryConfig {
             max_attempts: 4,
-            backoff: BackoffConfig { base_ms: 1, max_ms: 10, jitter: 0.0, max_attempts: 4 },
+            backoff: BackoffConfig {
+                base_ms: 1,
+                max_ms: 10,
+                jitter: 0.0,
+                max_attempts: 4,
+            },
         };
         let cc = call_count.clone();
         let result: Result<u32, ApiError> = with_retry(&config, || {
@@ -167,7 +179,11 @@ mod tests {
         })
         .await;
         assert!(result.is_err());
-        assert_eq!(*call_count.lock().unwrap(), 1, "fatal errors must not retry");
+        assert_eq!(
+            *call_count.lock().unwrap(),
+            1,
+            "fatal errors must not retry"
+        );
     }
 
     #[tokio::test]
@@ -175,7 +191,12 @@ mod tests {
         let call_count = Arc::new(Mutex::new(0u32));
         let config = RetryConfig {
             max_attempts: 3,
-            backoff: BackoffConfig { base_ms: 1, max_ms: 5, jitter: 0.0, max_attempts: 3 },
+            backoff: BackoffConfig {
+                base_ms: 1,
+                max_ms: 5,
+                jitter: 0.0,
+                max_attempts: 3,
+            },
         };
         let cc = call_count.clone();
         let result: Result<u32, ApiError> = with_retry(&config, || {

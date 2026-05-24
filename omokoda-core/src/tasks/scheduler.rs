@@ -109,8 +109,7 @@ impl TaskScheduler {
         if self.query_state.is_stopped() {
             // Fail the task due to budget exhaustion
             if let Some(cond) = &self.query_state.stop_reason {
-                self.tasks
-                    .fail(task_id, format!("budget stop: {:?}", cond));
+                self.tasks.fail(task_id, format!("budget stop: {:?}", cond));
             }
             return self.query_state.stop_reason.clone();
         }
@@ -292,7 +291,10 @@ mod scheduler_tests {
     #[test]
     fn test_task_kind_labels() {
         assert_eq!(
-            TaskKind::Dream { consolidation_target: None }.label(),
+            TaskKind::Dream {
+                consolidation_target: None
+            }
+            .label(),
             "dream"
         );
         assert_eq!(
@@ -308,7 +310,11 @@ mod scheduler_tests {
 
     #[test]
     fn test_task_kind_is_write() {
-        assert!(!TaskKind::Think { prompt: "q".to_string(), private: false }.is_write());
+        assert!(!TaskKind::Think {
+            prompt: "q".to_string(),
+            private: false
+        }
+        .is_write());
         assert!(TaskKind::Act {
             tool: "bash".to_string(),
             params: "ls".to_string(),

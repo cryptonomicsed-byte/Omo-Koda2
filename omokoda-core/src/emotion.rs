@@ -33,18 +33,48 @@ impl EmotionState {
         let lower = prompt.to_ascii_lowercase();
 
         // Detect distress signals
-        let distress_words = ["exhausted", "stressed", "overwhelmed", "anxious", "angry",
-                              "frustrated", "sad", "broken", "failing", "lost"];
+        let distress_words = [
+            "exhausted",
+            "stressed",
+            "overwhelmed",
+            "anxious",
+            "angry",
+            "frustrated",
+            "sad",
+            "broken",
+            "failing",
+            "lost",
+        ];
         let has_distress = distress_words.iter().any(|w| lower.contains(w));
 
         // Detect connection signals
-        let connection_words = ["thanks", "appreciate", "love", "amazing", "great",
-                                "perfect", "feel", "need", "please", "grateful"];
+        let connection_words = [
+            "thanks",
+            "appreciate",
+            "love",
+            "amazing",
+            "great",
+            "perfect",
+            "feel",
+            "need",
+            "please",
+            "grateful",
+        ];
         let has_connection = connection_words.iter().any(|w| lower.contains(w));
 
         // Detect focus/technical signals
-        let focus_words = ["error", "bug", "fix", "debug", "implement", "build",
-                           "compile", "test", "deploy", "function"];
+        let focus_words = [
+            "error",
+            "bug",
+            "fix",
+            "debug",
+            "implement",
+            "build",
+            "compile",
+            "test",
+            "deploy",
+            "function",
+        ];
         let has_focus = focus_words.iter().any(|w| lower.contains(w));
 
         let tension_delta: f32 = if has_distress { 0.08 } else { -0.03 };
@@ -102,8 +132,10 @@ impl EmotionState {
     /// Composite "vitality" score 0.0–1.0 for logging / receipts.
     #[must_use]
     pub fn vitality(&self) -> f32 {
-        (self.energy * 0.4) + ((1.0 - self.tension) * 0.2)
-            + (self.connection * 0.2) + (self.focus * 0.2)
+        (self.energy * 0.4)
+            + ((1.0 - self.tension) * 0.2)
+            + (self.connection * 0.2)
+            + (self.focus * 0.2)
     }
 }
 
@@ -184,7 +216,12 @@ mod tests {
 
     #[test]
     fn is_fatigued_below_threshold() {
-        let low = EmotionState { energy: 0.2, tension: 0.0, connection: 0.5, focus: 0.5 };
+        let low = EmotionState {
+            energy: 0.2,
+            tension: 0.0,
+            connection: 0.5,
+            focus: 0.5,
+        };
         assert!(low.is_fatigued());
         assert!(!EmotionState::birth().is_fatigued());
     }

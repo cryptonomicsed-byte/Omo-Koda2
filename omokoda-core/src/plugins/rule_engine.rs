@@ -151,7 +151,11 @@ mod tests {
 
     #[test]
     fn block_rule_triggers() {
-        let engine = RuleEngine::new(vec![block_rule("tool_input", RuleOperator::Contains, "sudo")]);
+        let engine = RuleEngine::new(vec![block_rule(
+            "tool_input",
+            RuleOperator::Contains,
+            "sudo",
+        )]);
         let mut ctx = RuleContext::new();
         ctx.insert("tool_input", "sudo rm -rf /");
         match engine.evaluate(&ctx) {
@@ -162,7 +166,11 @@ mod tests {
 
     #[test]
     fn warn_rule_triggers() {
-        let engine = RuleEngine::new(vec![warn_rule("tool_input", RuleOperator::StartsWith, "rm")]);
+        let engine = RuleEngine::new(vec![warn_rule(
+            "tool_input",
+            RuleOperator::StartsWith,
+            "rm",
+        )]);
         let mut ctx = RuleContext::new();
         ctx.insert("tool_input", "rm file.txt");
         match engine.evaluate(&ctx) {
@@ -173,7 +181,11 @@ mod tests {
 
     #[test]
     fn allow_when_no_match() {
-        let engine = RuleEngine::new(vec![block_rule("tool_input", RuleOperator::Contains, "sudo")]);
+        let engine = RuleEngine::new(vec![block_rule(
+            "tool_input",
+            RuleOperator::Contains,
+            "sudo",
+        )]);
         let mut ctx = RuleContext::new();
         ctx.insert("tool_input", "ls -la");
         assert!(matches!(engine.evaluate(&ctx), RuleResult::Allowed));
@@ -204,7 +216,10 @@ mod tests {
         let mut ctx_both = RuleContext::new();
         ctx_both.insert("tool", "bash");
         ctx_both.insert("input", "curl http://example.com");
-        assert!(matches!(engine.evaluate(&ctx_both), RuleResult::Blocked { .. }));
+        assert!(matches!(
+            engine.evaluate(&ctx_both),
+            RuleResult::Blocked { .. }
+        ));
 
         let mut ctx_one = RuleContext::new();
         ctx_one.insert("tool", "bash");

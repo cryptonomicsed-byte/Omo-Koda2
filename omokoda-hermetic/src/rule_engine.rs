@@ -88,11 +88,7 @@ pub struct HookRule {
 }
 
 impl HookRule {
-    pub fn new(
-        id: impl Into<String>,
-        condition: RuleCondition,
-        action: RuleAction,
-    ) -> Self {
+    pub fn new(id: impl Into<String>, condition: RuleCondition, action: RuleAction) -> Self {
         Self {
             id: id.into(),
             description: String::new(),

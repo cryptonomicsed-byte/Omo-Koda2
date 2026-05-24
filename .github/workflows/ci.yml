@@ -12,35 +12,17 @@ jobs:
     name: Rust
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Omo-Koda2
-        uses: actions/checkout@v4
-        with:
-          path: Omo-Koda2
-      - name: Checkout Bipon39-Rust
-        id: checkout_bipon39
-        uses: actions/checkout@v4
-        continue-on-error: true
-        with:
-          repository: omo-koda/Bipon39-Rust
-          path: Bipon39-Rust
-          token: ${{ secrets.OMO_KODA_PAT || github.token }}
-      - name: Fallback to vendored Bipon39 stub
-        if: steps.checkout_bipon39.outcome == 'failure'
-        run: cp -r Omo-Koda2/bipon39-stub/. Bipon39-Rust/
-      - name: Set up Ifascript stub
-        run: cp -r Omo-Koda2/ifascript-stub/. Ifascript/
+      - uses: actions/checkout@v4
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
       - name: Check formatting
-        working-directory: Omo-Koda2
         run: |
           cargo fmt -p omokoda-core -- --check
           cargo fmt -p omokoda-hermetic -- --check
           cargo fmt -p omokoda-cli -- --check
       - name: Test workspace
-        working-directory: Omo-Koda2
         run: cargo test --workspace
 
   frontend:

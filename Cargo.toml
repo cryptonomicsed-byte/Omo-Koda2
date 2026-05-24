@@ -3,5 +3,7 @@ members = [
     "omokoda-core",
     "omokoda-hermetic",
     "omokoda-cli",
+    "bipon39-stub",
+    "ifascript-stub",
 ]
 resolver = "2"

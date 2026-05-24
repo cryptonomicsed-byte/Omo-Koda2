@@ -64,6 +64,7 @@ defmodule OmokodaSwarm.Wave9Test do
   describe "BackendRegistry" do
     setup do
       {:ok, pid} = OmokodaSwarm.BackendRegistry.start_link(name: :test_backend_registry)
+      on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid) end)
       %{registry: pid}
     end
 
@@ -217,6 +218,7 @@ defmodule OmokodaSwarm.Wave9Test do
   describe "TeammateLayoutManager" do
     setup do
       {:ok, pid} = OmokodaSwarm.TeammateLayoutManager.start_link(name: :test_layout)
+      on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid) end)
       %{mgr: pid}
     end
 
@@ -270,6 +272,7 @@ defmodule OmokodaSwarm.Wave9Test do
   describe "PermissionSync" do
     setup do
       {:ok, pid} = OmokodaSwarm.PermissionSync.start_link(name: :test_perm_sync)
+      on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid) end)
       %{sync: pid}
     end
 

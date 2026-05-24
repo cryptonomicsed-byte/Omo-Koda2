@@ -396,6 +396,9 @@ dependencies = [
 [[package]]
 name = "bipon39"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "bit-set"
@@ -1930,10 +1933,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ifascript"
-version = "0.1.0"
-
-[[package]]
 name = "indexmap"
 version = "2.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2122,6 +2121,15 @@ dependencies = [
  "time",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "keccak"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb26cec98cce3a3d96cbb7bced3c4b16e3d13f27ec56dbd62cbc8f39cfb9d653"
+dependencies = [
+ "cpufeatures 0.2.17",
 ]
 
 [[package]]
@@ -2512,7 +2520,6 @@ dependencies = [
  "hkdf",
  "hmac",
  "httpmock",
- "ifascript",
  "jsonschema",
  "omokoda-hermetic",
  "pbkdf2",
@@ -2528,6 +2535,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha2",
+ "sha3",
  "tempfile",
  "thiserror",
  "tokio",
@@ -2547,7 +2555,6 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "hkdf",
- "ifascript",
  "serde",
  "sha2",
 ]
@@ -3488,6 +3495,16 @@ dependencies = [
  "cfg-if",
  "cpufeatures 0.2.17",
  "digest",
+]
+
+[[package]]
+name = "sha3"
+version = "0.10.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77fd7028345d415a4034cf8777cd4f8ab1851274233b45f84e3d955502d93874"
+dependencies = [
+ "digest",
+ "keccak",
 ]
 
 [[package]]

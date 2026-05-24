@@ -12,17 +12,22 @@ jobs:
     name: Rust
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Omo-Koda2
+        uses: actions/checkout@v4
+        with:
+          path: Omo-Koda2
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
       - name: Check formatting
+        working-directory: Omo-Koda2
         run: |
           cargo fmt -p omokoda-core -- --check
           cargo fmt -p omokoda-hermetic -- --check
           cargo fmt -p omokoda-cli -- --check
       - name: Test workspace
+        working-directory: Omo-Koda2
         run: cargo test --workspace
 
   frontend:

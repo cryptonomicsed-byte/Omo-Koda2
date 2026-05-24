@@ -2527,7 +2527,6 @@ dependencies = [
  "hkdf",
  "hmac",
  "httpmock",
- "ifascript",
  "jsonschema",
  "omokoda-hermetic",
  "pbkdf2",

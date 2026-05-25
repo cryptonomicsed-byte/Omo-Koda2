@@ -25,10 +25,16 @@ defmodule OmokodaSwarm.Backends.LocalBackend do
         end
       end)
 
-    case Task.yield(task_ref, timeout) || Task.shutdown(task_ref) do
-      {:ok, result} -> result
-      {:exit, reason} -> {:error, {:exit, reason}}
-      nil -> {:error, :timeout}
+    case Task.yield(task_ref, timeout) do
+      {:ok, result} ->
+        result
+
+      {:exit, reason} ->
+        {:error, {:exit, reason}}
+
+      nil ->
+        Task.shutdown(task_ref, :brutal_kill)
+        {:error, :timeout}
     end
   end
 

@@ -80,6 +80,7 @@ defmodule OmokodaSwarm.Coordinator do
 
       count < current_count ->
         current
+        |> Enum.sort()
         |> Enum.drop(count)
         |> Enum.each(&OmokodaSwarm.SwarmSupervisor.stop_agent/1)
 

@@ -3,6 +3,8 @@ using Test
 include("../src/bb_known.jl")
 include("../src/bb_approx.jl")
 include("../src/complexity.jl")
+include("../src/bb_verifier.jl")
+using .BbVerifier
 
 @testset "BB Known Limits" begin
     @test bb_known_limit(1) == 1

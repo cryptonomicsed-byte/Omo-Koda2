@@ -139,7 +139,7 @@ defmodule OmokodaSwarm.Fork do
   Example:
 
       Fork.map("parent_1", ["doc_a", "doc_b", "doc_c"], fn doc ->
-        "summarize #{doc}"
+        "summarize \#{doc}"
       end)
   """
   @spec map(String.t(), [term()], (term() -> term()), fork_opts()) :: [fork_result()]

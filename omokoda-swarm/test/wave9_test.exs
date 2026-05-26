@@ -176,8 +176,8 @@ defmodule OmokodaSwarm.Wave9Test do
   describe "Teammate" do
     setup do
       id = "test-teammate-#{System.unique_integer([:positive])}"
-      {:ok, _pid} = OmokodaSwarm.Teammate.start_link(id: id, model: :haiku)
-      on_exit(fn -> OmokodaSwarm.Teammate.stop(id) end)
+      {:ok, pid} = OmokodaSwarm.Teammate.start_link(id: id, model: :haiku)
+      on_exit(fn -> if Process.alive?(pid), do: OmokodaSwarm.Teammate.stop(id) end)
       %{id: id}
     end
 

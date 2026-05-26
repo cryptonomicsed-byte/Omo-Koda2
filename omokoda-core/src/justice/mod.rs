@@ -1,3 +1,5 @@
+pub mod tier;
+
 use omokoda_hermetic::HermeticState;
 use serde::{Deserialize, Serialize};
 use std::io::Write;

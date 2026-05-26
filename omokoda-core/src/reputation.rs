@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 pub const THINK_NORMAL: f64 = 0.008;
@@ -182,5 +183,23 @@ fn tool_slice_for_tier(tier: u8) -> &'static [&'static str] {
         3 => TIER_3_TOOLS,
         4 => TIER_4_TOOLS,
         _ => TIER_5_TOOLS,
+    }
+}
+
+pub const MAX_ACTIONS_PER_DAY: u32 = 50;
+pub const MIN_DAYS_BETWEEN_PROMOTIONS: u64 = 7;
+pub const DIMINISHING_RETURNS_BASE: f64 = 0.995;
+
+pub fn daily_gain_multiplier(actions_today: u32) -> f64 {
+    DIMINISHING_RETURNS_BASE.powi(actions_today as i32)
+}
+
+pub fn can_promote_tier(last_promotion: Option<DateTime<Utc>>) -> bool {
+    match last_promotion {
+        None => true,
+        Some(ts) => {
+            let days = (Utc::now() - ts).num_days() as u64;
+            days >= MIN_DAYS_BETWEEN_PROMOTIONS
+        }
     }
 }

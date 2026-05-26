@@ -81,6 +81,51 @@ pub fn compute_reputation_decay(reputation: f64, elapsed_secs: u64) -> f64 {
     decay.min(reputation)
 }
 
+pub struct SynapseAccount {
+    pub balance: u64,
+    pub total_burned: u64,
+    pub tier: u8,
+    pub last_decay_epoch: u64,
+}
+
+impl SynapseAccount {
+    pub fn new(tier: u8) -> Self {
+        Self {
+            balance: 0,
+            total_burned: 0,
+            tier,
+            last_decay_epoch: 0,
+        }
+    }
+
+    pub fn burn(&mut self, pre_adjusted_cost: u64) -> Result<(), &'static str> {
+        if self.balance < pre_adjusted_cost {
+            return Err("insufficient_synapse");
+        }
+        self.balance -= pre_adjusted_cost;
+        self.total_burned += pre_adjusted_cost;
+        Ok(())
+    }
+
+    pub fn earn_from_garden(&mut self) {
+        self.balance = (self.balance + 1000).min(self.tier_cap());
+    }
+
+    pub fn earn_from_tip(&mut self, amount: u64) {
+        self.balance = (self.balance + amount.min(10_000)).min(self.tier_cap());
+    }
+
+    pub fn tier_cap(&self) -> u64 {
+        match self.tier {
+            0 => 1_000_000,
+            1 => 10_000_000,
+            2 => 30_000_000,
+            3 => 60_000_000,
+            _ => 86_000_000,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

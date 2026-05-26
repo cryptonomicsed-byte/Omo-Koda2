@@ -4,5 +4,7 @@ members = [
     "omokoda-hermetic",
     "omokoda-cli",
     "bipon39-stub",
+    "nautilus_integration",
+    "nist_entropy",
 ]
 resolver = "2"

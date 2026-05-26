@@ -729,8 +729,7 @@ impl SessionManager {
     /// Writes only the live transcript so the file can be appended on each turn rather than rewritten entirely.
     pub fn save_to_disk(&self, base_dir: &Path) -> Result<(), String> {
         let sessions_dir = base_dir.join(".omokoda").join("sessions");
-        fs::create_dir_all(&sessions_dir)
-            .map_err(|e| format!("create sessions dir: {}", e))?;
+        fs::create_dir_all(&sessions_dir).map_err(|e| format!("create sessions dir: {}", e))?;
 
         let path = sessions_dir.join(format!("{}.jsonl", self.session.agent_id));
         let header = serde_json::to_string(&self.session)
@@ -738,8 +737,8 @@ impl SessionManager {
 
         let mut lines = vec![header];
         for msg in &self.session.public_messages {
-            let line = serde_json::to_string(msg)
-                .map_err(|e| format!("serialize message: {}", e))?;
+            let line =
+                serde_json::to_string(msg).map_err(|e| format!("serialize message: {}", e))?;
             lines.push(line);
         }
 
@@ -756,13 +755,11 @@ impl SessionManager {
             .join("sessions")
             .join(format!("{}.jsonl", agent_id));
 
-        let raw = fs::read_to_string(&path)
-            .map_err(|e| format!("read {}: {}", path.display(), e))?;
+        let raw =
+            fs::read_to_string(&path).map_err(|e| format!("read {}: {}", path.display(), e))?;
 
         let mut lines = raw.lines();
-        let header_line = lines
-            .next()
-            .ok_or("empty session file")?;
+        let header_line = lines.next().ok_or("empty session file")?;
         let mut session: Session = serde_json::from_str(header_line)
             .map_err(|e| format!("parse session header: {}", e))?;
 
@@ -772,8 +769,8 @@ impl SessionManager {
             if line.is_empty() {
                 continue;
             }
-            let msg: ConversationMessage = serde_json::from_str(line)
-                .map_err(|e| format!("parse message line: {}", e))?;
+            let msg: ConversationMessage =
+                serde_json::from_str(line).map_err(|e| format!("parse message line: {}", e))?;
             session.public_messages.push(msg);
         }
 
@@ -867,7 +864,9 @@ mod lifecycle_tests {
         let loaded = SessionManager::load_from_disk(&id, &tmp).unwrap();
         assert_eq!(loaded.session.name, "disk-test");
         assert_eq!(loaded.session.public_messages.len(), 2);
-        if let crate::session::ContentBlock::Text { text } = &loaded.session.public_messages[0].blocks[0] {
+        if let crate::session::ContentBlock::Text { text } =
+            &loaded.session.public_messages[0].blocks[0]
+        {
             assert_eq!(text, "hello from disk");
         } else {
             panic!("unexpected block type");
@@ -879,7 +878,10 @@ mod lifecycle_tests {
     #[test]
     fn test_load_from_disk_missing_file_errors() {
         let id = AgentId::new("no-such-agent-abcd");
-        let result = SessionManager::load_from_disk(&id, std::path::Path::new("/tmp/does_not_exist_omokoda"));
+        let result = SessionManager::load_from_disk(
+            &id,
+            std::path::Path::new("/tmp/does_not_exist_omokoda"),
+        );
         assert!(result.is_err());
     }
 }

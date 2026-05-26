@@ -108,7 +108,11 @@ impl<'a> SoulBuilder<'a> {
         sections.push(format!(
             "## Routing: {} ({})\n{}",
             self.iris_params.profile.label().to_uppercase(),
-            if self.iris_params.warmth_boost { "warmth active" } else { "standard" },
+            if self.iris_params.warmth_boost {
+                "warmth active"
+            } else {
+                "standard"
+            },
             self.iris_params.style_guidance
         ));
 
@@ -167,8 +171,10 @@ mod tests {
     #[test]
     fn soma_with_content_renders_sections() {
         let mut soma = SomaContext::new();
-        soma.identity_anchors.push("I value clarity over speed".to_string());
-        soma.active_themes.push("debugging rust lifetimes".to_string());
+        soma.identity_anchors
+            .push("I value clarity over speed".to_string());
+        soma.active_themes
+            .push("debugging rust lifetimes".to_string());
         let section = soma.render_section();
         assert!(section.contains("Identity"));
         assert!(section.contains("I value clarity"));
@@ -190,12 +196,23 @@ mod tests {
         };
         let prompt = builder.build();
         assert!(prompt.contains("Luna"));
-        assert!(prompt.contains("SHARP") || prompt.contains("BALANCED") || prompt.contains("REFLEX") || prompt.contains("DEEP") || prompt.contains("GENTLE"));
+        assert!(
+            prompt.contains("SHARP")
+                || prompt.contains("BALANCED")
+                || prompt.contains("REFLEX")
+                || prompt.contains("DEEP")
+                || prompt.contains("GENTLE")
+        );
     }
 
     #[test]
     fn fatigued_agent_injects_energy_note() {
-        let tired = EmotionState { energy: 0.2, tension: 0.1, connection: 0.5, focus: 0.5 };
+        let tired = EmotionState {
+            energy: 0.2,
+            tension: 0.1,
+            connection: 0.5,
+            focus: 0.5,
+        };
         let params = IrisEngine::params("help me", &tired);
         let soma = empty_soma();
         let builder = SoulBuilder {

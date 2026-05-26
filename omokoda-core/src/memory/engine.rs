@@ -64,10 +64,7 @@ impl MemoryEngine {
     /// - Promote high-importance entries to episodic tier
     ///
     /// Returns promoted entries that the caller should store in episodic memory.
-    pub fn process_working_memory(
-        &self,
-        memory: &mut Vec<MemoryEntry>,
-    ) -> Vec<MemoryEntry> {
+    pub fn process_working_memory(&self, memory: &mut Vec<MemoryEntry>) -> Vec<MemoryEntry> {
         let mut promoted = Vec::new();
 
         // Promote high-importance entries to episodic
@@ -82,7 +79,11 @@ impl MemoryEngine {
 
         // Keep only the top-N by importance if over capacity
         if memory.len() > self.working_capacity {
-            memory.sort_by(|a, b| b.importance.partial_cmp(&a.importance).unwrap_or(std::cmp::Ordering::Equal));
+            memory.sort_by(|a, b| {
+                b.importance
+                    .partial_cmp(&a.importance)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
             memory.truncate(self.working_capacity);
         }
 
@@ -94,16 +95,17 @@ impl MemoryEngine {
     /// - Prune low-importance entries that were not distilled
     ///
     /// Returns semantic patterns extracted during distillation.
-    pub fn process_episodic_memory(
-        &self,
-        episodic: &mut Vec<MemoryEntry>,
-    ) -> Vec<SemanticPattern> {
+    pub fn process_episodic_memory(&self, episodic: &mut Vec<MemoryEntry>) -> Vec<SemanticPattern> {
         if episodic.len() <= self.episodic_capacity {
             return vec![];
         }
 
         // Sort by importance descending
-        episodic.sort_by(|a, b| b.importance.partial_cmp(&a.importance).unwrap_or(std::cmp::Ordering::Equal));
+        episodic.sort_by(|a, b| {
+            b.importance
+                .partial_cmp(&a.importance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Distill the overflow (entries beyond capacity) into semantic patterns
         let overflow = episodic.split_off(self.episodic_capacity);
@@ -123,11 +125,7 @@ impl MemoryEngine {
     /// Token-aware conversation compaction — the same strategy as before but now integrated
     /// with the tier model: truncates ToolResult outputs (working-tier artifacts) first,
     /// then trims message history if over the message cap.
-    pub fn compress(
-        &self,
-        messages: &mut Vec<ConversationMessage>,
-        _reputation: f64,
-    ) {
+    pub fn compress(&self, messages: &mut Vec<ConversationMessage>, _reputation: f64) {
         // Working tier: ToolResult outputs are the highest-churn content
         for message in messages.iter_mut() {
             for block in &mut message.blocks {
@@ -156,7 +154,11 @@ impl MemoryEngine {
     /// Extract a summary of the most important semantic patterns for injection
     /// into the `think` system prompt. Capped at `max_patterns` entries.
     #[must_use]
-    pub fn render_semantic_context(&self, patterns: &[SemanticPattern], max_patterns: usize) -> String {
+    pub fn render_semantic_context(
+        &self,
+        patterns: &[SemanticPattern],
+        max_patterns: usize,
+    ) -> String {
         if patterns.is_empty() {
             return String::new();
         }
@@ -180,7 +182,10 @@ impl MemoryEngine {
         // In a real implementation this would use embeddings from the Julia/Ọ̀ṣun service.
         // Here we use importance-based clustering as an approximation.
         let high: Vec<&MemoryEntry> = entries.iter().filter(|e| e.importance >= 0.7).collect();
-        let mid: Vec<&MemoryEntry> = entries.iter().filter(|e| e.importance >= 0.4 && e.importance < 0.7).collect();
+        let mid: Vec<&MemoryEntry> = entries
+            .iter()
+            .filter(|e| e.importance >= 0.4 && e.importance < 0.7)
+            .collect();
 
         let mut patterns = Vec::new();
 
@@ -253,10 +258,7 @@ mod tests {
     #[test]
     fn working_memory_promotes_high_importance() {
         let engine = MemoryEngine::new();
-        let mut working = vec![
-            make_entry("low", 0.2),
-            make_entry("high", 0.9),
-        ];
+        let mut working = vec![make_entry("low", 0.2), make_entry("high", 0.9)];
         let promoted = engine.process_working_memory(&mut working);
         assert_eq!(promoted.len(), 1);
         assert_eq!(promoted[0].id, "high");

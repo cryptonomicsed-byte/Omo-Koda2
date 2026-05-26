@@ -1,5 +1,6 @@
 use crate::bus::events::{sovereign_event, ActExecuted, AgentBorn, SovereignEvent, ThoughtSealed};
 use crate::bus::SovereignEventBus;
+use crate::gates::{GateContext, Operation, OperationKind};
 use crate::identity::bipon39::Bipon39;
 use crate::identity::dna::generate_dna_fingerprint;
 use crate::identity::odu::{OduIdentity, OduSeed};
@@ -9,8 +10,6 @@ use crate::intent::{
     DirectActCall, IntentCompilation, IntentCompileContext, IntentCompiler, IntentPlan,
     SubAgentSuggestion,
 };
-use crate::gates::{GateContext, Operation, OperationKind};
-use crate::steward::gatekeeper::{EsuGatekeeper, GatekeeperResult};
 use crate::justice::JusticeEngine;
 use crate::parser::{MetadataPair, Statement};
 use crate::providers::ProviderRegistry;
@@ -20,6 +19,7 @@ use crate::session::{
     derive_unlock_key, secure_write, ContentBlock, ConversationMessage, MessageRole,
     PrivateSessionData, SensitiveKey, Session,
 };
+use crate::steward::gatekeeper::{EsuGatekeeper, GatekeeperResult};
 use crate::tools::{ExecutionContext, ToolRegistry};
 use crate::usage::TokenUsage;
 use bipon39::{ElementalVector, Macro, MacroDistribution, PersonalityProfile};
@@ -931,7 +931,9 @@ impl Steward {
                     let agent_id = agent_mut.id().clone();
                     let warn_count = agent_mut.snapshot.session.warn_count;
                     let op = Operation {
-                        kind: OperationKind::Think { prompt: prompt.clone() },
+                        kind: OperationKind::Think {
+                            prompt: prompt.clone(),
+                        },
                         intent: prompt.clone(),
                         agent_id: Some(agent_id),
                     };
@@ -940,7 +942,11 @@ impl Steward {
                         GatekeeperResult::Approved { ref scores } => {
                             scores.iter().filter_map(|s| s.score).sum::<f64>() / 7.0_f64
                         }
-                        GatekeeperResult::Halted { failed_gate, reason, .. } => {
+                        GatekeeperResult::Halted {
+                            failed_gate,
+                            reason,
+                            ..
+                        } => {
                             return Err(format!(
                                 "❌ HALTED by {} Gate: {}",
                                 failed_gate.name(),
@@ -1076,7 +1082,10 @@ impl Steward {
                     let agent_mut = self.ensure_born_mut()?;
                     let warn_count = agent_mut.snapshot.session.warn_count;
                     let op = Operation {
-                        kind: OperationKind::Act { tool: tool.clone(), params: params.clone() },
+                        kind: OperationKind::Act {
+                            tool: tool.clone(),
+                            params: params.clone(),
+                        },
                         intent: format!("execute tool {}", tool),
                         agent_id: Some(agent_id.clone()),
                     };
@@ -1085,7 +1094,11 @@ impl Steward {
                         GatekeeperResult::Approved { ref scores } => {
                             scores.iter().filter_map(|s| s.score).sum::<f64>() / 7.0_f64
                         }
-                        GatekeeperResult::Halted { failed_gate, reason, .. } => {
+                        GatekeeperResult::Halted {
+                            failed_gate,
+                            reason,
+                            ..
+                        } => {
                             return Err(format!(
                                 "❌ HALTED by {} Gate: {}",
                                 failed_gate.name(),
@@ -1695,7 +1708,11 @@ impl Steward {
                 GatekeeperResult::Approved { ref scores } => {
                     scores.iter().filter_map(|s| s.score).sum::<f64>() / 7.0_f64
                 }
-                GatekeeperResult::Halted { failed_gate, reason, .. } => {
+                GatekeeperResult::Halted {
+                    failed_gate,
+                    reason,
+                    ..
+                } => {
                     return Err(format!(
                         "❌ HALTED by {} Gate: {}",
                         failed_gate.name(),

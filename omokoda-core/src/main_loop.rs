@@ -494,7 +494,10 @@ mod tests {
 
     #[test]
     fn slash_synapse_parses() {
-        assert_eq!(intercept_slash_command("/synapse"), Some(ReplCommand::Synapse));
+        assert_eq!(
+            intercept_slash_command("/synapse"),
+            Some(ReplCommand::Synapse)
+        );
     }
 
     #[test]
@@ -520,7 +523,10 @@ mod tests {
 
     #[test]
     fn slash_compact_parses() {
-        assert_eq!(intercept_slash_command("/compact"), Some(ReplCommand::Compact));
+        assert_eq!(
+            intercept_slash_command("/compact"),
+            Some(ReplCommand::Compact)
+        );
     }
 
     #[test]
@@ -560,7 +566,16 @@ mod tests {
     #[test]
     fn help_text_contains_all_commands() {
         let help = ReplCommand::help_text();
-        for cmd in &["/odu", "/synapse", "/tier", "/receipts", "/compact", "/permissions", "/tools", "/help"] {
+        for cmd in &[
+            "/odu",
+            "/synapse",
+            "/tier",
+            "/receipts",
+            "/compact",
+            "/permissions",
+            "/tools",
+            "/help",
+        ] {
             assert!(help.contains(cmd), "help text missing {}", cmd);
         }
     }

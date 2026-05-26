@@ -87,12 +87,7 @@ pub trait OyaClient: Send + Sync {
 /// Called after `act` to write an immutable receipt.
 #[async_trait]
 pub trait SangoClient: Send + Sync {
-    async fn write_receipt(
-        &self,
-        agent_id: &AgentId,
-        action_tool: &str,
-        hermetic: &HermeticResult,
-    );
+    async fn write_receipt(&self, agent_id: &AgentId, action_tool: &str, hermetic: &HermeticResult);
 }
 
 /// Yemọja (Elixir) client — agent lifecycle and swarm coordination.
@@ -212,8 +207,10 @@ impl YemojaClient for LocalYemojaStub {
 #[async_trait]
 impl OgunClient for LocalOgunStub {
     async fn execute_tool(&self, tool_name: &str, _input_json: &str) -> Result<String, String> {
-        Ok(serde_json::to_string(&serde_json::json!({"stub": true, "tool": tool_name}))
-            .unwrap_or_default())
+        Ok(
+            serde_json::to_string(&serde_json::json!({"stub": true, "tool": tool_name}))
+                .unwrap_or_default(),
+        )
     }
 }
 

@@ -20,9 +20,11 @@ pub use discovery::{DiscoveredPlugin, PluginDiscovery};
 pub use hook_manifest::{HookEntry, HookEvent, HookManifestFile};
 pub use manifest::{HookConfig, LifecycleConfig, PluginManifest, PluginToolConfig, PluginType};
 pub use mcp::{McpManifest, McpServerConfig, McpTransport};
-pub use registry::{InstalledPlugin, PluginRegistry, PluginState};
-pub use rule_engine::{Condition, Rule, RuleAction, RuleContext, RuleEngine, RuleOperator, RuleResult};
 pub use output_style::{OutputStyle, StyleDirective};
+pub use registry::{InstalledPlugin, PluginRegistry, PluginState};
+pub use rule_engine::{
+    Condition, Rule, RuleAction, RuleContext, RuleEngine, RuleOperator, RuleResult,
+};
 pub use settings::PluginSettings;
 pub use skill::{SkillDef, SkillTier};
 
@@ -75,4 +77,3 @@ mod tests {
         assert_eq!(registry.list_enabled().len(), 0);
     }
 }
-

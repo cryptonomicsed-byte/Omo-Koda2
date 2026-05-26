@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::process::Command;
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HermeticEvaluation {
     pub balance: f64,   // 0.0 - 1.0 (how aligned the act was with agent's principles)

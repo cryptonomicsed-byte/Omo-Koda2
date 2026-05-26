@@ -42,9 +42,14 @@ impl HermeticGate for CorrespondenceGate {
         if intent.contains("read only") || intent.contains("read-only") {
             if let OperationKind::Act { tool, .. } = &op.kind {
                 let t = tool.to_lowercase();
-                if t.contains("write") || t.contains("edit") || t.contains("delete") || t.contains("create") {
+                if t.contains("write")
+                    || t.contains("edit")
+                    || t.contains("delete")
+                    || t.contains("create")
+                {
                     return GateResult::Reject(
-                        "declared read-only intent but operation writes — inner/outer misalignment".to_string(),
+                        "declared read-only intent but operation writes — inner/outer misalignment"
+                            .to_string(),
                     );
                 }
             }
@@ -53,7 +58,11 @@ impl HermeticGate for CorrespondenceGate {
         if intent.contains("no network") || intent.contains("offline") {
             if let OperationKind::Act { tool, params } = &op.kind {
                 let combined = format!("{} {}", tool, params).to_lowercase();
-                if combined.contains("http") || combined.contains("fetch") || combined.contains("download") || combined.contains("request") {
+                if combined.contains("http")
+                    || combined.contains("fetch")
+                    || combined.contains("download")
+                    || combined.contains("request")
+                {
                     return GateResult::Reject(
                         "declared offline intent but operation reaches network — inner/outer misalignment".to_string(),
                     );
@@ -79,18 +88,25 @@ mod tests {
     fn clean_act_passes() {
         let gate = CorrespondenceGate;
         let op = Operation {
-            kind: OperationKind::Act { tool: "read_file".to_string(), params: "{}".to_string() },
+            kind: OperationKind::Act {
+                tool: "read_file".to_string(),
+                params: "{}".to_string(),
+            },
             intent: "read the configuration file".to_string(),
             agent_id: Some(id()),
         };
-        assert!(gate.evaluate(&op, &GateContext::new(false, 0, 0.0)).is_pass());
+        assert!(gate
+            .evaluate(&op, &GateContext::new(false, 0, 0.0))
+            .is_pass());
     }
 
     #[test]
     fn chronic_warn_count_rejected() {
         let gate = CorrespondenceGate;
         let op = Operation {
-            kind: OperationKind::Think { prompt: "ok".to_string() },
+            kind: OperationKind::Think {
+                prompt: "ok".to_string(),
+            },
             intent: "ok".to_string(),
             agent_id: Some(id()),
         };
@@ -109,6 +125,8 @@ mod tests {
             intent: "read only operation".to_string(),
             agent_id: Some(id()),
         };
-        assert!(!gate.evaluate(&op, &GateContext::new(false, 0, 0.0)).is_pass());
+        assert!(!gate
+            .evaluate(&op, &GateContext::new(false, 0, 0.0))
+            .is_pass());
     }
 }

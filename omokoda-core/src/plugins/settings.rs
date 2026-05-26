@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginSettings {
@@ -18,8 +18,8 @@ impl PluginSettings {
     }
 
     pub fn load_from(path: &Path) -> Result<Self, String> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| format!("cannot read settings file: {e}"))?;
+        let content =
+            std::fs::read_to_string(path).map_err(|e| format!("cannot read settings file: {e}"))?;
         parse_settings_from_markdown(&content)
     }
 
@@ -39,15 +39,13 @@ impl PluginSettings {
             serde_yaml::Value::Mapping(map)
         };
 
-        let yaml_str = serde_yaml::to_string(&yaml_data)
-            .map_err(|e| format!("YAML serialize error: {e}"))?;
+        let yaml_str =
+            serde_yaml::to_string(&yaml_data).map_err(|e| format!("YAML serialize error: {e}"))?;
 
         let content = format!("---\n{}---\n", yaml_str);
 
         // Atomic write: temp file then rename to avoid partial reads
-        let parent = path
-            .parent()
-            .ok_or("path has no parent directory")?;
+        let parent = path.parent().ok_or("path has no parent directory")?;
         let tmp_path = parent.join(format!(
             ".{}.tmp",
             path.file_name()
@@ -55,10 +53,8 @@ impl PluginSettings {
                 .unwrap_or("settings")
         ));
 
-        std::fs::write(&tmp_path, &content)
-            .map_err(|e| format!("write temp file failed: {e}"))?;
-        std::fs::rename(&tmp_path, path)
-            .map_err(|e| format!("rename failed: {e}"))?;
+        std::fs::write(&tmp_path, &content).map_err(|e| format!("write temp file failed: {e}"))?;
+        std::fs::rename(&tmp_path, path).map_err(|e| format!("rename failed: {e}"))?;
 
         Ok(())
     }
@@ -95,8 +91,8 @@ fn parse_settings_from_markdown(content: &str) -> Result<PluginSettings, String>
         extra: HashMap<String, serde_yaml::Value>,
     }
 
-    let raw: RawSettings = serde_yaml::from_str(&frontmatter)
-        .map_err(|e| format!("YAML parse error: {e}"))?;
+    let raw: RawSettings =
+        serde_yaml::from_str(&frontmatter).map_err(|e| format!("YAML parse error: {e}"))?;
 
     let plugin_name = raw.plugin_name.unwrap_or_default();
     let data = raw

@@ -34,7 +34,14 @@ impl CapabilityToken {
         let granted_by = granted_by.into();
         let issued_at = unix_now();
         let id = derive_id(&scope, &granted_by, issued_at);
-        Self { id, scope, granted_by, issued_at, expires_at, constraints }
+        Self {
+            id,
+            scope,
+            granted_by,
+            issued_at,
+            expires_at,
+            constraints,
+        }
     }
 
     /// Returns true if this token is still valid at the given Unix timestamp.
@@ -103,7 +110,12 @@ impl CapabilityRegistry {
     /// Check if the registry holds a valid, non-expired token for the given scope.
     /// Optionally check a constraint key/value pair (e.g. "path", "/workspace/main.rs").
     #[must_use]
-    pub fn has_capability(&self, scope: &str, constraint_key: Option<&str>, constraint_value: Option<&str>) -> bool {
+    pub fn has_capability(
+        &self,
+        scope: &str,
+        constraint_key: Option<&str>,
+        constraint_value: Option<&str>,
+    ) -> bool {
         let now = unix_now();
         self.tokens.values().any(|t| {
             t.scope == scope

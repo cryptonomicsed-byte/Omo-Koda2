@@ -424,7 +424,11 @@ pub fn should_compact_by_tokens(
     let start = msgs.len().saturating_sub(preserve_recent);
     let compactable = &msgs[..start];
     compactable.len() > preserve_recent
-        && compactable.iter().map(estimate_message_tokens).sum::<usize>() >= max_tokens
+        && compactable
+            .iter()
+            .map(estimate_message_tokens)
+            .sum::<usize>()
+            >= max_tokens
 }
 
 /// Format a continuation message from a compaction summary.

@@ -276,10 +276,7 @@ mod tests {
             policy.check("write", "workspace/note.txt"),
             PermissionOutcome::Allow
         );
-        assert_eq!(
-            policy.check("net", "google.com"),
-            PermissionOutcome::Allow
-        );
+        assert_eq!(policy.check("net", "google.com"), PermissionOutcome::Allow);
 
         // Denied by pattern
         assert!(matches!(

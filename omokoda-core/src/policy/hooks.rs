@@ -210,13 +210,18 @@ impl PolicyHookRunner {
                                     // The message is in the hook's exit; use a generic message.
                                     None::<String>
                                 })
-                                .unwrap_or_else(|| format!("hook '{}' denied the action", hook.command));
+                                .unwrap_or_else(|| {
+                                    format!("hook '{}' denied the action", hook.command)
+                                });
                             HookDecision::Deny(msg)
                         }
-                        Some(code) => {
-                            HookDecision::Warn(format!("hook '{}' exited with code {code}", hook.command))
+                        Some(code) => HookDecision::Warn(format!(
+                            "hook '{}' exited with code {code}",
+                            hook.command
+                        )),
+                        None => {
+                            HookDecision::Warn(format!("hook '{}' killed by signal", hook.command))
                         }
-                        None => HookDecision::Warn(format!("hook '{}' killed by signal", hook.command)),
                     };
                 }
                 Ok(None) => {
@@ -281,8 +286,14 @@ mod tests {
     fn deny_short_circuits_remaining_hooks() {
         let config = PolicyHookConfig {
             pre_tool_use: vec![
-                HookCommand { command: "exit 2".to_string(), timeout_secs: 5 },
-                HookCommand { command: "exit 0".to_string(), timeout_secs: 5 },
+                HookCommand {
+                    command: "exit 2".to_string(),
+                    timeout_secs: 5,
+                },
+                HookCommand {
+                    command: "exit 0".to_string(),
+                    timeout_secs: 5,
+                },
             ],
             ..Default::default()
         };

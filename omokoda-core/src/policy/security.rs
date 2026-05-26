@@ -91,11 +91,7 @@ fn compiled_rules() -> &'static Vec<(Regex, &'static Rule)> {
     CACHE.get_or_init(|| {
         RULES
             .iter()
-            .filter_map(|rule| {
-                Regex::new(rule.pattern)
-                    .ok()
-                    .map(|re| (re, rule))
-            })
+            .filter_map(|rule| Regex::new(rule.pattern).ok().map(|re| (re, rule)))
             .collect()
     })
 }
@@ -129,9 +125,9 @@ impl SecurityScanner {
     /// True if any `Block`-severity violation is present.
     #[must_use]
     pub fn is_blocked(input: &str) -> bool {
-        compiled_rules().iter().any(|(re, rule)| {
-            rule.severity == ViolationSeverity::Block && re.is_match(input)
-        })
+        compiled_rules()
+            .iter()
+            .any(|(re, rule)| rule.severity == ViolationSeverity::Block && re.is_match(input))
     }
 
     /// True if any `Warn`-or-higher violation is present.
@@ -198,6 +194,8 @@ mod tests {
 
     #[test]
     fn secret_exposure_warns() {
-        assert!(SecurityScanner::has_warnings("api_key='sk-abcdefghijklmnop'"));
+        assert!(SecurityScanner::has_warnings(
+            "api_key='sk-abcdefghijklmnop'"
+        ));
     }
 }

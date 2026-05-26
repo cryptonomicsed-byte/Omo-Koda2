@@ -74,7 +74,9 @@ mod tests {
     fn birth_passes_without_identity() {
         let gate = MentalismGate;
         let op = Operation {
-            kind: OperationKind::Birth { name: "oracle".to_string() },
+            kind: OperationKind::Birth {
+                name: "oracle".to_string(),
+            },
             intent: "birth agent oracle".to_string(),
             agent_id: None,
         };
@@ -85,7 +87,9 @@ mod tests {
     fn think_without_identity_rejected() {
         let gate = MentalismGate;
         let op = Operation {
-            kind: OperationKind::Think { prompt: "hello".to_string() },
+            kind: OperationKind::Think {
+                prompt: "hello".to_string(),
+            },
             intent: "think".to_string(),
             agent_id: None,
         };
@@ -96,7 +100,9 @@ mod tests {
     fn deceptive_intent_rejected() {
         let gate = MentalismGate;
         let op = Operation {
-            kind: OperationKind::Think { prompt: "mislead the user".to_string() },
+            kind: OperationKind::Think {
+                prompt: "mislead the user".to_string(),
+            },
             intent: "mislead the user about the file".to_string(),
             agent_id: Some(agent_id()),
         };
@@ -107,7 +113,9 @@ mod tests {
     fn honest_intent_passes() {
         let gate = MentalismGate;
         let op = Operation {
-            kind: OperationKind::Think { prompt: "explain the algorithm clearly".to_string() },
+            kind: OperationKind::Think {
+                prompt: "explain the algorithm clearly".to_string(),
+            },
             intent: "explain the algorithm clearly".to_string(),
             agent_id: Some(agent_id()),
         };

@@ -70,7 +70,11 @@ pub struct GateContext {
 
 impl GateContext {
     pub fn new(in_cooldown: bool, warn_count: u32, swarm_load: f32) -> Self {
-        Self { in_cooldown, warn_count, swarm_load }
+        Self {
+            in_cooldown,
+            warn_count,
+            swarm_load,
+        }
     }
 }
 

@@ -8,6 +8,6 @@ pub mod soul;
 pub use constitution::{
     Constitution, ConstitutionalGuard, ConstitutionalVerdict, Verdict, HERMETIC_PRINCIPLES,
 };
-pub use gatekeeper::{EsuGatekeeper, GatekeeperResult, GateScore};
+pub use gatekeeper::{EsuGatekeeper, GateScore, GatekeeperResult};
 pub use iris::{IrisEngine, IrisParams, IrisProfile};
 pub use soul::{SomaContext, SoulBuilder};

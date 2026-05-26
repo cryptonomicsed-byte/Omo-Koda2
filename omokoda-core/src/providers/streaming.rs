@@ -82,7 +82,10 @@ pub async fn collect_stream(mut rx: StreamReceiver) -> (String, u32, u32) {
     while let Some(event) = rx.recv().await {
         match event {
             StreamEvent::TextDelta { text: delta } => text.push_str(&delta),
-            StreamEvent::Done { input_tokens: i, output_tokens: o } => {
+            StreamEvent::Done {
+                input_tokens: i,
+                output_tokens: o,
+            } => {
                 input_tokens = i;
                 output_tokens = o;
             }
@@ -138,9 +141,22 @@ mod tests {
     #[tokio::test]
     async fn collect_stream_assembles_text() {
         let (tx, rx) = stream_channel();
-        tx.send(StreamEvent::TextDelta { text: "foo".to_string() }).await.unwrap();
-        tx.send(StreamEvent::TextDelta { text: "bar".to_string() }).await.unwrap();
-        tx.send(StreamEvent::Done { input_tokens: 10, output_tokens: 6 }).await.unwrap();
+        tx.send(StreamEvent::TextDelta {
+            text: "foo".to_string(),
+        })
+        .await
+        .unwrap();
+        tx.send(StreamEvent::TextDelta {
+            text: "bar".to_string(),
+        })
+        .await
+        .unwrap();
+        tx.send(StreamEvent::Done {
+            input_tokens: 10,
+            output_tokens: 6,
+        })
+        .await
+        .unwrap();
         drop(tx);
 
         let (text, inp, out) = collect_stream(rx).await;
@@ -161,7 +177,11 @@ mod tests {
         })
         .await
         .unwrap();
-        tx.send(StreamEvent::TextDelta { text: "done".to_string() }).await.unwrap();
+        tx.send(StreamEvent::TextDelta {
+            text: "done".to_string(),
+        })
+        .await
+        .unwrap();
         drop(tx);
 
         let (text, _, _) = collect_stream(rx).await;

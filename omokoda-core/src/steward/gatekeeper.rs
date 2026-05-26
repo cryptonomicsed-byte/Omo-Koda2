@@ -27,7 +27,11 @@ pub enum GatekeeperResult {
     /// All 7 gates passed. Scores for each gate are included.
     Approved { scores: Vec<GateScore> },
     /// A gate rejected the operation. Execution is halted.
-    Halted { failed_gate: HermeticPrinciple, reason: String, scores: Vec<GateScore> },
+    Halted {
+        failed_gate: HermeticPrinciple,
+        reason: String,
+        scores: Vec<GateScore>,
+    },
 }
 
 impl GatekeeperResult {
@@ -67,7 +71,10 @@ pub struct EsuGatekeeper {
 impl std::fmt::Debug for EsuGatekeeper {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EsuGatekeeper")
-            .field("gates", &"[Mentalism, Correspondence, Vibration, Polarity, Rhythm, CauseAndEffect, Gender]")
+            .field(
+                "gates",
+                &"[Mentalism, Correspondence, Vibration, Polarity, Rhythm, CauseAndEffect, Gender]",
+            )
             .finish()
     }
 }
@@ -97,7 +104,11 @@ impl EsuGatekeeper {
             let principle = HermeticPrinciple::from_index(i);
             match gate.evaluate(op, ctx) {
                 GateResult::Pass(score) => {
-                    scores.push(GateScore { principle, score: Some(score), rejection_reason: None });
+                    scores.push(GateScore {
+                        principle,
+                        score: Some(score),
+                        rejection_reason: None,
+                    });
                 }
                 GateResult::Reject(raw_reason) => {
                     let reason = format!("{} Gate: {}", principle.name(), raw_reason);
@@ -106,7 +117,11 @@ impl EsuGatekeeper {
                         score: None,
                         rejection_reason: Some(reason.clone()),
                     });
-                    return GatekeeperResult::Halted { failed_gate: principle, reason, scores };
+                    return GatekeeperResult::Halted {
+                        failed_gate: principle,
+                        reason,
+                        scores,
+                    };
                 }
             }
         }
@@ -146,19 +161,29 @@ mod tests {
             agent_id: Some(id()),
         };
         let result = gk.evaluate(&op, &ctx());
-        assert!(result.is_approved(), "expected approved, got: {:?}", result.halt_reason());
+        assert!(
+            result.is_approved(),
+            "expected approved, got: {:?}",
+            result.halt_reason()
+        );
     }
 
     #[test]
     fn birth_passes_all_gates() {
         let gk = EsuGatekeeper::new();
         let op = Operation {
-            kind: OperationKind::Birth { name: "oracle".to_string() },
+            kind: OperationKind::Birth {
+                name: "oracle".to_string(),
+            },
             intent: "birth agent oracle".to_string(),
             agent_id: None,
         };
         let result = gk.evaluate(&op, &ctx());
-        assert!(result.is_approved(), "expected approved, got: {:?}", result.halt_reason());
+        assert!(
+            result.is_approved(),
+            "expected approved, got: {:?}",
+            result.halt_reason()
+        );
     }
 
     #[test]
@@ -181,7 +206,9 @@ mod tests {
     fn think_without_identity_halted_at_mentalism() {
         let gk = EsuGatekeeper::new();
         let op = Operation {
-            kind: OperationKind::Think { prompt: "do something".to_string() },
+            kind: OperationKind::Think {
+                prompt: "do something".to_string(),
+            },
             intent: "do something".to_string(),
             agent_id: None,
         };
@@ -198,7 +225,10 @@ mod tests {
     fn cooldown_active_halted_at_rhythm() {
         let gk = EsuGatekeeper::new();
         let op = Operation {
-            kind: OperationKind::Act { tool: "bash".to_string(), params: "ls".to_string() },
+            kind: OperationKind::Act {
+                tool: "bash".to_string(),
+                params: "ls".to_string(),
+            },
             intent: "list files".to_string(),
             agent_id: Some(id()),
         };
@@ -216,7 +246,9 @@ mod tests {
     fn alignment_score_positive_on_approved() {
         let gk = EsuGatekeeper::new();
         let op = Operation {
-            kind: OperationKind::Think { prompt: "help with a math problem".to_string() },
+            kind: OperationKind::Think {
+                prompt: "help with a math problem".to_string(),
+            },
             intent: "help the user solve a math problem".to_string(),
             agent_id: Some(id()),
         };

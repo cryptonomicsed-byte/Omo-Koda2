@@ -97,7 +97,9 @@ mod tests {
     fn declared_intent_passes() {
         let gate = CauseEffectGate;
         let op = Operation {
-            kind: OperationKind::Think { prompt: "summarize the document".to_string() },
+            kind: OperationKind::Think {
+                prompt: "summarize the document".to_string(),
+            },
             intent: "summarize the document for the user".to_string(),
             agent_id: Some(id()),
         };
@@ -108,7 +110,10 @@ mod tests {
     fn empty_intent_rejected() {
         let gate = CauseEffectGate;
         let op = Operation {
-            kind: OperationKind::Act { tool: "bash".to_string(), params: "ls".to_string() },
+            kind: OperationKind::Act {
+                tool: "bash".to_string(),
+                params: "ls".to_string(),
+            },
             intent: "   ".to_string(),
             agent_id: Some(id()),
         };

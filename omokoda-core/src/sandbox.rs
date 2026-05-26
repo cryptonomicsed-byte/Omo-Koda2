@@ -225,7 +225,9 @@ pub fn detect_container_environment() -> ContainerEnvironment {
 }
 
 /// Testable variant that takes explicit inputs instead of reading the filesystem.
-pub fn detect_container_environment_from(inputs: ContainerDetectionInputs<'_>) -> ContainerEnvironment {
+pub fn detect_container_environment_from(
+    inputs: ContainerDetectionInputs<'_>,
+) -> ContainerEnvironment {
     let mut markers = Vec::new();
     if inputs.dockerenv_exists {
         markers.push("/.dockerenv".to_string());
@@ -347,10 +349,16 @@ mod container_sandbox_tests {
         // On non-Linux these will both be None; on Linux with unshare available they test flags.
         if let Some(cmd) = with_net {
             assert_eq!(cmd.program, "unshare");
-            assert!(cmd.args.iter().any(|a| a == "--net"), "--net should be present");
+            assert!(
+                cmd.args.iter().any(|a| a == "--net"),
+                "--net should be present"
+            );
         }
         if let Some(cmd) = without_net {
-            assert!(!cmd.args.iter().any(|a| a == "--net"), "--net should be absent");
+            assert!(
+                !cmd.args.iter().any(|a| a == "--net"),
+                "--net should be absent"
+            );
         }
     }
 }

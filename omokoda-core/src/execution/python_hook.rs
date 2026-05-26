@@ -45,7 +45,11 @@ impl PythonHookHandler {
         let Ok(val) = serde_json::from_str::<serde_json::Value>(output) else {
             return HookOutcome::Allow;
         };
-        match val.get("outcome").and_then(|v| v.as_str()).unwrap_or("allow") {
+        match val
+            .get("outcome")
+            .and_then(|v| v.as_str())
+            .unwrap_or("allow")
+        {
             "block" => HookOutcome::Block(
                 val.get("reason")
                     .and_then(|v| v.as_str())
@@ -155,15 +159,17 @@ mod tests {
 
     #[test]
     fn test_parse_invalid_json_is_allow() {
-        assert_eq!(PythonHookHandler::parse_outcome("not json"), HookOutcome::Allow);
+        assert_eq!(
+            PythonHookHandler::parse_outcome("not json"),
+            HookOutcome::Allow
+        );
     }
 
     #[test]
     fn test_missing_python_returns_block() {
         let meta = dummy_meta();
-        let handler =
-            PythonHookHandler::new(meta, PathBuf::from("/nonexistent/hook.py"))
-                .with_interpreter("python3_definitely_not_here_xyzzy");
+        let handler = PythonHookHandler::new(meta, PathBuf::from("/nonexistent/hook.py"))
+            .with_interpreter("python3_definitely_not_here_xyzzy");
         let ctx = crate::execution::hook_registry::HookContext {
             event: HookEventType::PreThink,
             tool_name: None,

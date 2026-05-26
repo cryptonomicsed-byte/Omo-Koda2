@@ -16,11 +16,23 @@ pub struct FieldConstraint {
 
 impl FieldConstraint {
     pub const fn required(field: &'static str) -> Self {
-        Self { field, required: true, min_len: None, max_len: None, allowed_values: None }
+        Self {
+            field,
+            required: true,
+            min_len: None,
+            max_len: None,
+            allowed_values: None,
+        }
     }
 
     pub const fn optional(field: &'static str) -> Self {
-        Self { field, required: false, min_len: None, max_len: None, allowed_values: None }
+        Self {
+            field,
+            required: false,
+            min_len: None,
+            max_len: None,
+            allowed_values: None,
+        }
     }
 
     pub const fn with_max_len(mut self, max: usize) -> Self {
@@ -59,22 +71,26 @@ impl ToolSchemaValidator {
         let mut schemas: HashMap<&'static str, Vec<FieldConstraint>> = HashMap::new();
 
         // Core tool schemas (constraints match the Omo-Koda2 tool definitions)
-        schemas.insert("read_file", vec![
-            FieldConstraint::required("path").with_max_len(4096),
-        ]);
-        schemas.insert("write_file", vec![
-            FieldConstraint::required("path").with_max_len(4096),
-            FieldConstraint::required("content").with_max_len(1_000_000),
-        ]);
-        schemas.insert("bash", vec![
-            FieldConstraint::required("command").with_max_len(65536),
-        ]);
-        schemas.insert("list_directory", vec![
-            FieldConstraint::optional("path").with_max_len(4096),
-        ]);
-        schemas.insert("todo_write", vec![
-            FieldConstraint::required("todos"),
-        ]);
+        schemas.insert(
+            "read_file",
+            vec![FieldConstraint::required("path").with_max_len(4096)],
+        );
+        schemas.insert(
+            "write_file",
+            vec![
+                FieldConstraint::required("path").with_max_len(4096),
+                FieldConstraint::required("content").with_max_len(1_000_000),
+            ],
+        );
+        schemas.insert(
+            "bash",
+            vec![FieldConstraint::required("command").with_max_len(65536)],
+        );
+        schemas.insert(
+            "list_directory",
+            vec![FieldConstraint::optional("path").with_max_len(4096)],
+        );
+        schemas.insert("todo_write", vec![FieldConstraint::required("todos")]);
 
         Self { schemas }
     }
@@ -94,18 +110,22 @@ impl ToolSchemaValidator {
 
         let parsed: Value = match serde_json::from_str(input_json) {
             Ok(v) => v,
-            Err(e) => return vec![ValidationError {
-                field: "(input)".to_string(),
-                reason: format!("invalid JSON: {e}"),
-            }],
+            Err(e) => {
+                return vec![ValidationError {
+                    field: "(input)".to_string(),
+                    reason: format!("invalid JSON: {e}"),
+                }]
+            }
         };
 
         let obj = match parsed.as_object() {
             Some(o) => o,
-            None => return vec![ValidationError {
-                field: "(input)".to_string(),
-                reason: "expected JSON object".to_string(),
-            }],
+            None => {
+                return vec![ValidationError {
+                    field: "(input)".to_string(),
+                    reason: "expected JSON object".to_string(),
+                }]
+            }
         };
 
         let mut errors = Vec::new();
@@ -234,10 +254,12 @@ mod tests {
     #[test]
     fn custom_registered_schema_validates() {
         let mut v = ToolSchemaValidator::new();
-        v.register("my_tool", vec![
-            FieldConstraint::required("action")
-                .with_allowed_values(&["run", "stop", "status"]),
-        ]);
+        v.register(
+            "my_tool",
+            vec![
+                FieldConstraint::required("action").with_allowed_values(&["run", "stop", "status"])
+            ],
+        );
         let ok = v.validate_input("my_tool", r#"{"action": "run"}"#);
         assert!(ok.is_empty());
         let bad = v.validate_input("my_tool", r#"{"action": "explode"}"#);

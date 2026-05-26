@@ -83,18 +83,26 @@ mod tests {
     fn normal_act_passes() {
         let gate = RhythmGate;
         let op = Operation {
-            kind: OperationKind::Act { tool: "read_file".to_string(), params: "{}".to_string() },
+            kind: OperationKind::Act {
+                tool: "read_file".to_string(),
+                params: "{}".to_string(),
+            },
             intent: "read the config file".to_string(),
             agent_id: Some(id()),
         };
-        assert!(gate.evaluate(&op, &GateContext::new(false, 0, 0.0)).is_pass());
+        assert!(gate
+            .evaluate(&op, &GateContext::new(false, 0, 0.0))
+            .is_pass());
     }
 
     #[test]
     fn act_during_cooldown_rejected() {
         let gate = RhythmGate;
         let op = Operation {
-            kind: OperationKind::Act { tool: "bash".to_string(), params: "ls".to_string() },
+            kind: OperationKind::Act {
+                tool: "bash".to_string(),
+                params: "ls".to_string(),
+            },
             intent: "list files".to_string(),
             agent_id: Some(id()),
         };
@@ -106,7 +114,9 @@ mod tests {
     fn birth_exempt_from_cooldown() {
         let gate = RhythmGate;
         let op = Operation {
-            kind: OperationKind::Birth { name: "oracle".to_string() },
+            kind: OperationKind::Birth {
+                name: "oracle".to_string(),
+            },
             intent: "birth oracle".to_string(),
             agent_id: None,
         };

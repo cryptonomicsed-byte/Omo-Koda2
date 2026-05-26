@@ -27,7 +27,11 @@ impl PrimitiveDispatcher {
 
     /// Validate a Primitive against its constraints before routing.
     /// Returns Ok(()) if the primitive is well-formed and permitted for this identity.
-    pub fn validate(&self, primitive: &Primitive, identity: &UserIdentity) -> Result<(), DispatchError> {
+    pub fn validate(
+        &self,
+        primitive: &Primitive,
+        identity: &UserIdentity,
+    ) -> Result<(), DispatchError> {
         match primitive {
             Primitive::Birth { name, .. } => {
                 if name.is_empty() {
@@ -113,12 +117,33 @@ mod tests {
         let d = PrimitiveDispatcher::new();
         let id = public_identity();
 
-        assert!(d.validate(&Primitive::Birth { name: "oracle".to_string(), metadata: vec![] }, &id).is_ok());
-        assert!(d.validate(&Primitive::Birth { name: "".to_string(), metadata: vec![] }, &id).is_err());
-        assert!(d.validate(
-            &Primitive::Birth { name: "x".repeat(65), metadata: vec![] },
-            &id
-        ).is_err());
+        assert!(d
+            .validate(
+                &Primitive::Birth {
+                    name: "oracle".to_string(),
+                    metadata: vec![]
+                },
+                &id
+            )
+            .is_ok());
+        assert!(d
+            .validate(
+                &Primitive::Birth {
+                    name: "".to_string(),
+                    metadata: vec![]
+                },
+                &id
+            )
+            .is_err());
+        assert!(d
+            .validate(
+                &Primitive::Birth {
+                    name: "x".repeat(65),
+                    metadata: vec![]
+                },
+                &id
+            )
+            .is_err());
     }
 
     #[test]
@@ -126,8 +151,24 @@ mod tests {
         let d = PrimitiveDispatcher::new();
         let id = public_identity();
 
-        assert!(d.validate(&Primitive::Think { prompt: "hello".to_string(), private: false }, &id).is_ok());
-        assert!(d.validate(&Primitive::Think { prompt: "".to_string(), private: false }, &id).is_err());
+        assert!(d
+            .validate(
+                &Primitive::Think {
+                    prompt: "hello".to_string(),
+                    private: false
+                },
+                &id
+            )
+            .is_ok());
+        assert!(d
+            .validate(
+                &Primitive::Think {
+                    prompt: "".to_string(),
+                    private: false
+                },
+                &id
+            )
+            .is_err());
     }
 
     #[test]
@@ -135,7 +176,15 @@ mod tests {
         let d = PrimitiveDispatcher::new();
         let id = incognito_identity();
         // Incognito think is valid — interpreter enforces local-only
-        assert!(d.validate(&Primitive::Think { prompt: "anything".to_string(), private: false }, &id).is_ok());
+        assert!(d
+            .validate(
+                &Primitive::Think {
+                    prompt: "anything".to_string(),
+                    private: false
+                },
+                &id
+            )
+            .is_ok());
     }
 
     #[test]
@@ -143,27 +192,68 @@ mod tests {
         let d = PrimitiveDispatcher::new();
         let id = public_identity();
 
-        assert!(d.validate(&Primitive::Act { tool: "read".to_string(), params: "{}".to_string(), sandbox: false }, &id).is_ok());
-        assert!(d.validate(&Primitive::Act { tool: "".to_string(), params: "{}".to_string(), sandbox: false }, &id).is_err());
+        assert!(d
+            .validate(
+                &Primitive::Act {
+                    tool: "read".to_string(),
+                    params: "{}".to_string(),
+                    sandbox: false
+                },
+                &id
+            )
+            .is_ok());
+        assert!(d
+            .validate(
+                &Primitive::Act {
+                    tool: "".to_string(),
+                    params: "{}".to_string(),
+                    sandbox: false
+                },
+                &id
+            )
+            .is_err());
     }
 
     #[test]
     fn primitive_names_are_correct() {
-        assert_eq!(PrimitiveDispatcher::primitive_name(
-            &Primitive::Birth { name: "x".to_string(), metadata: vec![] }
-        ), "birth");
-        assert_eq!(PrimitiveDispatcher::primitive_name(
-            &Primitive::Think { prompt: "x".to_string(), private: false }
-        ), "think");
-        assert_eq!(PrimitiveDispatcher::primitive_name(
-            &Primitive::Act { tool: "x".to_string(), params: "{}".to_string(), sandbox: false }
-        ), "act");
+        assert_eq!(
+            PrimitiveDispatcher::primitive_name(&Primitive::Birth {
+                name: "x".to_string(),
+                metadata: vec![]
+            }),
+            "birth"
+        );
+        assert_eq!(
+            PrimitiveDispatcher::primitive_name(&Primitive::Think {
+                prompt: "x".to_string(),
+                private: false
+            }),
+            "think"
+        );
+        assert_eq!(
+            PrimitiveDispatcher::primitive_name(&Primitive::Act {
+                tool: "x".to_string(),
+                params: "{}".to_string(),
+                sandbox: false
+            }),
+            "act"
+        );
     }
 
     #[test]
     fn rhythm_gate_excludes_birth() {
-        assert!(!PrimitiveDispatcher::is_rhythm_gated(&Primitive::Birth { name: "x".to_string(), metadata: vec![] }));
-        assert!(PrimitiveDispatcher::is_rhythm_gated(&Primitive::Think { prompt: "x".to_string(), private: false }));
-        assert!(PrimitiveDispatcher::is_rhythm_gated(&Primitive::Act { tool: "x".to_string(), params: "{}".to_string(), sandbox: false }));
+        assert!(!PrimitiveDispatcher::is_rhythm_gated(&Primitive::Birth {
+            name: "x".to_string(),
+            metadata: vec![]
+        }));
+        assert!(PrimitiveDispatcher::is_rhythm_gated(&Primitive::Think {
+            prompt: "x".to_string(),
+            private: false
+        }));
+        assert!(PrimitiveDispatcher::is_rhythm_gated(&Primitive::Act {
+            tool: "x".to_string(),
+            params: "{}".to_string(),
+            sandbox: false
+        }));
     }
 }

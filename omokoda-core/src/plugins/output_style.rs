@@ -113,14 +113,24 @@ mod tests {
     #[test]
     fn all_styles_have_non_empty_directives() {
         for style in OutputStyle::all() {
-            assert!(!style.directive().is_empty(), "{:?} has empty directive", style);
+            assert!(
+                !style.directive().is_empty(),
+                "{:?} has empty directive",
+                style
+            );
         }
     }
 
     #[test]
     fn from_name_parses_known_styles() {
-        assert_eq!(OutputStyle::from_name("concise"), Some(OutputStyle::Concise));
-        assert_eq!(OutputStyle::from_name("TEACH"), Some(OutputStyle::Educational));
+        assert_eq!(
+            OutputStyle::from_name("concise"),
+            Some(OutputStyle::Concise)
+        );
+        assert_eq!(
+            OutputStyle::from_name("TEACH"),
+            Some(OutputStyle::Educational)
+        );
         assert_eq!(OutputStyle::from_name("tech"), Some(OutputStyle::Technical));
     }
 

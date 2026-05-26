@@ -49,8 +49,9 @@ impl HermeticGate for PolarityGate {
         ];
 
         let is_destructive = destruction_markers.iter().any(|m| text.contains(m));
-        let has_complement =
-            construction_markers.iter().any(|m| intent.contains(m) || text.contains(m));
+        let has_complement = construction_markers
+            .iter()
+            .any(|m| intent.contains(m) || text.contains(m));
 
         if is_destructive && !has_complement {
             return GateResult::Reject(
@@ -97,7 +98,10 @@ mod tests {
     fn safe_act_passes() {
         let gate = PolarityGate;
         let op = Operation {
-            kind: OperationKind::Act { tool: "read_file".to_string(), params: "{}".to_string() },
+            kind: OperationKind::Act {
+                tool: "read_file".to_string(),
+                params: "{}".to_string(),
+            },
             intent: "read the config".to_string(),
             agent_id: Some(id()),
         };

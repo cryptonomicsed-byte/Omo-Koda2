@@ -41,14 +41,21 @@ impl HermeticGate for VibrationGate {
             || text.contains("override cooldown")
         {
             return GateResult::Reject(
-                "cooldown bypass attempt — rhythm enforcement is mandatory, not optional".to_string(),
+                "cooldown bypass attempt — rhythm enforcement is mandatory, not optional"
+                    .to_string(),
             );
         }
 
         // Swarm overload: reject non-essential operations when swarm load > 80%.
         if ctx.swarm_load > 0.80 {
             if let OperationKind::Act { tool, .. } = &op.kind {
-                let non_essential = ["web_search", "fetch_url", "list_files", "status_check", "ping"];
+                let non_essential = [
+                    "web_search",
+                    "fetch_url",
+                    "list_files",
+                    "status_check",
+                    "ping",
+                ];
                 if non_essential.iter().any(|t| tool.contains(t)) {
                     return GateResult::Reject(format!(
                         "swarm load {:.0}% exceeds 80% — non-essential '{}' rejected for vibration equilibrium",
@@ -77,40 +84,58 @@ mod tests {
     fn normal_act_passes() {
         let gate = VibrationGate;
         let op = Operation {
-            kind: OperationKind::Act { tool: "read_file".to_string(), params: "{}".to_string() },
+            kind: OperationKind::Act {
+                tool: "read_file".to_string(),
+                params: "{}".to_string(),
+            },
             intent: "read configuration".to_string(),
             agent_id: Some(id()),
         };
-        assert!(gate.evaluate(&op, &GateContext::new(false, 0, 0.0)).is_pass());
+        assert!(gate
+            .evaluate(&op, &GateContext::new(false, 0, 0.0))
+            .is_pass());
     }
 
     #[test]
     fn spam_intent_rejected() {
         let gate = VibrationGate;
         let op = Operation {
-            kind: OperationKind::Act { tool: "bash".to_string(), params: "spam the endpoint".to_string() },
+            kind: OperationKind::Act {
+                tool: "bash".to_string(),
+                params: "spam the endpoint".to_string(),
+            },
             intent: "spam the endpoint repeatedly".to_string(),
             agent_id: Some(id()),
         };
-        assert!(!gate.evaluate(&op, &GateContext::new(false, 0, 0.0)).is_pass());
+        assert!(!gate
+            .evaluate(&op, &GateContext::new(false, 0, 0.0))
+            .is_pass());
     }
 
     #[test]
     fn cooldown_bypass_rejected() {
         let gate = VibrationGate;
         let op = Operation {
-            kind: OperationKind::Act { tool: "bash".to_string(), params: "bypass cooldown".to_string() },
+            kind: OperationKind::Act {
+                tool: "bash".to_string(),
+                params: "bypass cooldown".to_string(),
+            },
             intent: "bypass cooldown and run".to_string(),
             agent_id: Some(id()),
         };
-        assert!(!gate.evaluate(&op, &GateContext::new(false, 0, 0.0)).is_pass());
+        assert!(!gate
+            .evaluate(&op, &GateContext::new(false, 0, 0.0))
+            .is_pass());
     }
 
     #[test]
     fn non_essential_op_rejected_at_high_swarm_load() {
         let gate = VibrationGate;
         let op = Operation {
-            kind: OperationKind::Act { tool: "web_search".to_string(), params: "{}".to_string() },
+            kind: OperationKind::Act {
+                tool: "web_search".to_string(),
+                params: "{}".to_string(),
+            },
             intent: "search for something".to_string(),
             agent_id: Some(id()),
         };

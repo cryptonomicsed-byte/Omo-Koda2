@@ -5,8 +5,8 @@ pub mod events {
 
 pub use self::events::SovereignEvent;
 pub use clients::{
-    HermeticResult, LocalObatalaStub, LocalOsunStub, LocalOyaStub, LocalSangoStub,
-    ObatalaClient, OsunClient, OyaClient, SangoClient,
+    HermeticResult, LocalObatalaStub, LocalOsunStub, LocalOyaStub, LocalSangoStub, ObatalaClient,
+    OsunClient, OyaClient, SangoClient,
 };
 use tokio::sync::broadcast;
 

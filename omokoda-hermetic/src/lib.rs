@@ -1,8 +1,12 @@
 pub mod entropy;
+pub mod flow;
 pub mod fractal;
+pub mod justice;
 pub mod network_guard;
+pub mod persona;
 pub mod rule_engine;
 pub mod safety;
+pub mod wisdom;
 
 use hkdf::Hkdf;
 use serde::{Deserialize, Serialize};

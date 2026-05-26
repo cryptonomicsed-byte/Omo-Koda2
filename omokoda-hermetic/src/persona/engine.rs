@@ -4,14 +4,14 @@ use serde::{Deserialize, Serialize};
 /// Maps to the 11 Òrìṣà archetypes in the Wisdom module.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum LanguagePersona {
-    RustEngineer,
-    GoPragmatist,
-    PythonCreative,
-    HaskellLogician,
-    JavaArchitect,
-    JavaScriptAlchemist,
-    ElixirFlowMind,
-    MoveGuardian,
+    RustEngineer,        // Meticulous, ownership-aware, safety-first
+    GoPragmatist,        // Simple, concurrent, direct
+    PythonCreative,      // Expressive, rapid, Gen-Z creative
+    HaskellLogician,     // Pure, mathematical, type-theoretic
+    JavaArchitect,       // Pattern-aware, enterprise-minded
+    JavaScriptAlchemist, // Dynamic, async-first, browser-native
+    ElixirFlowMind,      // Concurrent, fault-tolerant, OTP-aware
+    MoveGuardian,        // On-chain, resource-aware, security-first
 }
 
 impl LanguagePersona {
@@ -46,9 +46,9 @@ impl LanguagePersona {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersonaProfile {
     pub persona: LanguagePersona,
-    pub verbosity: f64,
-    pub formality: f64,
-    pub precision: f64,
+    pub verbosity: f64, // 0.0 = minimal, 1.0 = verbose
+    pub formality: f64, // 0.0 = casual, 1.0 = formal
+    pub precision: f64, // 0.0 = approximate, 1.0 = exact
 }
 
 impl PersonaProfile {
@@ -104,16 +104,14 @@ mod tests {
     }
 
     #[test]
-    fn rust_engineer_has_max_precision() {
+    fn persona_profile_for_rust_has_high_precision() {
         let profile = PersonaProfile::for_persona(LanguagePersona::RustEngineer);
         assert!((profile.precision - 1.0).abs() < 1e-9);
     }
 
     #[test]
     fn sovereign_tier_gets_move_guardian() {
-        assert_eq!(
-            PersonaEngine::select_for_tier(5),
-            LanguagePersona::MoveGuardian
-        );
+        let p = PersonaEngine::select_for_tier(5);
+        assert_eq!(p, LanguagePersona::MoveGuardian);
     }
 }

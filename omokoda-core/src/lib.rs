@@ -3,6 +3,7 @@ pub mod background;
 pub mod behavioral;
 pub mod bootstrap;
 pub mod bus;
+pub mod gates;
 pub mod compact;
 pub mod config;
 pub mod dream;

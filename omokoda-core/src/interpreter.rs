@@ -9,7 +9,8 @@ use crate::intent::{
     DirectActCall, IntentCompilation, IntentCompileContext, IntentCompiler, IntentPlan,
     SubAgentSuggestion,
 };
-use crate::justice::hermetic::{ActionProposal, ActionTarget};
+use crate::gates::{GateContext, Operation, OperationKind};
+use crate::steward::gatekeeper::{EsuGatekeeper, GatekeeperResult};
 use crate::justice::JusticeEngine;
 use crate::parser::{MetadataPair, Statement};
 use crate::providers::ProviderRegistry;
@@ -611,6 +612,8 @@ pub struct Steward {
     dopamine_pool: crate::economics::DopaminePool,
     #[serde(skip, default = "default_session_dir")]
     session_dir: PathBuf,
+    #[serde(skip, default = "EsuGatekeeper::new")]
+    gatekeeper: EsuGatekeeper,
     #[serde(skip)]
     unlock_key: Option<SensitiveKey>,
     #[serde(skip)]
@@ -670,6 +673,7 @@ impl Steward {
             event_bus: SovereignEventBus::default(),
             rhythm_tracker: crate::rhythm::CooldownTracker::new(),
             dopamine_pool: crate::economics::DopaminePool::default(),
+            gatekeeper: EsuGatekeeper::new(),
         }
     }
 
@@ -921,27 +925,29 @@ impl Steward {
 
                 agent_mut.update_reputation(new_rep, ReputationChangeReason::Think);
 
-                // Hermetic Gate: Think
+                // Hermetic Gate: Think — all 7 gates enforced by Èṣù
                 let hermetic_score = {
                     let agent_mut = self.ensure_born_mut()?;
                     let agent_id = agent_mut.id().clone();
-                    let action_proposal = ActionProposal {
-                        tool_name: "think".to_string(),
-                        params: "".to_string(),
-                        description: format!("Thinking about: {}", prompt),
-                        target: ActionTarget::User,
+                    let warn_count = agent_mut.snapshot.session.warn_count;
+                    let op = Operation {
+                        kind: OperationKind::Think { prompt: prompt.clone() },
+                        intent: prompt.clone(),
+                        agent_id: Some(agent_id),
                     };
-                    let hermetic = crate::justice::hermetic::evaluate_and_receipt(
-                        &prompt,
-                        &action_proposal,
-                        &mut agent_mut.snapshot.session,
-                        &mut agent_mut.snapshot.receipts,
-                        &agent_id,
-                    )?;
-                    if !hermetic.is_allowed() {
-                        return Err(format!("Hermetic gate: {:?}", hermetic.decision));
+                    let ctx = GateContext::new(false, warn_count, 0.0);
+                    match self.gatekeeper.evaluate(&op, &ctx) {
+                        GatekeeperResult::Approved { ref scores } => {
+                            scores.iter().filter_map(|s| s.score).sum::<f64>() / 7.0_f64
+                        }
+                        GatekeeperResult::Halted { failed_gate, reason, .. } => {
+                            return Err(format!(
+                                "❌ HALTED by {} Gate: {}",
+                                failed_gate.name(),
+                                reason
+                            ));
+                        }
                     }
-                    hermetic.overall_score
                 };
 
                 let receipt_payload = serde_json::json!({
@@ -962,7 +968,7 @@ impl Steward {
                 let event = SovereignEvent {
                     event: Some(sovereign_event::Event::ThoughtSealed(ThoughtSealed {
                         intent_hash: blake3::hash(prompt.as_bytes()).as_bytes().to_vec(),
-                        hermetic_score: hermetic_score,
+                        hermetic_score: hermetic_score as f32,
                     })),
                 };
                 let _ = self.event_bus.publish(event);
@@ -1065,25 +1071,28 @@ impl Steward {
                     crate::justice::HookDecision::Allow => {}
                 }
 
-                let action_proposal = ActionProposal {
-                    tool_name: tool.clone(),
-                    params: params.clone(),
-                    description: format!("Executing tool {}", tool),
-                    target: ActionTarget::System,
-                };
+                // Hermetic Gate: Act — all 7 gates enforced by Èṣù
                 let hermetic_score = {
                     let agent_mut = self.ensure_born_mut()?;
-                    let hermetic = crate::justice::hermetic::evaluate_and_receipt(
-                        "Direct tool execution",
-                        &action_proposal,
-                        &mut agent_mut.snapshot.session,
-                        &mut agent_mut.snapshot.receipts,
-                        &agent_id,
-                    )?;
-                    if !hermetic.is_allowed() {
-                        return Err(format!("Hermetic gate: {:?}", hermetic.decision));
+                    let warn_count = agent_mut.snapshot.session.warn_count;
+                    let op = Operation {
+                        kind: OperationKind::Act { tool: tool.clone(), params: params.clone() },
+                        intent: format!("execute tool {}", tool),
+                        agent_id: Some(agent_id.clone()),
+                    };
+                    let ctx = GateContext::new(false, warn_count, 0.0);
+                    match self.gatekeeper.evaluate(&op, &ctx) {
+                        GatekeeperResult::Approved { ref scores } => {
+                            scores.iter().filter_map(|s| s.score).sum::<f64>() / 7.0_f64
+                        }
+                        GatekeeperResult::Halted { failed_gate, reason, .. } => {
+                            return Err(format!(
+                                "❌ HALTED by {} Gate: {}",
+                                failed_gate.name(),
+                                reason
+                            ));
+                        }
                     }
-                    hermetic.overall_score
                 };
 
                 // If sandbox requested, verify it's enabled in session config or force it
@@ -1237,7 +1246,7 @@ impl Steward {
                     event: Some(sovereign_event::Event::ActExecuted(ActExecuted {
                         tool: tool.clone(),
                         receipt_merkle: hex::decode(&receipt.merkle_root).unwrap_or_default(),
-                        f1_score: hermetic_score,
+                        f1_score: hermetic_score as f32,
                     })),
                 };
                 let _ = self.event_bus.publish(event);
@@ -1669,26 +1678,31 @@ impl Steward {
             crate::rhythm::RhythmDecision::Allow => {}
         }
 
-        // Hermetic Gate: Act
-        let action_proposal = ActionProposal {
-            tool_name: call.tool.clone(),
-            params: call.params.clone(),
-            description: format!("Executing tool {}", call.tool),
-            target: ActionTarget::System,
-        };
+        // Hermetic Gate: Act (agentic) — all 7 gates enforced by Èṣù
         let hermetic_score = {
             let agent_mut = self.ensure_born_mut()?;
-            let hermetic = crate::justice::hermetic::evaluate_and_receipt(
-                "Direct tool execution",
-                &action_proposal,
-                &mut agent_mut.snapshot.session,
-                &mut agent_mut.snapshot.receipts,
-                &agent_id,
-            )?;
-            if !hermetic.is_allowed() {
-                return Err(format!("Hermetic gate: {:?}", hermetic.decision));
+            let warn_count = agent_mut.snapshot.session.warn_count;
+            let op = Operation {
+                kind: OperationKind::Act {
+                    tool: call.tool.clone(),
+                    params: call.params.clone(),
+                },
+                intent: format!("execute tool {}", call.tool),
+                agent_id: Some(agent_id.clone()),
+            };
+            let ctx = GateContext::new(false, warn_count, 0.0);
+            match self.gatekeeper.evaluate(&op, &ctx) {
+                GatekeeperResult::Approved { ref scores } => {
+                    scores.iter().filter_map(|s| s.score).sum::<f64>() / 7.0_f64
+                }
+                GatekeeperResult::Halted { failed_gate, reason, .. } => {
+                    return Err(format!(
+                        "❌ HALTED by {} Gate: {}",
+                        failed_gate.name(),
+                        reason
+                    ));
+                }
             }
-            hermetic.overall_score
         };
 
         let force_sandbox = call.sandbox || default_sandbox;
@@ -1824,7 +1838,7 @@ impl Steward {
             event: Some(sovereign_event::Event::ActExecuted(ActExecuted {
                 tool: call.tool.clone(),
                 receipt_merkle: hex::decode(&receipt.merkle_root).unwrap_or_default(),
-                f1_score: hermetic_score,
+                f1_score: hermetic_score as f32,
             })),
         };
         let _ = self.event_bus.publish(event);

@@ -3,9 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::process::Command;
 
-pub mod hermetic;
-#[cfg(test)]
-pub mod hermetic_tests;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HermeticEvaluation {

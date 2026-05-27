@@ -34,7 +34,7 @@ jobs:
         if: steps.checkout_ifascript.outcome == 'failure'
         run: cp -r Omo-Koda2/ifascript-stub/. Ifascript/
       - name: Install system dependencies
-        run: sudo apt-get install -y protobuf-compiler
+        run: sudo apt-get install -y protobuf-compiler lld
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -50,11 +50,19 @@ jobs:
           cargo fmt -p omokoda-core -- --check
           cargo fmt -p omokoda-hermetic -- --check
           cargo fmt -p omokoda-cli -- --check
+      - name: Build workspace
+        working-directory: Omo-Koda2
+        run: cargo build --workspace --tests -j 2
+        env:
+          CARGO_INCREMENTAL: "0"
+          RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
       - name: Test workspace
         working-directory: Omo-Koda2
-        run: cargo test --workspace -j 2
+        run: cargo test --workspace --no-fail-fast -- --nocapture
         env:
-          CARGO_BUILD_JOBS: 2
+          CARGO_INCREMENTAL: "0"
+          RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
+          RUST_BACKTRACE: "1"
 
   frontend:
     name: Frontend

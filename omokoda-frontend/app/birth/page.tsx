@@ -65,7 +65,7 @@ export default function BirthPage() {
             <div className="space-y-2">
               {([
                 { id: 'webllm', label: 'WebLLM', desc: 'sovereign · browser-local · offline · free', recommended: true },
-                { id: 'ollama', label: 'Ollama', desc: 'sovereign · your machine · faster · larger models' },
+                { id: 'ollama', label: 'Ollama', desc: 'sovereign · your machine · faster · larger models', recommended: false },
               ] as const).map(p => (
                 <button
                   key={p.id}

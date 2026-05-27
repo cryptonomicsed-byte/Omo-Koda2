@@ -127,8 +127,8 @@ jobs:
       - name: Install Julia deps if present
         run: |
           if [ -d "omokoda-memory" ]; then
-            julia --project=omokoda-memory -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
-            julia --project=omokoda-memory -e 'include("omokoda-memory/src/OmokodaMemory.jl")'
+            julia --project=omokoda-memory -e 'using Pkg; Pkg.instantiate()'
+            julia --project=omokoda-memory omokoda-memory/src/OmokodaMemory.jl
           else
             echo "No omokoda-memory Julia project found; skipping instantiate."
           fi

@@ -32,8 +32,9 @@ jobs:
         if: steps.checkout_ifascript.outcome == 'failure'
         run: cp -r Omo-Koda2/ifascript-stub/. Ifascript/
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.94.1
+        uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: 1.94.1
           components: rustfmt
       - name: Check formatting
         working-directory: Omo-Koda2

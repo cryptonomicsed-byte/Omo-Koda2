@@ -33,11 +33,13 @@ jobs:
       - name: Fallback to vendored Ifascript stub
         if: steps.checkout_ifascript.outcome == 'failure'
         run: cp -r Omo-Koda2/ifascript-stub/. Ifascript/
+      - name: Install system dependencies
+        run: sudo apt-get install -y protobuf-compiler
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.1
-          components: rustfmt
+          components: rustfmt, clippy
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
         with:
@@ -50,7 +52,9 @@ jobs:
           cargo fmt -p omokoda-cli -- --check
       - name: Test workspace
         working-directory: Omo-Koda2
-        run: cargo test --workspace
+        run: cargo test --workspace -j 2
+        env:
+          CARGO_BUILD_JOBS: 2
 
   frontend:
     name: Frontend

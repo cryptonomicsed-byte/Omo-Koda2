@@ -29,7 +29,7 @@
 
 ## 4. Ecosystem Map
 ```
-Bino-Elgua Ecosystem
+omo-koda Ecosystem
 ├── Omo-koda          ← Agent OS (visionary, immature, ~800 lines)
 │   ├── specs/        ← 7 frozen specs (source of truth)
 │   ├── omokoda-core/ ← Parser, receipts, soul stubs

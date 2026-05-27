@@ -740,15 +740,15 @@ NEVER use:  Cyrillic lookalikes in code identifiers
 | Repo | What Was Taken |
 |------|----------------|
 | omo-koda/Swibe | Economy model, receipt chain, witness pattern |
-| Bino-Elgua/Oso-Aether | 3-primitive parser, WASM bridge, ASCII pet, Living Odu Memory spec |
-| Bino-Elgua/bipon39 | Identity: 256-token mnemonics, Odu index, argon2id params |
+| omo-koda/Oso-Aether | 3-primitive parser, WASM bridge, ASCII pet, Living Odu Memory spec |
+| omo-koda/bipon39 | Identity: 256-token mnemonics, Odu index, argon2id params |
 | omo-koda/ifascript | Entropy oracle: 256 Odu → entropy opcode mapping |
 | omo-koda/Zangbeto | Tri-anchor receipts, Sabbath governance, audit pattern |
-| Bino-Elgua/ritual-codex | Daily resonance engine, temporal layer |
-| Bino-Elgua/Techgnosis | Ethics/tithe contracts |
+| omo-koda/ritual-codex | Daily resonance engine, temporal layer |
+| omo-koda/Techgnosis | Ethics/tithe contracts |
 | omo-koda/The-Aether | Job marketplace and witness-gated settlement patterns |
-| Bino-Elgua/Nex- | Graph execution runtime (collapsed behind act) |
-| Bino-Elgua/Claw-code | Coding tool patterns for act backend |
+| omo-koda/Nex- | Graph execution runtime (collapsed behind act) |
+| omo-koda/Claw-code | Coding tool patterns for act backend |
 | AIOS (external) | Kernel architecture concepts |
 | Aider (external) | Coding tool wrapped inside act |
 | Warp (external) | Terminal UX inspiration |

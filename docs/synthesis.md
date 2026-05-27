@@ -586,7 +586,7 @@ BINO-ELGUA REPOS (1–29)
 1	Oso-Aether	`omokoda-core` + `omokoda-on-chain` + `omokoda-frontend`	✅ Fully Extracted	Parser, WASM bridge, 86-DNA, Tier progression, pet.move	
 2	OsO	`omokoda-core` (archaeological)	✅ Archive	Confirmed 3-primitive instinct	
 3	Aether	`omokoda-on-chain` (Garden + Justice) + `omokoda-swarm`	⚠️ Partial	Job marketplace, witness-gated settlement, agent metabolism	
-4	Swibe (Bino-Elgua)	`omokoda-core` + `omokoda-hermetic`	✅ Archive	Plugin hooks, Ed25519, AES vault (superseded)	
+4	Swibe (omo-koda)	`omokoda-core` + `omokoda-hermetic`	✅ Archive	Plugin hooks, Ed25519, AES vault (superseded)	
 5	Nex-	`omokoda-core` (Execution)	✅ Archive	Graph execution collapsed behind `act`	
 6	Kimi-bino	Nothing	❌ Low Priority	No mapping to core architecture	
 7	Claw-code	`omokoda-core` + `omokoda-hermetic`	⚠️ Partial	Tool registry, permission hooks, provider trait, turn cap	
@@ -620,7 +620,7 @@ OMO-KODA REPOS (30–35)
 31	The-Aether	Unknown	⚠️ PRE-MAINNET	Role unknown. MUST audit before mainnet	
 32	Swibe	`omokoda-core` + `omokoda-hermetic` + `omokoda-swarm`	✅ Fully Extracted	Plugin hooks, receipt chain, provider fallback, 4-layer architecture, OTP supervisors	
 33	Zangbeto-	`omokoda-on-chain`	✅ Week 4	Tri-anchor receipts, Sabbath governance, Move patterns, n8n patrol	
-34	ifascript	`omokoda-hermetic/src/entropy/odu.rs`	✅ Week 2	Same as Bino-Elgua version. Canonical. Can import	
+34	ifascript	`omokoda-hermetic/src/entropy/odu.rs`	✅ Week 2	Same as omo-koda version. Canonical. Can import	
 
 EXTERNAL PROJECTS (36–43)
 
@@ -637,7 +637,7 @@ EXTERNAL PROJECTS (36–43)
 UPSTREAM & CONCEPTS (44–46)
 
 #	Source	Maps To	Verdict	
-44	ultraworkers/claw-code	`omokoda-core` + `omokoda-hermetic`	Same extraction as Bino-Elgua/Claw-code	
+44	ultraworkers/claw-code	`omokoda-core` + `omokoda-hermetic`	Same extraction as omo-koda/Claw-code	
 45	Julia Language	`omokoda-swarm` (Augury) + `omokoda-hermetic` (entropy)	BB verification, NIST validation, Augury, Garden analytics	
 46	Busy Beaver Function	`omokoda-core` + `omokoda-hermetic` + `omokoda-on-chain`	PoCW, Twelfth Face, Sovereign gate, difficulty compression, memory compaction	
 
@@ -668,7 +668,7 @@ TradingAgents (as system layer)	Domain-specific, trading is tool not OS layer
 
 The Biggest Unknown
 
-omo-koda/The-Aether — Same description as Bino-Elgua/Aether but under omo-koda org with minimal content. May be placeholder or early fork. PRE-MAINNET REQUIREMENT — must audit to determine if it contains anything not in Bino-Elgua/Aether.
+omo-koda/The-Aether — Same description as omo-koda/Aether but under omo-koda org with minimal content. May be placeholder or early fork. PRE-MAINNET REQUIREMENT — must audit to determine if it contains anything not in omo-koda/Aether.
 
 ---
 
@@ -1122,7 +1122,7 @@ Verdict: Partially extracted. Read `contracts/` and `src/escrow/` before Week 4 
 
 ---
 
-4. Swibe (Bino-Elgua) → `omokoda-core` + `omokoda-hermetic`
+4. Swibe (omo-koda) → `omokoda-core` + `omokoda-hermetic`
 
 What I found: v0.4.0, 25 commits. Earlier Swibe milestone. Introduces bipon39_entropyToMnemonic in birth ritual. Names ZangbetoPatrol and IfaOracle as first-class skills.
 
@@ -1512,7 +1512,7 @@ Verdict: Week 2 reference. Read before building memory/reflection.rs.
 
 31. The-Aether → PRE-MAINNET REQUIREMENT
 
-What I found: "The Sovereign Agent Language." Same description as Bino-Elgua/Aether but under omo-koda org. Very minimal README — just core primitives (birth, think, ethics, permission, receipt) and quickstart.
+What I found: "The Sovereign Agent Language." Same description as omo-koda/Aether but under omo-koda org. Very minimal README — just core primitives (birth, think, ethics, permission, receipt) and quickstart.
 
 My Integration Assessment: Unknown. Role unclear. May be a compilation target or runtime spec. The name suggests it's the canonical Aether implementation, but content is minimal.
 
@@ -1565,7 +1565,7 @@ Verdict: Week 4 reference. Read before writing garden.move and hive.move.
 
 34. ifascript (omo-koda) → `omokoda-hermetic/src/entropy/odu.rs`
 
-What I found: Same as Bino-Elgua/Ifascript but canonical version under omo-koda.
+What I found: Same as omo-koda/Ifascript but canonical version under omo-koda.
 
 My Integration Assessment: Same as #18. Since it's your repo, no license blocker.
 
@@ -1667,9 +1667,9 @@ UPSTREAM REFERENCE (44)
 
 44. ultraworkers/claw-code → `omokoda-core` + `omokoda-hermetic`
 
-What I found: Public version of leaked Claude Code Rust rewrite. 100K+ stars. Identical crate structure to Bino-Elgua/Claw-code.
+What I found: Public version of leaked Claude Code Rust rewrite. 100K+ stars. Identical crate structure to omo-koda/Claw-code.
 
-My Integration Assessment: Same extraction as Bino-Elgua/Claw-code. Read `tools/` and `runtime/` crates.
+My Integration Assessment: Same extraction as omo-koda/Claw-code. Read `tools/` and `runtime/` crates.
 
 Verdict: Same extraction. More actively maintained upstream.
 
@@ -1733,7 +1733,7 @@ TradingAgents	Domain-specific, trading is a tool not OS layer
 
 Critical New Finding:
 
-omo-koda/The-Aether remains the biggest unknown. Unlike the previous audit which flagged it as "UNREAD — AUDIT REQUIRED," I found it has the same description as Bino-Elgua/Aether but under the omo-koda org with minimal content. This suggests it may be a placeholder or early fork. Still requires pre-mainnet audit to determine if it contains anything not in Bino-Elgua/Aether.
+omo-koda/The-Aether remains the biggest unknown. Unlike the previous audit which flagged it as "UNREAD — AUDIT REQUIRED," I found it has the same description as omo-koda/Aether but under the omo-koda org with minimal content. This suggests it may be a placeholder or early fork. Still requires pre-mainnet audit to determine if it contains anything not in omo-koda/Aether.
 
 ---
 
@@ -1743,8 +1743,8 @@ TIER 1: Already Extracted & Running (Week 1 Complete)
 
 ```
 omo-koda/Swibe      → parser.rs (19/19), receipt.rs (8/8)
-Bino-Elgua/Oso-Aether → parser shape, WASM bridge shape, 86-DNA, Tier progression
-Bino-Elgua/Omokoda  → Twelfth Face (BB depth limit), causal memory DAG, 11-lobe ensemble
+omo-koda/Oso-Aether → parser shape, WASM bridge shape, 86-DNA, Tier progression
+omo-koda/Omokoda  → Twelfth Face (BB depth limit), causal memory DAG, 11-lobe ensemble
 Twelve-thrones      → Wisdom ensemble, EpistemicSeverity, consensus_ledger.move
 omo-koda/ifascript  → HermeticState seed (currently BLAKE3, IfáScript in Week 2)
 Busy Beaver         → BB_PROXY_DEPTH = 1024 in Steward spec
@@ -1753,13 +1753,13 @@ Busy Beaver         → BB_PROXY_DEPTH = 1024 in Steward spec
 TIER 2: Week 2 Build Targets (Identity + Memory + Entropy)
 
 ```
-Bino-Elgua/bipon39                          → identity/bipon39.rs
+omo-koda/bipon39                          → identity/bipon39.rs
 omo-koda/Memory                             → memory/reflection.rs
-Bino-Elgua/vanity-cloakseed                → identity/wallet.rs
-omo-koda/ifascript / Bino-Elgua/Ifascript   → hermetic/entropy/odu.rs
+omo-koda/vanity-cloakseed                → identity/wallet.rs
+omo-koda/ifascript / omo-koda/Ifascript   → hermetic/entropy/odu.rs
 Julia Language                              → entropy validation + Augury
-Bino-Elgua/Droidclaw (SOMA)                → memory/soma.rs
-Bino-Elgua/Droidclaw (IRIS)                → flow/iris.rs
+omo-koda/Droidclaw (SOMA)                → memory/soma.rs
+omo-koda/Droidclaw (IRIS)                → flow/iris.rs
 ```
 
 TIER 3: Week 3 Frontend + Mobile
@@ -1767,20 +1767,20 @@ TIER 3: Week 3 Frontend + Mobile
 ```
 Warp Terminal                               → CommandForge UX
 OpenClaw (Android)                          → Sovereign tool list
-Bino-Elgua/Droidclaw                        → mobile layer + phone control
-Bino-Elgua/NarratorIDE                      → persona engine + tone routing
-Bino-Elgua/franken-stream                   → provider fallback + health testing
+omo-koda/Droidclaw                        → mobile layer + phone control
+omo-koda/NarratorIDE                      → persona engine + tone routing
+omo-koda/franken-stream                   → provider fallback + health testing
 ```
 
 TIER 4: Week 4 Contracts + Swarm
 
 ```
 omo-koda/Zangbeto-                           → tri-anchor receipt, Move patterns
-Bino-Elgua/Twelve-thrones                   → consensus_ledger.move, epistemic_nft.move
-Bino-Elgua/Aether                           → witness-gated settlement, agent metabolism
-Bino-Elgua/Omokoda sources/                 → soul.move, core.move, lobes.move
+omo-koda/Twelve-thrones                   → consensus_ledger.move, epistemic_nft.move
+omo-koda/Aether                           → witness-gated settlement, agent metabolism
+omo-koda/Omokoda sources/                 → soul.move, core.move, lobes.move
 omo-koda/Swibe (OTP/BEAM)                   → swarm coordination
-Bino-Elgua/Agent.TV                         → multi-agent orchestration
+omo-koda/Agent.TV                         → multi-agent orchestration
 ```
 
 TIER 5: Pre-Mainnet Security Requirements
@@ -1788,7 +1788,7 @@ TIER 5: Pre-Mainnet Security Requirements
 ```
 omo-koda/The-Aether                         → UNKNOWN — must audit
 omo-koda/Swibe .claude/agents/              → prompt leakage audit
-Bino-Elgua/bipon39                          → Merkle root 0ab1fafa verify
+omo-koda/bipon39                          → Merkle root 0ab1fafa verify
 omo-koda/ifascript                          → NIST SP 800-22 via Julia
 ```
 

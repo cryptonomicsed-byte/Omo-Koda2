@@ -102,8 +102,8 @@ parent/
 Clone the external dependencies next to this repository before running Rust checks:
 
 ```sh
-git clone https://github.com/Bino-Elgua/Bipon39-Rust ../Bipon39-Rust
-git clone https://github.com/Bino-Elgua/Ifascript ../Ifascript
+git clone https://github.com/omo-koda/Bipon39-Rust ../Bipon39-Rust
+git clone https://github.com/omo-koda/Ifascript ../Ifascript
 ```
 
 ### Environment Notes

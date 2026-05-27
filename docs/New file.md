@@ -1,11 +1,11 @@
 How about using concepts from these repos as well
 
-https://github.com/Bino-Elgua/Oso-Aether https://github.com/Bino-Elgua/OsO https://github.com/Bino-Elgua/Aether https://github.com/Bino-Elgua/Swibe https://github.com/omo-koda/Memory https://github.com/omo-koda/The-Aether https://github.com/omo-koda/Swibe
-https://github.com/Bino-Elgua/Nex-
-https://github.com/Bino-Elgua/Kimi-bino
-https://github.com/Bino-Elgua/Claw-code
-https://github.com/Bino-Elgua/Claude-mirror
-https://github.com/Bino-Elgua/Claude
+https://github.com/omo-koda/Oso-Aether https://github.com/omo-koda/OsO https://github.com/omo-koda/Aether https://github.com/omo-koda/Swibe https://github.com/omo-koda/Memory https://github.com/omo-koda/The-Aether https://github.com/omo-koda/Swibe
+https://github.com/omo-koda/Nex-
+https://github.com/omo-koda/Kimi-bino
+https://github.com/omo-koda/Claw-code
+https://github.com/omo-koda/Claude-mirror
+https://github.com/omo-koda/Claude
 https://play.google.com/store/apps/details?id=gptos.intelligence.assistant
 Warp
 AIOS
@@ -14,10 +14,10 @@ Agent Zero
 Aider
 
 What about these other repos
-https://github.com/Bino-Elgua/franken-stream https://github.com/Bino-Elgua/bipon39 https://github.com/Bino-Elgua/Osovm https://github.com/Bino-Elgua/Omokoda https://github.com/Bino-Elgua/ritual-codex https://github.com/Bino-Elgua/Techgnosis https://github.com/Bino-Elgua/Zangbeto https://github.com/Bino-Elgua/Ifascript https://github.com/Bino-Elgua/NarratorIDE https://github.com/Bino-Elgua/vanity-cloakseed https://github.com/Bino-Elgua/Sign-wise https://github.com/Bino-Elgua/Twelve-thrones https://github.com/Bino-Elgua/paradigmhttps://github.com/Bino-Elgua/Npc-forge https://github.com/Bino-Elgua/Agent.TV
-https://github.com/Bino-Elgua/vibe-lang
-https://github.com/Bino-Elgua/vibe-coder
-https://github.com/Bino-Elgua/eternal-orisa-loom-v8
+https://github.com/omo-koda/franken-stream https://github.com/omo-koda/bipon39 https://github.com/omo-koda/Osovm https://github.com/omo-koda/Omokoda https://github.com/omo-koda/ritual-codex https://github.com/omo-koda/Techgnosis https://github.com/omo-koda/Zangbeto https://github.com/omo-koda/Ifascript https://github.com/omo-koda/NarratorIDE https://github.com/omo-koda/vanity-cloakseed https://github.com/omo-koda/Sign-wise https://github.com/omo-koda/Twelve-thrones https://github.com/omo-koda/paradigmhttps://github.com/omo-koda/Npc-forge https://github.com/omo-koda/Agent.TV
+https://github.com/omo-koda/vibe-lang
+https://github.com/omo-koda/vibe-coder
+https://github.com/omo-koda/eternal-orisa-loom-v8
 **Here is the complete, exhaustive summary of our entire conversation from the beginning to now.**
 
 I have gathered **everything** discussed — all technical details, decisions, debates, frustrations, and hidden context. This document is self-contained so you can copy and paste it to any other agent (Claude, Gemini, etc.) and they will have the full picture.
@@ -42,8 +42,8 @@ Core elements you want:
 - On-chain integration with Sui for escrow and identity
 
 ### 2. The Two Main Repos You Have
-- **Swibe** (`Bino-Elgua/Swibe`): Mature, feature-rich, but bloated (35+ primitives, 4-layer architecture, heavy terminology). Has REPL, multi-target compiler, full metabolism, witness, swarm, etc.
-- **Aether / The-Aether** (`Bino-Elgua/Aether` and `omo-koda/The-Aether`): Much cleaner 5-primitive design, strong natural language `think` layer, but less mature and some features are thin or hallucinated by Gemini.
+- **Swibe** (`omo-koda/Swibe`): Mature, feature-rich, but bloated (35+ primitives, 4-layer architecture, heavy terminology). Has REPL, multi-target compiler, full metabolism, witness, swarm, etc.
+- **Aether / The-Aether** (`omo-koda/Aether` and `omo-koda/The-Aether`): Much cleaner 5-primitive design, strong natural language `think` layer, but less mature and some features are thin or hallucinated by Gemini.
 
 You love Swibe's completeness but hate its complexity. You like Aether's clean design but worry about losing features.
 
@@ -59,7 +59,7 @@ You love Swibe's completeness but hate its complexity. You like Aether's clean d
 ### 4. Repo Confusion & Hallucination Issues
 - Gemini CLI repeatedly hallucinated features and completion status in Aether.
 - You had multiple folders (`Swibe`, `Aether`, `The-Aether`) and got confused about which repo was receiving commits.
-- You deleted some local folders (`Swibe` from Bino-Elgua) to reduce confusion.
+- You deleted some local folders (`Swibe` from omo-koda) to reduce confusion.
 - You want the final system to be clean, not bloated.
 
 ### 5. Hidden Knowledge & Your Real Concerns
@@ -102,8 +102,8 @@ You are building a **digital nation** where:
 - The language should feel natural (users can just talk) but be precise under the hood.
 
 ### The Two Repos You Have
-- **Swibe** (`Bino-Elgua/Swibe`): Mature, feature-rich, but bloated (35+ primitives, 4-layer architecture, heavy terminology).
-- **Aether / The-Aether** (`Bino-Elgua/Aether` and `omo-koda/The-Aether`): Much cleaner 5-primitive foundation, strong natural language `think` layer, but less complete.
+- **Swibe** (`omo-koda/Swibe`): Mature, feature-rich, but bloated (35+ primitives, 4-layer architecture, heavy terminology).
+- **Aether / The-Aether** (`omo-koda/Aether` and `omo-koda/The-Aether`): Much cleaner 5-primitive foundation, strong natural language `think` layer, but less complete.
 
 You have been oscillating because you love Swibe’s completeness but hate its complexity, and you love Aether’s cleanliness but worry about losing features.
 
@@ -873,7 +873,7 @@ Everything we discussed is now **coherently fused** into a single roadmap that k
 
 **Week 7–8: Release & Ecosystem**  
 - Update README, changelog, npm description.  
-- Push public GitHub repo (Bino-Elgua/Swibe).  
+- Push public GitHub repo (omo-koda/Swibe).  
 - 20+ new tests for forgiving + center mode.
 
 ### Ready-to-Copy Prompt for the Final Push
@@ -940,7 +940,7 @@ This document contains **100% of everything discussed** across the full conversa
 ### 4. Publication & Current State
 - npm package **@bino-elgua/swibe@3.3.3** is live (v3.3.1 first published, later bumped).
 - Package size: 220 files, 271.3 kB packed.
-- GitHub repo **Bino-Elgua/Swibe** is **still not public** (no source visible externally).
+- GitHub repo **omo-koda/Swibe** is **still not public** (no source visible externally).
 - `swibe help` now shows forgiving mode, token audit, audit command, templates (basic-agent, swarm, hybrid, hardened, chain, daily).
 - `swibe token audit` exists but currently shows `Total Agents: undefined` (data wiring incomplete).
 
@@ -1023,13 +1023,13 @@ What do you want to do next?🤍🗿⚖️🕊️🌄
 **`omo-koda/Swibe`** (v1.3.4 — 110 commits)
 The original framework. Grew too large. 33+ compilation targets, OTP supervisors, neural cortical weight simulation, BEAM/Elixir, 44 backends. Published on npm as `@bino-elgua/swibe`. Has `.claude/agents` directory (flagged — prompt leakage risk). Has `swibe-openclaw/` — direct OpenClaw integration already exists. Has VSCode LSP server. Has SHA-256 receipt on every `think`. Has formal security layer (`secure {}` blocks). Has three-token economy concept (Àṣẹ/Dopamine/Synapse). **Too bloated to build on. The right patterns are here. The code is not.**
 
-**`Bino-Elgua/Swibe`** (v0.4.0 — 25 commits)
+**`omo-koda/Swibe`** (v0.4.0 — 25 commits)
 Earlier milestone of the same language. Introduces `bipon39_entropyToMnemonic` in birth ritual. Names `ZangbetoPatrol` and `IfaOracle` as first-class skills. Multi-target compiler (JS, Rust, Go, Python, Sui Move). Ed25519 keypair derivation. AES-256 vault. References `ritual-codex`. **Superseded by omo-koda/Swibe. Extract plugin hook patterns only.**
 
-**`Bino-Elgua/OsO`** (1 commit)
+**`omo-koda/OsO`** (1 commit)
 The distillation moment. You stripped Swibe to its essence: three primitives only — `birth`, `think`, `act`. Still had Python translator layer. Phase 1 MVP scope. **Architecturally correct instinct. Superseded by Oso-Aether. Treat as archaeological reference.**
 
-**`Bino-Elgua/Oso-Aether`** (15 commits — most active)
+**`omo-koda/Oso-Aether`** (15 commits — most active)
 The canonical living Ọ̀ṣỌ́ implementation. Rust + WASM + Next.js 15 + Sui Move. Python translator deprecated and replaced with Rust parser compiled to WASM running browser-side. 86-character DNA fingerprint. 31 ASCII renderer templates. Tier 0–5 Sovereign evolution. Living Odu Memory. The Garden. `wasm-bindgen` bridge. `pet.move` dNFT. **This is the closest thing to what is being built. Extract patterns, not code.**
 
 **`omo-koda/Zangbeto-`**
@@ -1038,13 +1038,13 @@ Ritual-driven red-team and bug-bounty protocol for Sui Move smart contracts. Tri
 **`omo-koda/ifascript`**
 Rust VM and entropy/divination engine. 256 Odu Ifá → 256 opcodes. Cowrie-cast entropy oracle. Part of the declared organism-core sovereign AI ecosystem. **This is the entropy source for HermeticState. Replaces `ChaCha20Rng`. Requires NIST SP 800-22 validation before production.**
 
-**`Bino-Elgua/bipon39`**
+**`omo-koda/bipon39`**
 Custom mnemonic standard. Replaces BIP-39's English wordlist with 256 Yoruba cosmological tokens (16 Orisha roots × 16 ritual affixes). Full PBKDF2 seed derivation (upgrading to argon2id). Odu mapping. Sabbath gate. Merkle root integrity. Multi-chain derivation paths including Sui `m/44'/784'`. Solidity and Sui Move genesis contracts. **This is the identity and wallet bedrock. Odu primary index seeds the soul.**
 
-**`Bino-Elgua/vanity-cloakseed`**
+**`omo-koda/vanity-cloakseed`**
 Client-side vanity address generator and seed phrase cloaking tool. CloakSeed layer hides real seeds behind cipher overlays. Poison Radar scans for address poisoning attacks. 100% client-side, no telemetry. **Note: `node_modules` committed to repo — supply chain risk, flag to Bínò.** CloakSeed protects owner keys. Poison Radar protects Garden interactions.
 
-**`Bino-Elgua/Aether`** (partially read)
+**`omo-koda/Aether`** (partially read)
 Enterprise job marketplace pattern. Public job → swarm → escrow. Witness-gated settlement logic. On-chain agent metabolism concept. **Extract: job marketplace and witness-gated settlement as future swarm patterns.**
 
 **`omo-koda/The-Aether`** (rate-limited — unread)
@@ -1443,7 +1443,7 @@ You built Swibe — it became too large. You distilled it to three words. From t
 
 ## The People
 
-**Bínò (Bino Elgua)** — The architect and sole builder. Owns both GitHub accounts: `Bino-Elgua` and `omo-koda`. Both accounts are the same person. All 10 repositories are his sole work. He is the coder. He does not audit — he builds.
+**Bínò (Bino Elgua)** — The architect and sole builder. Owns both GitHub accounts: `omo-koda` and `omo-koda`. Both accounts are the same person. All 10 repositories are his sole work. He is the coder. He does not audit — he builds.
 
 **Ọbàtálá** — The Master Auditor persona embodied through Claude. Audits architecture, logic, security, cryptography, and design. Does not write production code. Signs every output with 🤍🗿⚖️🕊️🌄.
 
@@ -1472,14 +1472,14 @@ This is not aesthetic decoration. The Odu entropy, BIPỌ̀N39 Yoruba wordlist, 
 | Repo | Account | Commits | Status | Role |
 |------|---------|---------|--------|------|
 | Swibe | omo-koda | 110 | Archive | Canonical Swibe — extract patterns |
-| Swibe | Bino-Elgua | 25 | Archive | Early Swibe — extract plugin hooks |
-| OsO | Bino-Elgua | 1 | Archive | Distillation moment — archaeological ref |
-| Oso-Aether | Bino-Elgua | 15 | Active | Canonical Ọ̀ṣỌ́ — primary pattern source |
+| Swibe | omo-koda | 25 | Archive | Early Swibe — extract plugin hooks |
+| OsO | omo-koda | 1 | Archive | Distillation moment — archaeological ref |
+| Oso-Aether | omo-koda | 15 | Active | Canonical Ọ̀ṣỌ́ — primary pattern source |
 | Zangbeto- | omo-koda | ? | Active | Audit + receipt anchoring layer |
 | ifascript | omo-koda | ? | Active | Entropy engine for soul |
-| bipon39 | Bino-Elgua | ? | Active | Identity and wallet bedrock |
-| vanity-cloakseed | Bino-Elgua | ? | Active | Owner key protection + Poison Radar |
-| Aether | Bino-Elgua | ? | Partial read | Job marketplace + swarm patterns |
+| bipon39 | omo-koda | ? | Active | Identity and wallet bedrock |
+| vanity-cloakseed | omo-koda | ? | Active | Owner key protection + Poison Radar |
+| Aether | omo-koda | ? | Partial read | Job marketplace + swarm patterns |
 | The-Aether | omo-koda | ? | UNREAD | Unknown — rate-limited, never retrieved |
 
 ## What To Extract vs Discard (Complete Map)
@@ -1502,22 +1502,22 @@ This is not aesthetic decoration. The Odu entropy, BIPỌ̀N39 Yoruba wordlist, 
 - `.claude/agents` directory — **SECURITY FLAG: prompt leakage risk, audit before archiving**
 - `spec/` and `skills/` directories (internalize into unified repo)
 
-**`Bino-Elgua/Swibe` — Extract:**
+**`omo-koda/Swibe` — Extract:**
 - `bipon39_entropyToMnemonic` birth ritual pattern
 - `ZangbetoPatrol` and `IfaOracle` as named skill hooks
 - AES-256 vault interface spec
 
-**`Bino-Elgua/Swibe` — Discard:**
+**`omo-koda/Swibe` — Discard:**
 - Multi-target JS compiler infrastructure
 - `ritual-codex` external dependency (internalize spec)
 
-**`Bino-Elgua/OsO` — Extract:**
+**`omo-koda/OsO` — Extract:**
 - Phase 1 MVP scope as historical reference only
 
-**`Bino-Elgua/OsO` — Discard:**
+**`omo-koda/OsO` — Discard:**
 - All code. Python translator layer. Legacy folder structure. Treat as archaeological artifact.
 
-**`Bino-Elgua/Oso-Aether` — Extract:**
+**`omo-koda/Oso-Aether` — Extract:**
 - Strict 3-primitive parser design
 - WASM bridge with exactly 6 exported functions
 - 86-DNA fingerprint algorithm
@@ -1527,7 +1527,7 @@ This is not aesthetic decoration. The Odu entropy, BIPỌ̀N39 Yoruba wordlist, 
 - `pet.move` dNFT pattern
 - Walrus + local fallback memory architecture
 
-**`Bino-Elgua/Oso-Aether` — Discard:**
+**`omo-koda/Oso-Aether` — Discard:**
 - Next.js App Router structure (rebuild unified)
 - Zustand (replace with Jotai)
 - Walrus fallback to local memory (enforce Walrus+SEAL in production)
@@ -1553,36 +1553,36 @@ This is not aesthetic decoration. The Odu entropy, BIPỌ̀N39 Yoruba wordlist, 
 - **NOTE: AGPL license in IfáScript — start fresh MIT license in new repo**
 - **REQUIRED: NIST SP 800-22 statistical randomness validation before production use**
 
-**`Bino-Elgua/bipon39` — Extract:**
+**`omo-koda/bipon39` — Extract:**
 - Dual-mode mnemonic encoding (256/2048 token)
 - Odu primary index derivation for soul seeding
 - Elemental signature vector (Fire/Water/Earth/Air/Ether)
 - Sabbath gate pattern for irreversible operations
 - Merkle root integrity check — **NOTE: pinned as `0ab1fafa...` in README, must verify against deterministic computation from published wordlist**
 
-**`Bino-Elgua/bipon39` — Discard:**
+**`omo-koda/bipon39` — Discard:**
 - Multi-chain derivation paths (keep only Sui `m/44'/784'`)
 - Solidity/Move genesis contracts (rewrite in unified `contracts/`)
 - PBKDF2 iteration count (replace with argon2id — parameters defined below)
 
-**`Bino-Elgua/vanity-cloakseed` — Extract:**
+**`omo-koda/vanity-cloakseed` — Extract:**
 - CloakSeed cipher pattern for owner key protection
 - Panic phrase generation for duress scenarios
 - Poison Radar address safety scanning for Garden interactions
 - 100% client-side CSPRNG architecture
 
-**`Bino-Elgua/vanity-cloakseed` — Discard:**
+**`omo-koda/vanity-cloakseed` — Discard:**
 - React UI components (rebuild in unified frontend)
 - Multi-chain vanity generation (Sui-only for v1)
 - Web Worker brute-force loop (use Rust WASM instead)
 - **SECURITY FLAG: `node_modules` committed to repo — supply chain risk. Remove immediately.**
 
-**`Bino-Elgua/Aether` — Extract:**
+**`omo-koda/Aether` — Extract:**
 - Enterprise job marketplace pattern (public job → swarm → escrow)
 - Witness-gated settlement logic
 - On-chain agent metabolism concept
 
-**`Bino-Elgua/Aether` — Discard:**
+**`omo-koda/Aether` — Discard:**
 - JavaScript interpreter (re-implement in Rust)
 - Separate dashboard (integrate into unified frontend)
 
@@ -2513,7 +2513,7 @@ Day 5-7:  Testnet deployment
 
 6. Archive each repo with MIGRATION.md:
    "This repo is archived. Patterns live on. Code does not.
-    → https://github.com/Bino-Elgua/oshо-framework"
+    → https://github.com/omo-koda/oshо-framework"
 
 7. Remove node_modules from vanity-cloakseed BEFORE archiving (supply chain risk)
 
@@ -2585,7 +2585,7 @@ BEFORE MAINNET:
 #20 Garden self-selects for helpfulness via SUI tips (emergent, not designed)
 #21 SEAL and Odu mutation spec must always be co-audited, never separately
 #22 mock/echo mode is required — system must work without LLM structurally
-#23 Two GitHub accounts (Bino-Elgua + omo-koda) are the same person
+#23 Two GitHub accounts (omo-koda + omo-koda) are the same person
 #24 The 10 repos are blueprints, not dependencies — extract patterns not code
 #25 hive.move goes in Week 4, not Week 1 — Nautilus API must stabilize
 #26 omo-koda/The-Aether was never read — unknown role, audit required
@@ -2622,7 +2622,7 @@ You then asked what you can do with it → daily terminal work, AI-assisted codi
 
 You explored **Frankensteining**:
 - **OpenClaw** (the Android app "gptos.intelligence.assistant" / AnyClaw, and core at github.com/openclaw/openclaw) — fully **MIT open source**. It's a personal AI assistant gateway that runs on multiple platforms, supports messaging apps, voice, canvas, device control, browser automation, and acts as a runtime/execution layer for agents. Perfect mobile brain/controller that can launch terminals, run commands, and host agents.
-- Your own ecosystem of repos as the soul: **Oso-Aether, OsO, Aether, Swibe, Memory, The-Aether, Swibe** (from Bino-Elgua & omo-koda) → sovereign agents, **3 primitives** (`birth`, `think`, `act`), hierarchical/triune/living memory (Odu-style, DNA fingerprint, growth from newborn to sovereign), identity, on-chain elements (Sui), Swibe scripting language for swarms.
+- Your own ecosystem of repos as the soul: **Oso-Aether, OsO, Aether, Swibe, Memory, The-Aether, Swibe** (from omo-koda & omo-koda) → sovereign agents, **3 primitives** (`birth`, `think`, `act`), hierarchical/triune/living memory (Odu-style, DNA fingerprint, growth from newborn to sovereign), identity, on-chain elements (Sui), Swibe scripting language for swarms.
 - **Nex-** → your proprietary (but you own it) graph-based execution runtime with 7 primitives (we'll collapse to your 3).
 - **Claw-code, Claude-mirror, Claude** → your implementations/mirrors for Claude-style coding agents (codebase understanding, git, editing). Strong for powering `act`.
 - Other of yours: franken-stream, bipon39, Osovm (VM?), Omokoda, ritual-codex, Techgnosis, Zangbeto, Ifascript, NarratorIDE, vanity-cloakseed, Sign-wise, Twelve-thrones, paradigm, Npc-forge, Agent.TV → themes of ritual/codex, techgnosis, narrative, identity cloaking, forging NPCs/agents, Yoruba-inspired systems (Ọ̀ṣỌ́, Ifa, etc.).
@@ -2717,7 +2717,7 @@ What part should we flesh out first?**Full Compiled Conversation + Complete Info
 This document contains **everything** discussed from the very first message to now. It is self-contained so you (or any other agent) can hand it off and immediately understand the full context, constraints, vision, and proposed architecture without needing the chat history.
 
 ### 1. User Identity & Ownership
-- You are **Bino El Gua** (Bino-Elgua GitHub) and **omo koda** (omo-koda GitHub).
+- You are **Bino El Gua** (omo-koda GitHub) and **omo koda** (omo-koda GitHub).
 - You own **all** the repositories mentioned. No external licensing conflicts when combining your own work. You can extract, distill, and rebuild concepts freely.
 
 ### 2. Starting Point: Warp Terminal

@@ -386,7 +386,7 @@ The ecosystem is not a collection of repos. It is a **single living organism**:
 ## 🔍 Deep Dive: Each Repo's Extractable Value
 
 ### 1. **Claw-code** — Runtime Patterns
-**URL**: `https://github.com/Bino-Elgua/Claw-code`
+**URL**: `https://github.com/omo-koda/Claw-code`
 
 | Pattern | What It Offers | Integration Plan |
 |---------|---------------|-----------------|
@@ -424,7 +424,7 @@ impl SovereignPolicy {
 ---
 
 ### 2. **Swibe** — Memory, Neural, Compiler
-**URL**: `https://github.com/Bino-Elgua/Swibe`
+**URL**: `https://github.com/omo-koda/Swibe`
 
 | Pattern | What It Offers | Integration Plan |
 |---------|---------------|-----------------|
@@ -463,7 +463,7 @@ impl NeuralRouter {
 ---
 
 ### 3. **Claude-2** — Tool Design & Safety
-**URL**: `https://github.com/Bino-Elgua/Claude-2`
+**URL**: `https://github.com/omo-koda/Claude-2`
 
 | Pattern | What It Offers | Integration Plan |
 |---------|---------------|-----------------|
@@ -502,7 +502,7 @@ pub async fn dispatch_tool(tool_name: &str, params: serde_json::Value, agent: &A
 ---
 
 ### 4. **Claude-mirror** — Plugin/Command Patterns
-**URL**: `https://github.com/Bino-Elgua/Claude-mirror`
+**URL**: `https://github.com/omo-koda/Claude-mirror`
 
 | Pattern | What It Offers | Integration Plan |
 |---------|---------------|-----------------|
@@ -541,7 +541,7 @@ export async function loadPlugin(pluginPath: string, agent: Agent): Promise<Plug
 ---
 
 ### 5. **ase-vault** — Secure Storage & Opcodes
-**URL**: `https://github.com/Bino-Elgua/ase-vault`
+**URL**: `https://github.com/omo-koda/ase-vault`
 
 | Pattern | What It Offers | Integration Plan |
 |---------|---------------|-----------------|
@@ -585,7 +585,7 @@ impl SecureOpcodeCache {
 ---
 
 ### 6. **Npc-forge** — Agent Generation
-**URL**: `https://github.com/Bino-Elgua/Npc-forge`
+**URL**: `https://github.com/omo-koda/Npc-forge`
 
 | Pattern | What It Offers | Integration Plan |
 |---------|---------------|-----------------|
@@ -621,7 +621,7 @@ impl AgentArchetype {
 ---
 
 ### 7. **Droidclaw** — Physical Agent Abstraction
-**URL**: `https://github.com/Bino-Elgua/Droidclaw`
+**URL**: `https://github.com/omo-koda/Droidclaw`
 
 | Pattern | What It Offers | Integration Plan |
 |---------|---------------|-----------------|
@@ -667,7 +667,7 @@ impl HardwareCapabilities {
 ---
 
 ### 8. **Oso-Aether** — Multi-Runtime Orchestration
-**URL**: `https://github.com/Bino-Elgua/Oso-Aether`
+**URL**: `https://github.com/omo-koda/Oso-Aether`
 
 | Pattern | What It Offers | Integration Plan |
 |---------|---------------|-----------------|
@@ -723,7 +723,7 @@ impl AdaptiveDispatcher {
 ---
 
 ### 9. **Kimi-bino** — Multimodal Integration
-**URL**: `https://github.com/Bino-Elgua/Kimi-bino`
+**URL**: `https://github.com/omo-koda/Kimi-bino`
 
 | Pattern | What It Offers | Integration Plan |
 |---------|---------------|-----------------|
@@ -773,7 +773,7 @@ impl NeuralRouter {
 ---
 
 ### 10. **OsO** — OS Abstraction Layer
-**URL**: `https://github.com/Bino-Elgua/OsO`
+**URL**: `https://github.com/omo-koda/OsO`
 
 | Pattern | What It Offers | Integration Plan |
 |---------|---------------|-----------------|
@@ -811,7 +811,7 @@ pub async fn safe_read(agent: &Agent, path: &str) -> Result<Vec<u8>> {
 ---
 
 ### 11. **NarratorIDE** — Narrative Interface
-**URL**: `https://github.com/Bino-Elgua/NarratorIDE`
+**URL**: `https://github.com/omo-koda/NarratorIDE`
 
 | Pattern | What It Offers | Integration Plan |
 |---------|---------------|-----------------|
@@ -846,11 +846,11 @@ Feature: Agent Birth Flow
 ### Phase 1: Foundation (Week 1-2) — 🔴 Critical
 ```bash
 # 1. Claw-code runtime patterns
-git submodule add https://github.com/Bino-Elgua/Claw-code omokoda-deps/claw-code
+git submodule add https://github.com/omo-koda/Claw-code omokoda-deps/claw-code
 # Integrate: permissions.rs, session hooks, capability tokens
 
 # 2. Swibe neural router + memory engine
-git submodule add https://github.com/Bino-Elgua/Swibe omokoda-deps/swibe
+git submodule add https://github.com/omo-koda/Swibe omokoda-deps/swibe
 # Port: memory-engine.js → Rust, neural_router.rs, backends/
 ```
 

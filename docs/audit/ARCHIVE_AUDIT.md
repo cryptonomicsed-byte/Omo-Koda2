@@ -1,6 +1,6 @@
-https://github.com/Bino-Elgua/Swibe
-https://github.com/Bino-Elgua/Claw-code
-https://github.com/Bino-Elgua/Claude-2
+https://github.com/omo-koda/Swibe
+https://github.com/omo-koda/Claw-code
+https://github.com/omo-koda/Claude-2
 
 Claw-code → Omo-koda: Deep-Dive Portability Analysis
 
@@ -688,18 +688,18 @@ Recommended approach: Fork/adapt Claw-code's `runtime` crate as `omokoda-runtime
 
 Download the full report: [CLAW_TO_OMOKODA_PORTABILITY.md](sandbox:///mnt/agents/output/CLAW_TO_OMOKODA_PORTABILITY.md)
 
-SYNTHESIS: Bino-Elgua Ecosystem Analysis for Omo-koda Enhancement
+SYNTHESIS: omo-koda Ecosystem Analysis for Omo-koda Enhancement
 
 Executive Summary
 
-After exhaustive analysis of the Bino-Elgua ecosystem across multiple repositories, we have established a clear picture of what exists, what's accessible, and what needs to be built. The `Claude-mirror` repository remains completely inaccessible — network timeouts on all access methods suggest it is either private, deleted, renamed, or never existed at the specified URL. However, the accessible repositories (`Omo-koda`, `Claw-code`) and discovered packages (`@bino-elgua/swibe`) provide sufficient material for a comprehensive roadmap.
+After exhaustive analysis of the omo-koda ecosystem across multiple repositories, we have established a clear picture of what exists, what's accessible, and what needs to be built. The `Claude-mirror` repository remains completely inaccessible — network timeouts on all access methods suggest it is either private, deleted, renamed, or never existed at the specified URL. However, the accessible repositories (`Omo-koda`, `Claw-code`) and discovered packages (`@bino-elgua/swibe`) provide sufficient material for a comprehensive roadmap.
 
 ---
 
 1. Ecosystem Map
 
 ```
-Bino-Elgua Ecosystem
+omo-koda Ecosystem
 ├── Omo-koda          ← Agent OS (visionary, immature, ~800 lines)
 │   ├── specs/        ← 7 frozen specs (source of truth)
 │   ├── omokoda-core/ ← Parser, receipts, soul stubs
@@ -828,7 +828,7 @@ Reputation gaming	High	High	Add Synapse burn + quality oracle before launch
 
 6. Immediate Action Items
 
-For Bino-Elgua (Repository Owner)
+For omo-koda (Repository Owner)
 
 1. Verify Claude-mirror status — Is it private? Deleted? Renamed? Update documentation accordingly.
 2. Publish swibe source — Push to GitHub or document integration API.
@@ -863,7 +863,7 @@ Downloadable reports:
 
 ỌMỌ KỌ́DÀ — Comprehensive Security & Architecture Audit
 
-Repository: https://github.com/Bino-Elgua/Omo-koda
+Repository: https://github.com/omo-koda/Omo-koda
 
 Audit Date: 2026-05-11
 
@@ -1449,7 +1449,7 @@ Audit completed. All findings based on direct code review of available source fi
 
 Download the full audit report: [OMO_KODA_AUDIT_REPORT.md](sandbox:///mnt/agents/output/OMO_KODA_AUDIT_REPORT.md)
 
-Excellent! I now have deep architectural intelligence on the `claude` branch of `Bino-Elgua/Claude-2`. This is a massive repository — 512K lines of TypeScript across 1,900 files, representing the full Claude Code source snapshot. Let me compile the comprehensive portability analysis.  
+Excellent! I now have deep architectural intelligence on the `claude` branch of `omo-koda/Claude-2`. This is a massive repository — 512K lines of TypeScript across 1,900 files, representing the full Claude Code source snapshot. Let me compile the comprehensive portability analysis.  
 
 CLAUDE-2 (Claude Code Source) → OMO-KODA: Deep-Dive Portability Analysis
 
@@ -2202,7 +2202,7 @@ Realistic impact: Claude-2's patterns could accelerate Omo-koda's development by
 
 ---
 
-Analysis based on architectural documentation, community deep-dives, and source structure analysis from the `claude` branch of Bino-Elgua/Claude-2.
+Analysis based on architectural documentation, community deep-dives, and source structure analysis from the `claude` branch of omo-koda/Claude-2.
 Direct source code review was limited by network constraints, but architectural patterns are well-documented in academic papers and community analyses.
 
 Downloadable reports:
@@ -5672,15 +5672,15 @@ XXII. SOURCE REFERENCES (CONCEPT ONLY — NO CODE COPIED)
 
 Repo	What Was Taken	
 omo-koda/Swibe	Economy model, receipt chain, witness pattern	
-Bino-Elgua/Oso-Aether	3-primitive parser, WASM bridge, ASCII pet, Living Odu Memory spec	
-Bino-Elgua/bipon39	Identity: 256-token mnemonics, Odu index, argon2id params	
+omo-koda/Oso-Aether	3-primitive parser, WASM bridge, ASCII pet, Living Odu Memory spec	
+omo-koda/bipon39	Identity: 256-token mnemonics, Odu index, argon2id params	
 omo-koda/ifascript	Entropy oracle: 256 Odu → entropy opcode mapping	
 omo-koda/Zangbeto	Tri-anchor receipts, Sabbath governance, audit pattern	
-Bino-Elgua/ritual-codex	Daily resonance engine, temporal layer	
-Bino-Elgua/Techgnosis	Ethics/tithe contracts	
+omo-koda/ritual-codex	Daily resonance engine, temporal layer	
+omo-koda/Techgnosis	Ethics/tithe contracts	
 omo-koda/The-Aether	Job marketplace and witness-gated settlement patterns	
-Bino-Elgua/Nex-	Graph execution runtime (collapsed behind act)	
-Bino-Elgua/Claw-code	Coding tool patterns for act backend	
+omo-koda/Nex-	Graph execution runtime (collapsed behind act)	
+omo-koda/Claw-code	Coding tool patterns for act backend	
 AIOS (external)	Kernel architecture concepts	
 Aider (external)	Coding tool wrapped inside act	
 Warp (external)	Terminal UX inspiration	

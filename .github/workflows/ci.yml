@@ -19,14 +19,14 @@ jobs:
       - name: Checkout Bipon39-Rust
         uses: actions/checkout@v4
         with:
-          repository: Bino-Elgua/Bipon39-Rust
+          repository: omo-koda/Bipon39-Rust
           path: Bipon39-Rust
       - name: Checkout Ifascript
         id: checkout_ifascript
         uses: actions/checkout@v4
         continue-on-error: true
         with:
-          repository: Bino-Elgua/Ifascript
+          repository: omo-koda/Ifascript
           path: Ifascript
       - name: Fallback to vendored Ifascript stub
         if: steps.checkout_ifascript.outcome == 'failure'

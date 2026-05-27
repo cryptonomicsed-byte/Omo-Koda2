@@ -1,6 +1,6 @@
 # Reference Repository Map: Portability Analysis
 
-This document maps architectural patterns and components from the Bino-Elgua ecosystem and other reference repositories that can be ported or adapted for Ọmọ Kọ́dà.
+This document maps architectural patterns and components from the omo-koda ecosystem and other reference repositories that can be ported or adapted for Ọmọ Kọ́dà.
 
 ## 1. Claw-code (Rust)
 Claw-code is a mature, production-grade agent runtime. Since it is also written in Rust, many components can be directly ported or used as high-fidelity references.

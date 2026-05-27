@@ -16,11 +16,18 @@ pub struct PoisonRadar {
 
 impl PoisonRadar {
     pub fn new() -> Self {
-        Self { safe_addresses: Vec::new() }
+        Self {
+            safe_addresses: Vec::new(),
+        }
     }
 
     /// Register a verified safe address.
-    pub fn register(&mut self, label: impl Into<String>, address: impl Into<String>, timestamp: u64) {
+    pub fn register(
+        &mut self,
+        label: impl Into<String>,
+        address: impl Into<String>,
+        timestamp: u64,
+    ) {
         self.safe_addresses.push(SafeAddress {
             label: label.into(),
             address: address.into(),
@@ -31,9 +38,9 @@ impl PoisonRadar {
     /// Check if an address looks like a poison clone of a known safe address.
     /// Returns Some(similar_address) if suspicious, None if clean.
     pub fn scan(&self, candidate: &str) -> Option<&SafeAddress> {
-        self.safe_addresses.iter().find(|safe| {
-            candidate != safe.address && self.looks_similar(candidate, &safe.address)
-        })
+        self.safe_addresses
+            .iter()
+            .find(|safe| candidate != safe.address && self.looks_similar(candidate, &safe.address))
     }
 
     /// Heuristic similarity: same prefix or same suffix, different middle.
@@ -42,7 +49,7 @@ impl PoisonRadar {
             return false;
         }
         let prefix_match = a[..4] == b[..4];
-        let suffix_match = a[a.len()-4..] == b[b.len()-4..];
+        let suffix_match = a[a.len() - 4..] == b[b.len() - 4..];
         (prefix_match || suffix_match) && a != b
     }
 

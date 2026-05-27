@@ -33,7 +33,11 @@ impl IdentityMerkleTree {
             let mut i = 0;
             while i < layer.len() {
                 let left = &layer[i];
-                let right = if i + 1 < layer.len() { &layer[i + 1] } else { left };
+                let right = if i + 1 < layer.len() {
+                    &layer[i + 1]
+                } else {
+                    left
+                };
                 let mut hasher = blake3::Hasher::new();
                 hasher.update(left);
                 hasher.update(right);

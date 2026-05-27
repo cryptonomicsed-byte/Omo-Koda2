@@ -68,7 +68,9 @@ mod e2e_tests {
         // Think — should produce a receipt
         let think_stmts = parse(r#"think "confirm lifecycle""#).unwrap();
         let think_result = steward.dispatch(think_stmts[0].clone()).await.unwrap();
-        let think_receipt = think_result.receipt.expect("think should produce a receipt");
+        let think_receipt = think_result
+            .receipt
+            .expect("think should produce a receipt");
         assert!(
             !think_receipt.receipt_id.is_empty(),
             "think receipt_id must not be empty"
@@ -108,18 +110,12 @@ mod e2e_tests {
             .unwrap()
             .set_synapse(initial_synapse);
 
-        let before = steward
-            .agent_core()
-            .expect("agent must exist")
-            .synapse();
+        let before = steward.agent_core().expect("agent must exist").synapse();
 
         let act_stmts = parse(r#"act "glob" ".""#).unwrap();
         steward.dispatch(act_stmts[0].clone()).await.unwrap();
 
-        let after = steward
-            .agent_core()
-            .expect("agent must exist")
-            .synapse();
+        let after = steward.agent_core().expect("agent must exist").synapse();
 
         assert!(
             after < before,
@@ -158,10 +154,7 @@ mod e2e_tests {
             "reputation must never go negative: got {rep_after}"
         );
         // Document that reputation was set and was tracked
-        assert_eq!(
-            rep_before, 30.0,
-            "baseline reputation was incorrectly set"
-        );
+        assert_eq!(rep_before, 30.0, "baseline reputation was incorrectly set");
     }
 
     /// think /private with a non-local provider must be rejected.
@@ -175,7 +168,10 @@ mod e2e_tests {
         // Register openai as an external mock provider so birth succeeds,
         // then think /private must reject it because External class is forbidden in private mode.
         steward.register_provider(Box::new(
-            omokoda_core::providers::MockProvider::new_external("openai", "external response".to_string())
+            omokoda_core::providers::MockProvider::new_external(
+                "openai",
+                "external response".to_string(),
+            ),
         ));
         let stmts = parse(r#"birth "private-agent" provider:openai sandbox:false"#).unwrap();
         steward.dispatch(stmts[0].clone()).await.unwrap();
@@ -195,7 +191,10 @@ mod e2e_tests {
         );
         let err = result.unwrap_err();
         assert!(
-            err.contains("local provider") || err.contains("Allowed") || err.contains("webllm") || err.contains("ollama"),
+            err.contains("local provider")
+                || err.contains("Allowed")
+                || err.contains("webllm")
+                || err.contains("ollama"),
             "error should mention local provider requirement, got: {err}"
         );
     }

@@ -26,7 +26,10 @@ impl DuressHandler {
         let hash = blake3::hash(panic_phrase.as_bytes());
         let mut phrase_hash = [0u8; 32];
         phrase_hash.copy_from_slice(hash.as_bytes());
-        Self { panic_phrase_hash: phrase_hash, response }
+        Self {
+            panic_phrase_hash: phrase_hash,
+            response,
+        }
     }
 
     /// Check if input matches the panic phrase (hash comparison).

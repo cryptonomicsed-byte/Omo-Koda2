@@ -10,15 +10,40 @@ pub struct CloakSeed {
 impl CloakSeed {
     /// Create with a user-defined offset (0–255).
     pub fn new(offset: u8) -> Self {
-        Self { rotation_offset: offset }
+        Self {
+            rotation_offset: offset,
+        }
     }
 
     /// Cloak a mnemonic word list for display. Words themselves unchanged in storage.
     /// This is a display-layer protection only, not encryption.
     pub fn cloak_display(&self, words: &[String]) -> Vec<String> {
-        words.iter().enumerate().map(|(i, w)| {
-            let shift = ((i as u8).wrapping_add(self.rotation_offset)) % 26;
-            w.chars().map(|c| {
+        words
+            .iter()
+            .enumerate()
+            .map(|(i, w)| {
+                let shift = ((i as u8).wrapping_add(self.rotation_offset)) % 26;
+                w.chars()
+                    .map(|c| {
+                        if c.is_ascii_lowercase() {
+                            (b'a' + (c as u8 - b'a' + shift) % 26) as char
+                        } else if c.is_ascii_uppercase() {
+                            (b'A' + (c as u8 - b'A' + shift) % 26) as char
+                        } else {
+                            c
+                        }
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// Verify a cloaked display word matches original at given position.
+    pub fn verify(&self, position: usize, original: &str, cloaked: &str) -> bool {
+        let shift = ((position as u8).wrapping_add(self.rotation_offset)) % 26;
+        let re_cloaked: String = original
+            .chars()
+            .map(|c| {
                 if c.is_ascii_lowercase() {
                     (b'a' + (c as u8 - b'a' + shift) % 26) as char
                 } else if c.is_ascii_uppercase() {
@@ -26,22 +51,8 @@ impl CloakSeed {
                 } else {
                     c
                 }
-            }).collect()
-        }).collect()
-    }
-
-    /// Verify a cloaked display word matches original at given position.
-    pub fn verify(&self, position: usize, original: &str, cloaked: &str) -> bool {
-        let shift = ((position as u8).wrapping_add(self.rotation_offset)) % 26;
-        let re_cloaked: String = original.chars().map(|c| {
-            if c.is_ascii_lowercase() {
-                (b'a' + (c as u8 - b'a' + shift) % 26) as char
-            } else if c.is_ascii_uppercase() {
-                (b'A' + (c as u8 - b'A' + shift) % 26) as char
-            } else {
-                c
-            }
-        }).collect();
+            })
+            .collect();
         re_cloaked == cloaked
     }
 }

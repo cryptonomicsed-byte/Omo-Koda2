@@ -2349,6 +2349,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nautilus_integration"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2361,6 +2368,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77a5d83df9f36fe23f0c3648c6bbb8b0298bb5f1939c8f2704431371f4b84d43"
 dependencies = [
  "smallvec",
+]
+
+[[package]]
+name = "nist_entropy"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "sha3",
 ]
 
 [[package]]
@@ -2554,6 +2569,7 @@ name = "omokoda-hermetic"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "chrono",
  "hkdf",
  "serde",
  "sha2",

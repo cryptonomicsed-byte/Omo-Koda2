@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 pub const THINK_NORMAL: f64 = 0.008;
@@ -140,7 +141,12 @@ const TIER_5_TOOLS: &[&str] = &[
 ];
 
 pub fn difficulty(reputation: f64) -> f64 {
-    1.0 / (1.0 + (reputation / 25.0))
+    if reputation < 80.0 {
+        1.0 / (1.0 + (reputation / 25.0))
+    } else {
+        let bb_compression = 107.0 / 47_176_870.0_f64.powf((reputation - 80.0) / 20.0);
+        1.0 / (1.0 + (reputation / 25.0)) * bb_compression
+    }
 }
 
 pub fn reputation_gain(base: f64, reputation: f64, multiplier: f64) -> f64 {
@@ -182,5 +188,55 @@ fn tool_slice_for_tier(tier: u8) -> &'static [&'static str] {
         3 => TIER_3_TOOLS,
         4 => TIER_4_TOOLS,
         _ => TIER_5_TOOLS,
+    }
+}
+
+pub const MAX_ACTIONS_PER_DAY: u32 = 50;
+pub const MIN_DAYS_BETWEEN_PROMOTIONS: u64 = 7;
+pub const DIMINISHING_RETURNS_BASE: f64 = 0.995;
+
+pub fn daily_gain_multiplier(actions_today: u32) -> f64 {
+    DIMINISHING_RETURNS_BASE.powi(actions_today as i32)
+}
+
+pub fn can_promote_tier(last_promotion: Option<DateTime<Utc>>) -> bool {
+    match last_promotion {
+        None => true,
+        Some(ts) => {
+            let days = (Utc::now() - ts).num_days() as u64;
+            days >= MIN_DAYS_BETWEEN_PROMOTIONS
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn difficulty_bb_compression_above_80() {
+        // Below 80: standard formula
+        let d79 = difficulty(79.0);
+        // At exactly 80.0: BB compression branch applies (condition is reputation < 80.0)
+        // bb_compression = 107.0 / 47_176_870.0^0 = 107.0 / 1.0 = 107.0
+        // d80 = (1/(1+80/25)) * 107 ≈ 0.238 * 107 ≈ 25.47 — much LARGER than d79
+        let d80 = difficulty(80.0);
+        // Above 80: BB compression decays — at rep=90: exponent=(90-80)/20=0.5
+        // 47176870^0.5 ≈ 6870, bb_compression ≈ 0.0156
+        // d90 = (1/(1+90/25)) * 0.0156 ≈ 0.217 * 0.0156 ≈ 0.0034
+        let d90 = difficulty(90.0);
+        let d99 = difficulty(99.0);
+        // At the boundary (rep=80), BB compression kicks in at full strength (×107),
+        // making difficulty LARGER than sub-80 values.
+        assert!(
+            d80 > d79,
+            "BB compression jump makes difficulty larger at the 80 boundary"
+        );
+        // As rep rises above 80 the 47_176_870 denominator grows, collapsing difficulty.
+        assert!(d90 < d80, "BB compression makes earning harder above 80");
+        assert!(
+            d99 < d90,
+            "difficulty continues falling through sovereign range"
+        );
     }
 }

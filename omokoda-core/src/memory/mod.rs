@@ -1,8 +1,10 @@
+pub mod dag;
 pub mod engine;
 pub mod memdir;
 pub mod odu_keys;
 pub mod reflection;
 pub mod router;
+pub mod soma;
 
 pub use engine::MemoryEngine;
 pub use memdir::{MemoryScanner, OduDirectory, OduEntry};

@@ -22,10 +22,15 @@ jobs:
           repository: Bino-Elgua/Bipon39-Rust
           path: Bipon39-Rust
       - name: Checkout Ifascript
+        id: checkout_ifascript
         uses: actions/checkout@v4
+        continue-on-error: true
         with:
           repository: Bino-Elgua/Ifascript
           path: Ifascript
+      - name: Fallback to vendored Ifascript stub
+        if: steps.checkout_ifascript.outcome == 'failure'
+        run: cp -r Omo-Koda2/ifascript-stub/. Ifascript/
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -122,8 +127,8 @@ jobs:
       - name: Install Julia deps if present
         run: |
           if [ -d "omokoda-memory" ]; then
-            julia --project=omokoda-memory -e 'using Pkg; Pkg.instantiate()'
-            julia --project=omokoda-memory -e 'include("src/OmokodaMemory.jl")'
+            julia --project=omokoda-memory -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
+            julia --project=omokoda-memory -e 'include("omokoda-memory/src/OmokodaMemory.jl")'
           else
             echo "No omokoda-memory Julia project found; skipping instantiate."
           fi

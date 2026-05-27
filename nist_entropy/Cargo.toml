@@ -1,0 +1,9 @@
+[package]
+name = "nist_entropy"
+version = "0.1.0"
+edition = "2021"
+description = "NIST SP 800-22 entropy validation (pure Rust subset)"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+sha3 = "0.10"

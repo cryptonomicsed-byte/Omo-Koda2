@@ -1,5 +1,5 @@
 pub mod act_receipt;
-pub use act_receipt::ActReceipt;
+pub use act_receipt::{ActReceipt, EpistemicSeverity, PoCWProof};
 
 use crate::identity::AgentId;
 use ed25519_dalek::{Signature, Signer, Verifier, VerifyingKey};

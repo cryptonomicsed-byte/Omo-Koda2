@@ -1,7 +1,6 @@
 use omokoda_core::interpreter::{Steward, TurnEvent};
 use omokoda_core::justice::{Hook, HookContext, HookDecision};
 use omokoda_core::parser::parse;
-use std::path::PathBuf;
 
 macro_rules! test_steward {
     ($name:expr) => {{

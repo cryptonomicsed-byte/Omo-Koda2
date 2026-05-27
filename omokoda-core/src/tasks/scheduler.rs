@@ -4,7 +4,7 @@ use crate::background::{BackgroundConfig, BackgroundRegistry, BackgroundStatus};
 use crate::dream::{DreamConfig, DreamEngine};
 use crate::memory::OduDirectory;
 use crate::query::{QueryConfig, QueryEngine, QueryState, StopCondition};
-use crate::tasks::types::{TaskKind, TaskManager, TaskStatus};
+use crate::tasks::types::{TaskKind, TaskManager};
 use crate::usage::TokenUsage;
 
 /// Configuration for the integrated task scheduler.
@@ -235,6 +235,7 @@ impl TaskScheduler {
 mod scheduler_tests {
     use super::*;
     use crate::query::QueryConfig;
+    use crate::tasks::types::TaskStatus;
 
     fn make_scheduler(dream_after: usize) -> TaskScheduler {
         let config = SchedulerConfig {

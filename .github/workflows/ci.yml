@@ -17,7 +17,9 @@ jobs:
         with:
           path: Omo-Koda2
       - name: Checkout Bipon39-Rust
+        id: checkout_bipon39
         uses: actions/checkout@v4
+        continue-on-error: true
         with:
           repository: Bino-Elgua/Bipon39-Rust
           path: Bipon39-Rust
@@ -36,6 +38,10 @@ jobs:
         with:
           toolchain: 1.94.1
           components: rustfmt
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: Omo-Koda2
       - name: Check formatting
         working-directory: Omo-Koda2
         run: |

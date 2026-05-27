@@ -3,7 +3,6 @@ mod justice_tests {
     use omokoda_core::interpreter::Steward;
     use omokoda_core::justice::{ActQuality, JusticeEngine};
     use omokoda_core::parser::parse;
-    use std::path::PathBuf;
 
     macro_rules! test_steward {
         ($name:expr) => {{

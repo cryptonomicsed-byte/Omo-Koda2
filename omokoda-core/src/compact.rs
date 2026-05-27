@@ -514,14 +514,14 @@ mod auto_compact_tests {
 
     #[test]
     fn test_auto_compact_energy_trigger() {
-        let mut session = make_session(10);
+        let session = make_session(10);
         let config = AutoCompactConfig {
             triggers: vec![CompactionTrigger::EnergyBelow(0.1)],
             strategy: CompactionStrategy::Micro,
             last_compact_at: 0,
             compact_interval_secs: 3600,
         };
-        let mut compactor = AutoCompactor::new(config);
+        let compactor = AutoCompactor::new(config);
         // energy_ratio = 0.05 is below 0.1
         let triggered = compactor.should_compact(&session, 0.05, 0);
         assert!(triggered);

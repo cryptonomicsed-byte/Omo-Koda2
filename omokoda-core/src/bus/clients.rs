@@ -1,6 +1,5 @@
 use crate::emotion::EmotionState;
 use crate::identity::AgentId;
-use crate::steward::iris::IrisParams;
 use crate::steward::soul::SomaContext;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

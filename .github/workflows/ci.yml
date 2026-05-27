@@ -32,7 +32,7 @@ jobs:
         if: steps.checkout_ifascript.outcome == 'failure'
         run: cp -r Omo-Koda2/ifascript-stub/. Ifascript/
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.94.1
         with:
           components: rustfmt
       - name: Check formatting
@@ -124,13 +124,12 @@ jobs:
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1.10'
-      - name: Install Julia deps if present
+      - name: Check Julia syntax if present
         run: |
           if [ -d "omokoda-memory" ]; then
-            julia --project=omokoda-memory -e 'using Pkg; Pkg.instantiate()'
-            julia --project=omokoda-memory omokoda-memory/src/OmokodaMemory.jl
+            cd omokoda-memory && julia --startup-file=no -e 'include("src/OmokodaMemory.jl"); println("OmokodaMemory: OK")'
           else
-            echo "No omokoda-memory Julia project found; skipping instantiate."
+            echo "No omokoda-memory Julia project found; skipping."
           fi
 
   move:

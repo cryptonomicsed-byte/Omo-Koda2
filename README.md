@@ -47,16 +47,16 @@ A daily resonance engine that modulates agent behavior based on the time-stream,
 Ọmọ Kọ́dà maintains a rigorous testing standard across its multi-language ecosystem.
 
 **Current Audit Status (May 2026):** `PASSED` ✅
-*   **Total Verified Tests**: `370+`
-*   **Core Rust (Steward)**: `288` tests — lib + 22 integration suites
-*   **Hermetic Foundation**: `41` tests (Fractal, Entropy & Rule Engine)
+*   **Total Verified Tests**: `710+`
+*   **Rust Workspace**: `619` tests — (395 core unit, 63 hermetic, 161 integration/e2e)
 *   **Go (Ops & Monitoring)**: `41` tests — ops, bridge, remote, teleport
-*   **Elixir (Swarm Coordination)**: `49` tests — backends, teammate FSM, permission sync
-*   **E2E Flow**: `Verified` (Birth → Think → Act)
+*   **Elixir (Swarm Coordination)**: `50` tests — backends, teammate FSM, permission sync
+*   **Economic Simulation**: `Verified` (365-day cycle, reputation & synapse decay)
+*   **E2E Flow**: `Verified` (Birth → Think → Act via WASM)
 
 ### Core Invariants Verified
 1.  **Identity Anchor**: DNA fingerprints are deterministic and permanent.
-2.  **Sealed Memory**: Private thoughts never leak to external providers.
+2.  **Sealed Memory**: Private thoughts are encrypted with Argon2id + ChaCha20Poly1305.
 3.  **Hermetic Gate**: Pre-execution ethics evaluation (Mentalism, Polarity, etc.) for all primitives.
 4.  **Tier Enforcement**: Reputation strictly controls tool access.
 5.  **Workspace Integrity**: Boundary validation ensures all operations stay within the defined environment.
@@ -70,6 +70,7 @@ A daily resonance engine that modulates agent behavior based on the time-stream,
 *   **Fractal Kernel**: 7-phase dispatch lifecycle (21 operations) implemented in the Steward.
 *   **Hermetic Ethics Gate**: Stateless scoring for all 7 principles — `omokoda-core/src/justice/hermetic.rs`.
 *   **Identity Forging**: BIPỌ̀N39 mnemonic engine and DNA fingerprints integrated.
+*   **Privacy Engine**: Sealed session memory using Argon2id key derivation and ChaCha20Poly1305 encryption.
 *   **Permission System**: Tier-gated tool permissions with bash security, SSRF guard, and sandbox adapter — `omokoda-core/src/permissions.rs`.
 *   **Session Lifecycle**: Auto-compact (configurable threshold), dream-state consolidation, Odu memdir persistence.
 *   **Hook System**: 16 event types (`PreThink`, `PostThink`, `PreAct`, `PostAct`, `OnError`, `OnCompact`, `OnDream`, …), shell and Python hook handlers, and a glob-based rule engine in `omokoda-hermetic`.

@@ -3,29 +3,29 @@
   "num_agents": 100,
   "final_dopamine_pool": 86000000000.0,
   "reputation_stats": {
-    "average": 10.698731145476035,
-    "min": 5.495749088704957,
-    "max": 17.79886131457997,
-    "median": 10.155536007004393
+    "average": 11.350953248150027,
+    "min": 4.3127299640291055,
+    "max": 18.904302333068134,
+    "median": 11.312377711261997
   },
   "synapse_stats": {
-    "total_allocated": 0.0005212612394718729,
-    "average_per_agent": 5.212612394718728e-06,
+    "total_allocated": 0.0005212612394718733,
+    "average_per_agent": 5.212612394718733e-06,
     "min": 5.212612394718728e-06,
     "max": 5.212612394718728e-06,
     "agents_depleted": 100
   },
   "tier_distribution": {
-    "NOVICE": 47,
-    "APPRENTICE": 53,
+    "NOVICE": 34,
+    "APPRENTICE": 66,
     "JOURNEYMAN": 0,
     "EXPERT": 0,
     "MASTER": 0,
     "SOVEREIGN": 0
   },
   "task_statistics": {
-    "total_completed": 5404,
-    "total_failed": 2696,
-    "success_rate": 0.6671604938271605
+    "total_completed": 5509,
+    "total_failed": 2591,
+    "success_rate": 0.6801234567901234
   }
 }

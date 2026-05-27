@@ -44,6 +44,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: Omo-Koda2
+          save-if: "true"
       - name: Check formatting
         working-directory: Omo-Koda2
         run: |
@@ -52,7 +53,7 @@ jobs:
           cargo fmt -p omokoda-cli -- --check
       - name: Build workspace
         working-directory: Omo-Koda2
-        run: cargo build --workspace --tests -j 2
+        run: cargo build --workspace --tests -j 1
         env:
           CARGO_INCREMENTAL: "0"
           RUSTFLAGS: "-C link-arg=-fuse-ld=lld"

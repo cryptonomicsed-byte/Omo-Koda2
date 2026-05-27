@@ -1,7 +1,11 @@
 pub mod bipon39;
+pub mod cloak;
 pub mod dna;
+pub mod duress;
+pub mod merkle;
 pub mod odu;
 pub mod pet;
+pub mod safety;
 pub mod user;
 pub mod vault;
 pub mod wallet;

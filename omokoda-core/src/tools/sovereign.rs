@@ -489,3 +489,43 @@ impl Tool for AgentsListTool {
         ))
     }
 }
+
+/// Returns the canonical list of 18 OpenClaw capabilities that unlock at Sovereign (Tier 5).
+///
+/// These map to the synthesis spec "OpenClaw 18 capabilities → Sovereign tier unlock".
+pub fn sovereign_tool_list() -> Vec<&'static str> {
+    vec![
+        "apply_patch",          // 1  — multi-file edit
+        "bash_unrestricted",    // 2  — full bash without restrictions
+        "git_operations",       // 3  — commit, push, branch
+        "file_system_write",    // 4  — unrestricted write
+        "network_request",      // 5  — HTTP, WebSocket
+        "process_spawn",        // 6  — spawn subprocesses
+        "code_execution",       // 7  — execute arbitrary code
+        "agent_orchestration",  // 8  — spawn sub-agents
+        "self_modification",    // 9  — modify own code
+        "multi_agent_fabric",   // 10 — coordinate agent swarms
+        "browser_automation",   // 11 — control browser
+        "database_access",      // 12 — read/write databases
+        "api_integration",      // 13 — connect to external APIs
+        "voice_interface",      // 14 — speech I/O
+        "image_generation",     // 15 — generate images
+        "video_generation",     // 16 — generate video
+        "sensor_access",        // 17 — read device sensors
+        "physical_control",     // 18 — Unitree G1 embodiment (stub v1)
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sovereign_tool_list_has_18_capabilities() {
+        assert_eq!(
+            sovereign_tool_list().len(),
+            18,
+            "OpenClaw sovereign tier must expose exactly 18 capabilities"
+        );
+    }
+}

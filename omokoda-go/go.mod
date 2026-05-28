@@ -1,3 +1,3 @@
-module github.com/omo-koda/oya
+module github.com/omo-koda/omokoda-go
 
-go 1.21
+go 1.22

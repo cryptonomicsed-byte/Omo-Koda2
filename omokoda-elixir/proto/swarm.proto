@@ -1,0 +1,135 @@
+syntax = "proto3";
+
+package omokoda.swarm;
+
+// ---------------------------------------------------------------------------
+// SwarmService — the public gRPC interface for the Yemọja coordination layer.
+//
+// All methods operate only on public state.  Private memory is never
+// transmitted over this interface.
+// ---------------------------------------------------------------------------
+service SwarmService {
+  // Spawn a new agent in the swarm and return its assigned ID.
+  rpc SpawnAgent(SpawnRequest) returns (SpawnResponse);
+
+  // Send a message (think or act) to a named agent.
+  rpc SendMessage(MessageRequest) returns (MessageResponse);
+
+  // Query the aggregated public memory garden.
+  rpc QueryPublicMemory(QueryRequest) returns (QueryResponse);
+
+  // Subscribe to a real-time stream of swarm-level events.
+  rpc SubscribeSwarmUpdates(SubscribeRequest) returns (stream SwarmUpdate);
+}
+
+// ---------------------------------------------------------------------------
+// SpawnAgent
+// ---------------------------------------------------------------------------
+
+message SpawnRequest {
+  // Optional caller-supplied ID.  If empty the server generates a UUID.
+  string agent_id  = 1;
+  // Starting tier for the new agent.
+  AgentTier tier   = 2;
+}
+
+message SpawnResponse {
+  string agent_id  = 1;
+  bool   success   = 2;
+  string error     = 3; // populated only on failure
+}
+
+// ---------------------------------------------------------------------------
+// SendMessage
+// ---------------------------------------------------------------------------
+
+message MessageRequest {
+  string      agent_id = 1;
+  MessageType type     = 2;
+
+  oneof payload {
+    ThinkPayload think = 3;
+    ActPayload   act   = 4;
+  }
+}
+
+message ThinkPayload {
+  string prompt = 1;
+  // Arbitrary key-value options forwarded to the Rust core.
+  map<string, string> opts = 2;
+}
+
+message ActPayload {
+  string              tool = 1;
+  map<string, string> args = 2;
+}
+
+message MessageResponse {
+  bool   success  = 1;
+  string result   = 2; // JSON-encoded result from the agent
+  string error    = 3;
+}
+
+// ---------------------------------------------------------------------------
+// QueryPublicMemory
+// ---------------------------------------------------------------------------
+
+message QueryRequest {
+  // If set, return entries only for this agent.  Empty = return all agents.
+  string agent_id  = 1;
+  // Maximum number of entries to return per agent (0 = unlimited).
+  uint32 limit     = 2;
+}
+
+message QueryResponse {
+  // agent_id → list of public memory strings
+  map<string, AgentMemoryEntries> garden = 1;
+}
+
+message AgentMemoryEntries {
+  repeated string entries = 1;
+}
+
+// ---------------------------------------------------------------------------
+// SubscribeSwarmUpdates (server-streaming)
+// ---------------------------------------------------------------------------
+
+message SubscribeRequest {
+  // Filter to a specific agent.  Empty = all agents.
+  string agent_id = 1;
+  // Filter to specific event types.  Empty = all types.
+  repeated SwarmEventType event_types = 2;
+}
+
+message SwarmUpdate {
+  string         agent_id   = 1;
+  SwarmEventType event_type = 2;
+  string         payload    = 3; // JSON-encoded event detail
+  int64          timestamp  = 4; // Unix millis
+}
+
+// ---------------------------------------------------------------------------
+// Enumerations
+// ---------------------------------------------------------------------------
+
+enum AgentTier {
+  AGENT_TIER_UNSPECIFIED  = 0;
+  AGENT_TIER_OBSERVER     = 1;
+  AGENT_TIER_PARTICIPANT  = 2;
+  AGENT_TIER_STEWARD      = 3;
+}
+
+enum MessageType {
+  MESSAGE_TYPE_UNSPECIFIED = 0;
+  MESSAGE_TYPE_THINK       = 1;
+  MESSAGE_TYPE_ACT         = 2;
+}
+
+enum SwarmEventType {
+  SWARM_EVENT_UNSPECIFIED        = 0;
+  SWARM_EVENT_AGENT_SPAWNED      = 1;
+  SWARM_EVENT_AGENT_CRASHED      = 2;
+  SWARM_EVENT_AGENT_RESTARTED    = 3;
+  SWARM_EVENT_MEMORY_CHECKPOINT  = 4;
+  SWARM_EVENT_PROFILE_SYNCED     = 5;
+}

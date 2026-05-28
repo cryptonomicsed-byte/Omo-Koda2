@@ -16,51 +16,19 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: Omo-Koda2
-      - name: Checkout Bipon39-Rust
-        id: checkout_bipon39
-        uses: actions/checkout@v4
-        continue-on-error: true
-        with:
-          repository: omo-koda/Bipon39-Rust
-          path: Bipon39-Rust
-      - name: Checkout Ifascript
-        id: checkout_ifascript
-        uses: actions/checkout@v4
-        continue-on-error: true
-        with:
-          repository: omo-koda/Ifascript
-          path: Ifascript
-      - name: Fallback to vendored Ifascript stub
-        if: steps.checkout_ifascript.outcome == 'failure'
-        run: cp -r Omo-Koda2/ifascript-stub/. Ifascript/
-      - name: Install system dependencies
-        run: sudo apt-get install -y protobuf-compiler
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.94.1
-          components: rustfmt, clippy
-      - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: Omo-Koda2
-          save-if: "true"
+          components: rustfmt
       - name: Check formatting
         working-directory: Omo-Koda2
         run: |
           cargo fmt -p omokoda-core -- --check
           cargo fmt -p omokoda-hermetic -- --check
           cargo fmt -p omokoda-cli -- --check
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost
-          df -h
       - name: Test workspace
         working-directory: Omo-Koda2
-        run: cargo test --workspace -j 1 -- --test-threads 1
-        env:
-          CARGO_INCREMENTAL: "0"
-          RUST_BACKTRACE: "1"
+        run: cargo test --workspace
 
   frontend:
     name: Frontend
@@ -107,8 +75,7 @@ jobs:
           otp-version: "27"
           elixir-version: "1.17"
       - run: mix deps.get
-      - run: mix test --trace test/wave9_test.exs
-      - run: mix test --trace test/omokoda_swarm_test.exs
+      - run: mix test
 
   python:
     name: Python
@@ -119,7 +86,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: python3 -m pip install -r omokoda-simulation/requirements.txt --quiet
-      - run: python3 -m py_compile omokoda-simulation/simulation.py
+      - run: python3 -m py_compile omokoda-simulation/simulation.py omokoda-simulation/executor.py
 
   node:
     name: Node
@@ -142,12 +109,13 @@ jobs:
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1.10'
-      - name: Check Julia syntax if present
+      - name: Install Julia deps if present
         run: |
           if [ -d "omokoda-memory" ]; then
-            cd omokoda-memory && julia --startup-file=no -e 'include("src/OmokodaMemory.jl"); println("OmokodaMemory: OK")'
+            julia --project=omokoda-memory -e 'using Pkg; Pkg.instantiate()'
+            julia --project=omokoda-memory -e 'include("src/OmokodaMemory.jl")'
           else
-            echo "No omokoda-memory Julia project found; skipping."
+            echo "No omokoda-memory Julia project found; skipping instantiate."
           fi
 
   move:

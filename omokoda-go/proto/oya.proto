@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package omokoda.oya;
+
+option go_package = "github.com/omo-koda/omokoda-go/proto/oyapb";
+
+// FlowService is the ỌYA rate-limiting and rhythm-enforcement service.
+service FlowService {
+  // EnforceFlow checks whether an agent action is permitted given the agent's
+  // tier, the current rate-limit state, and the Sabbath gate.
+  rpc EnforceFlow(FlowRequest) returns (FlowResponse);
+
+  // StreamUpdates opens a server-side streaming channel that delivers
+  // real-time FlowUpdate events (heartbeats and policy changes) to the agent.
+  rpc StreamUpdates(SubscribeRequest) returns (stream FlowUpdate);
+}
+
+// FlowRequest is sent by an agent before taking an action.
+message FlowRequest {
+  string agent_id = 1;
+  uint32 tier     = 2;
+}
+
+// FlowResponse reports whether the action is allowed.
+message FlowResponse {
+  bool   allowed        = 1;
+  string reason         = 2; // human-readable denial reason, empty if allowed
+  string next_allowed_at = 3; // RFC3339 timestamp; empty if allowed
+}
+
+// SubscribeRequest opens a streaming subscription for an agent.
+message SubscribeRequest {
+  string agent_id = 1;
+}
+
+// FlowUpdate is a single event pushed by the server to a subscribed agent.
+message FlowUpdate {
+  string event     = 1; // e.g. "heartbeat", "policy_change", "sabbath_start"
+  int64  timestamp = 2; // Unix epoch seconds
+}

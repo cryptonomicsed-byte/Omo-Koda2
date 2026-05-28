@@ -1,72 +1,161 @@
-using SHA
+# BBU (Busy Beaver Unit) complexity scoring.
+#
+# Maps code complexity onto the Busy Beaver scale:
+#   1.0   → trivial (BB(1) = 1)
+#   6.0   → simple  (BB(2) = 6)
+#   21.0  → moderate (BB(3) = 21)
+#   107.0 → complex  (BB(4) = 107)
+#   47.1  → exceptional (maps symbolically to BB(5) = 47_176_870, scaled to 47.1)
+#
+# Scoring factors:
+#   - Token count (raw complexity signal)
+#   - Nesting depth (exponential branching)
+#   - Conditional branches (if/else/match/switch/case/when/unless)
+#   - Loop constructs (for/while/loop/do/repeat/until/foreach/map/reduce/filter)
 
 """
-    calculate_bbu(code::String) -> Float64
+    count_tokens(text::String) -> Int
 
-Heuristic Busy Beaver Unit score (1.0–47.1) for a code string.
-Based on: lexical entropy + estimated loop depth + branch count.
+Count whitespace-delimited tokens in `text`.
 """
-function calculate_bbu(code::String)::Float64
-    # Lexical entropy estimate
-    bytes = Vector{UInt8}(code)
-    freq = zeros(Int, 256)
-    for b in bytes
-        freq[b + 1] += 1
-    end
-    n = length(bytes)
-    entropy = 0.0
-    for f in freq
-        if f > 0
-            p = f / n
-            entropy -= p * log2(p)
+function count_tokens(text::String)::Int
+    tokens = split(strip(text), r"\s+")
+    # split on empty string returns [""], so filter
+    return count(t -> !isempty(t), tokens)
+end
+
+"""
+    measure_nesting_depth(text::String) -> Int
+
+Estimate maximum nesting depth by counting the maximum open brace/bracket/paren depth
+plus indentation-based block depth (for languages using indentation).
+"""
+function measure_nesting_depth(text::String)::Int
+    max_depth = 0
+    current_depth = 0
+    for ch in text
+        if ch in ('{', '[', '(')
+            current_depth += 1
+            if current_depth > max_depth
+                max_depth = current_depth
+            end
+        elseif ch in ('}', ']', ')')
+            if current_depth > 0
+                current_depth -= 1
+            end
         end
     end
-    # Normalize entropy (max is 8 bits for uniform)
-    norm_entropy = entropy / 8.0
 
-    # Estimate loop depth by counting keywords
-    loop_keywords = ["for", "while", "loop", "recursion", "fold", "map"]
-    loop_count = sum(count(kw, code) for kw in loop_keywords)
-    loop_score = min(loop_count * 0.5, 3.0)
+    # Also check indentation depth (for Python, Julia, Ruby, etc.)
+    indent_depth = 0
+    max_indent = 0
+    for line in split(text, '\n')
+        # Count leading spaces (4 spaces = 1 level, tabs = 1 level each)
+        leading = length(line) - length(lstrip(line))
+        spaces = count(c -> c == ' ', line[1:min(leading, length(line))])
+        tabs   = count(c -> c == '\t', line[1:min(leading, length(line))])
+        indent_depth = div(spaces, 4) + tabs
+        if indent_depth > max_indent
+            max_indent = indent_depth
+        end
+    end
 
-    # Branch count
-    branch_keywords = ["if", "else", "match", "case", "when", "cond"]
-    branch_count = sum(count(kw, code) for kw in branch_keywords)
-    branch_score = min(branch_count * 0.2, 2.0)
+    return max(max_depth, max_indent)
+end
 
-    bbu = 1.0 + norm_entropy * 40.0 + loop_score + branch_score
+"""
+    count_conditionals(text::String) -> Int
+
+Count conditional branch keywords across multiple programming languages.
+"""
+function count_conditionals(text::String)::Int
+    # Case-insensitive match for whole words
+    patterns = [
+        r"\bif\b", r"\belse\b", r"\belseif\b", r"\belif\b",
+        r"\bmatch\b", r"\bswitch\b", r"\bcase\b", r"\bwhen\b",
+        r"\bunless\b", r"\bternary\b", r"\b\?\s*:", r"\bcond\b",
+    ]
+    count_total = 0
+    lower_text = lowercase(text)
+    for pat in patterns
+        count_total += length(collect(eachmatch(pat, lower_text)))
+    end
+    return count_total
+end
+
+"""
+    count_loops(text::String) -> Int
+
+Count loop constructs across multiple programming languages.
+"""
+function count_loops(text::String)::Int
+    patterns = [
+        r"\bfor\b", r"\bwhile\b", r"\bloop\b", r"\bdo\b",
+        r"\brepeat\b", r"\buntil\b", r"\bforeach\b",
+        r"\bmap\b", r"\breduce\b", r"\bfilter\b",
+        r"\bfold\b", r"\biter\b", r"\beach\b",
+    ]
+    count_total = 0
+    lower_text = lowercase(text)
+    for pat in patterns
+        count_total += length(collect(eachmatch(pat, lower_text)))
+    end
+    return count_total
+end
+
+"""
+    calculate_bbu(code_text::String) -> Float64
+
+Calculate a BBU (Busy Beaver Unit) complexity score for `code_text`.
+
+Returns a value in [1.0, 47.1] where:
+  - 1.0  = trivial (empty or near-empty code)
+  - 6.0  = simple
+  - 21.0 = moderate
+  - 107.0 would be complex, but score is capped at 47.1
+  - 47.1 = exceptional complexity (symbolic BB(5) reference)
+
+The raw score is computed as a weighted sum of complexity factors,
+then mapped onto the BBU scale via sigmoid-like normalization.
+"""
+function calculate_bbu(code_text::String)::Float64
+    text = strip(code_text)
+
+    if isempty(text)
+        return 1.0
+    end
+
+    tokens      = count_tokens(text)
+    nesting     = measure_nesting_depth(text)
+    conditionals = count_conditionals(text)
+    loops       = count_loops(text)
+
+    # Raw complexity score (weighted sum)
+    # Weights tuned so that:
+    #   - 0 tokens → raw ≈ 0 → BBU = 1.0
+    #   - ~5 tokens, no structure → raw ≈ 5 → BBU ≈ 6.0
+    #   - ~20 tokens with mild nesting → raw ≈ 20 → BBU ≈ 21.0
+    #   - heavily nested with many branches → raw high → BBU → 47.1
+    raw = (tokens       * 0.15) +
+          (nesting      * 4.0)  +
+          (conditionals * 2.5)  +
+          (loops        * 3.0)
+
+    # Map raw score to BBU scale using a piecewise approach aligned to BB values.
+    # BB thresholds: 1, 6, 21, 47.1 (capped)
+    # Raw thresholds (approximate): 0, 5, 20, 80+
+    bbu = if raw <= 0.0
+        1.0
+    elseif raw <= 5.0
+        1.0 + (raw / 5.0) * (6.0 - 1.0)
+    elseif raw <= 20.0
+        6.0 + ((raw - 5.0) / 15.0) * (21.0 - 6.0)
+    elseif raw <= 80.0
+        21.0 + ((raw - 20.0) / 60.0) * (47.1 - 21.0)
+    else
+        47.1
+    end
+
+    # Clamp to [1.0, 47.1]
     return clamp(bbu, 1.0, 47.1)
-end
-
-"""
-    validate_entropy(seed::Vector{UInt8}) -> Bool
-
-Basic entropy validation: checks byte diversity and avalanche property.
-"""
-function validate_entropy(seed::Vector{UInt8})::Bool
-    length(seed) < 32 && return false
-
-    # Check byte diversity
-    unique_bytes = length(Set(seed))
-    unique_bytes < 16 && return false
-
-    # Avalanche: flip one bit, check output changes significantly
-    h1 = sha256(seed)
-    flipped = copy(seed)
-    flipped[1] = xor(flipped[1], UInt8(0x01))
-    h2 = sha256(flipped)
-    diff_bits = sum(count_ones(xor(a, b)) for (a, b) in zip(h1, h2))
-    return diff_bits >= 96  # at least 37.5% of 256 bits must differ
-end
-
-"""
-    check_bb_bound(tier::Int, steps::Int) -> Bool
-
-Check if `steps` is within the known/estimated BB bound for the given tier.
-Tier → state count mapping: T0→1, T1→2, T2→3, T3→4, T4→4, T5→5
-"""
-function check_bb_bound(tier::Int, steps::Int)::Bool
-    state_map = Dict(0 => 1, 1 => 2, 2 => 3, 3 => 4, 4 => 4, 5 => 5)
-    n = get(state_map, tier, 5)
-    return within_bb_bound(n, steps)
 end

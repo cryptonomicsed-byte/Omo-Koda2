@@ -1,11 +1,6 @@
 name = "OmokodaJulia"
-uuid = "8b3a7c2e-4f1d-5e3b-9a60-7c5d4b2e8f0a"
+uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 version = "0.1.0"
-authors = ["Omo-Koda"]
 
 [deps]
-SHA = "ea8e919c-243c-51af-8825-aaa63cd721ce"
-
-[compat]
-julia = "1.9, 1.10, 1.11"
-SHA = "0.7"
+PackageCompiler = "9b87118b-4619-50d2-8e1e-99f35a4d4d9d"

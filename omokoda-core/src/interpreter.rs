@@ -255,7 +255,7 @@ impl MemoryEntry {
 }
 impl AgentCore {
     pub fn from_snapshot(snapshot: AgentSnapshot, k_root: [u8; 32]) -> Self {
-        let current_memory_key = snapshot.odu_seed.as_bytes().clone();
+        let current_memory_key = *snapshot.odu_seed.as_bytes();
         Self {
             snapshot,
             private_data: None,
@@ -430,7 +430,7 @@ impl AgentCore {
 
     pub fn increment_act_counter(&mut self) {
         self.snapshot.act_counter += 1;
-        if self.snapshot.act_counter % 100 == 0 {
+        if self.snapshot.act_counter.is_multiple_of(100) {
             self.rotate_memory_key();
         }
     }
@@ -524,8 +524,9 @@ impl Steward {
         let planet = (odu_bytes[0] % 7) as u8;
         let dimension = 0u8; // Time dimension at birth
         let resonance = Some(
-            omokoda_hermetic::fractal::ResonanceSignature::new(day, planet, dimension)
-                .map_err(|e| format!("ResonanceSignature::new failed: {e}"))?,
+            omokoda_hermetic::fractal::ResonanceSignature::new(day, planet, dimension).ok_or_else(
+                || format!("ResonanceSignature::new failed for day={day} planet={planet}"),
+            )?,
         );
 
         let mut session = Session::new(id.clone(), name.clone(), birth_timestamp);
@@ -1954,7 +1955,6 @@ impl Steward {
                 .await;
         }
 
-        let stmt = stmt;
         let mut iterations = 0;
         let max_iterations = 16;
 

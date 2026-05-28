@@ -35,6 +35,7 @@ pub enum ToolHookDecision {
 pub struct ToolHook {
     pub name: String,
     pub phase: ToolHookPhase,
+    #[allow(clippy::type_complexity)]
     pub run: Box<dyn Fn(&str, &str) -> ToolHookDecision + Send + Sync>,
 }
 

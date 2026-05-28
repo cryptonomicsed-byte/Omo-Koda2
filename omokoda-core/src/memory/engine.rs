@@ -109,9 +109,7 @@ impl MemoryEngine {
 
         // Distill the overflow (entries beyond capacity) into semantic patterns
         let overflow = episodic.split_off(self.episodic_capacity);
-        let patterns = self.distill_to_semantic(&overflow);
-
-        patterns
+        self.distill_to_semantic(&overflow)
     }
 
     /// Cap semantic memory to its capacity, keeping the highest-frequency patterns.

@@ -76,6 +76,7 @@ pub enum StopCondition {
 /// A registered stop hook — called before each query turn
 pub struct StopHook {
     pub name: String,
+    #[allow(clippy::type_complexity)]
     pub check: Box<dyn Fn(&QueryState) -> Option<StopCondition> + Send + Sync>,
 }
 

@@ -181,13 +181,14 @@ async fn act_handler(
 
 async fn status_handler(State(state): State<AppState>) -> Json<StatusResponse> {
     let steward = state.steward.lock().await;
+    let agent = steward.agent_core();
     Json(StatusResponse {
-        has_agent: steward.agent_state().is_some(),
-        name: steward.agent_state().map(|a| a.name().to_string()),
-        id: steward.agent_state().map(|a| a.id().as_str().to_string()),
-        reputation: steward.agent_state().map(|a| a.reputation()),
-        tier: steward.agent_state().map(|a| a.tier()),
-        synapse: steward.agent_state().map(|a| a.synapse()),
+        has_agent: agent.is_some(),
+        name: agent.map(|a| a.name().to_string()),
+        id: agent.map(|a| a.id().as_str().to_string()),
+        reputation: agent.map(|a| a.reputation()),
+        tier: agent.map(|a| a.tier()),
+        synapse: agent.map(|a| a.synapse()),
     })
 }
 
@@ -261,6 +262,16 @@ fn sovereign_event_to_json(ev: &crate::bus::SovereignEvent) -> serde_json::Value
             "type": "sabbath_entered",
             "agents_paused": e.agents_paused,
             "queued_ops": e.queued_ops,
+        }),
+        Some(sovereign_event::Event::Denial(e)) => json!({
+            "type": "denial",
+            "tool": e.tool,
+            "reason": e.reason,
+        }),
+        Some(sovereign_event::Event::Audit(e)) => json!({
+            "type": "audit",
+            "event_type": e.event_type,
+            "details": e.details,
         }),
         None => serde_json::json!({"type": "unknown"}),
     }

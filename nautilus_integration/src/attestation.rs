@@ -41,8 +41,8 @@ pub fn verify_quote(
     // Derive seal key via HKDF(enclave_id || code_measurement)
     let mut hasher = Sha256::new();
     hasher.update(b"omokoda:nautilus:seal_key_v1");
-    hasher.update(&quote.enclave_id);
-    hasher.update(&quote.code_measurement);
+    hasher.update(quote.enclave_id);
+    hasher.update(quote.code_measurement);
     let seal_key: [u8; 32] = hasher.finalize().into();
 
     Ok(AttestationResult {

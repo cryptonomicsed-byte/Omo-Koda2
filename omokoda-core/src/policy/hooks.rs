@@ -202,17 +202,14 @@ impl PolicyHookRunner {
                         Some(0) => HookDecision::Allow,
                         Some(2) => {
                             // Read stderr/stdout for denial message
-                            let msg = child
-                                .stderr
-                                .as_mut()
-                                .and_then(|_| {
-                                    // Already exited, capture via wait_with_output is no longer possible.
-                                    // The message is in the hook's exit; use a generic message.
-                                    None::<String>
-                                })
-                                .unwrap_or_else(|| {
-                                    format!("hook '{}' denied the action", hook.command)
-                                });
+                            let msg =
+                                child
+                                    .stderr
+                                    .as_mut()
+                                    .and(None::<String>)
+                                    .unwrap_or_else(|| {
+                                        format!("hook '{}' denied the action", hook.command)
+                                    });
                             HookDecision::Deny(msg)
                         }
                         Some(code) => HookDecision::Warn(format!(

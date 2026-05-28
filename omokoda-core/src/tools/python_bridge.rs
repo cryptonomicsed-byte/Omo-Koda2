@@ -42,7 +42,11 @@ impl Tool for PythonTool {
         self.write
     }
 
-    async fn execute(&self, params: &str, context: &ExecutionContext) -> Result<String, String> {
+    async fn execute(
+        &self,
+        params: &str,
+        context: &ExecutionContext,
+    ) -> Result<(String, crate::usage::TokenUsage), String> {
         let url = format!("{}/execute", python_url());
 
         let body = serde_json::json!({
@@ -66,7 +70,7 @@ impl Tool for PythonTool {
                 .json()
                 .await
                 .map_err(|e| format!("python bridge parse error: {}", e))?;
-            Ok(py_resp.output)
+            Ok((py_resp.output, crate::usage::TokenUsage::default()))
         } else {
             let status = resp.status().as_u16();
             let body: serde_json::Value = resp

@@ -9,7 +9,6 @@ pub mod hermetic;
 #[cfg(test)]
 pub mod hermetic_tests;
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HermeticEvaluation {
     pub balance: f64,   // 0.0 - 1.0 (how aligned the act was with agent's principles)

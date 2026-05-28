@@ -11,19 +11,47 @@ jobs:
     name: Rust
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Omo-Koda2
+        uses: actions/checkout@v4
+        with:
+          path: Omo-Koda2
+      - name: Checkout Bipon39-Rust
+        id: checkout_bipon39
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          repository: omo-koda/Bipon39-Rust-
+          path: Bipon39-Rust
+      - name: Fallback to vendored Bipon39 stub
+        if: steps.checkout_bipon39.outcome == 'failure'
+        run: cp -r Omo-Koda2/bipon39-stub/. Bipon39-Rust/
+      - name: Checkout Ifascript
+        id: checkout_ifascript
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          repository: omo-koda/ifascript
+          path: Ifascript
+      - name: Fallback to vendored Ifascript stub
+        if: steps.checkout_ifascript.outcome == 'failure'
+        run: cp -r Omo-Koda2/ifascript-stub/. Ifascript/
       - name: Install protoc
         run: sudo apt-get install -y protobuf-compiler
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: Omo-Koda2
       - name: Build
         run: cargo build --workspace
+        working-directory: Omo-Koda2
       - name: Test
         run: cargo test --workspace
+        working-directory: Omo-Koda2
       - name: Clippy
         run: cargo clippy --workspace -- -D warnings
+        working-directory: Omo-Koda2
 
   # ── Go / Gateway ────────────────────────────────────────────────────────────
   go:

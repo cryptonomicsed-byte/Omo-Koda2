@@ -4,11 +4,10 @@
 ///
 /// In production: replace the stub crypto with a real Nautilus SDK call.
 /// The session handshake and attestation verification remain as-is.
-
 pub mod attestation;
 pub mod handshake;
 pub mod sealed_memory;
 
 pub use attestation::{AttestationResult, TeeQuote};
 pub use handshake::{HandshakeSession, SessionError};
-pub use sealed_memory::{SealedMemory, SealError};
+pub use sealed_memory::{SealError, SealedMemory};

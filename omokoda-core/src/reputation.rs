@@ -193,7 +193,6 @@ fn tool_slice_for_tier(tier: u8) -> &'static [&'static str] {
 
 // --- Safeguards added to support daily action caps and 7-day tier promotion gates ---
 
-
 pub const MAX_ACTIONS_PER_DAY: u32 = 50;
 pub const MIN_DAYS_BETWEEN_PROMOTIONS: u64 = 7;
 pub const DIMINISHING_RETURNS_BASE: f64 = 0.995;

@@ -493,7 +493,8 @@ impl Steward {
         let entropy = blake3::derive_key("omokoda:entropy_v1", &k_root);
 
         let mnemonic = Bipon39::entropy_to_mnemonic(&entropy);
-        let indices = Bipon39::mnemonic_to_indices(&mnemonic).unwrap();
+        let indices = Bipon39::mnemonic_to_indices(&mnemonic)
+            .map_err(|e| format!("mnemonic_to_indices failed: {e}"))?;
         let primary_index = Bipon39::get_odu_index(&indices);
 
         let odu_seed = OduSeed::new(entropy);
@@ -501,8 +502,8 @@ impl Steward {
             primary_index,
             mnemonic: mnemonic.clone(),
         };
-        let personality =
-            bipon39::personality_profile(&mnemonic).expect("Failed to derive personality profile");
+        let personality = bipon39::personality_profile(&mnemonic)
+            .map_err(|e| format!("derive_personality failed: {e}"))?;
         let receipts = ReceiptStore::new();
 
         // Layer B: Hermetic Principle derivation via IfáScript entropy
@@ -523,7 +524,8 @@ impl Steward {
         let planet = (odu_bytes[0] % 7) as u8;
         let dimension = 0u8; // Time dimension at birth
         let resonance = Some(
-            omokoda_hermetic::fractal::ResonanceSignature::new(day, planet, dimension).unwrap(),
+            omokoda_hermetic::fractal::ResonanceSignature::new(day, planet, dimension)
+                .map_err(|e| format!("ResonanceSignature::new failed: {e}"))?,
         );
 
         let mut session = Session::new(id.clone(), name.clone(), birth_timestamp);
@@ -540,7 +542,7 @@ impl Steward {
         // Derive Sui-compatible Ed25519 signing key (m/44'/784'/0'/0'/0')
         let signing_key =
             crate::identity::wallet::Wallet::derive_from_mnemonic(&odu_identity.mnemonic, "")
-                .expect("Failed to derive wallet key");
+                .map_err(|e| format!("derive_wallet_key failed: {e}"))?;
         let public_key = signing_key.verifying_key().to_bytes();
 
         let synapse = self.dopamine_pool.compute_initial_synapse();
@@ -586,8 +588,9 @@ impl AgentSnapshot {
 fn derive_signing_key(odu_seed: &OduSeed) -> SigningKey {
     let hk = Hkdf::<Sha256>::new(None, odu_seed.as_bytes());
     let mut okm = [0u8; 32];
-    hk.expand(b"omokoda-ed25519-v1", &mut okm)
-        .expect("HKDF expansion failed");
+    // HKDF expand with a fixed-size 32-byte output is infallible in practice;
+    // the only error case is invalid output length, which cannot happen here.
+    let _ = hk.expand(b"omokoda-ed25519-v1", &mut okm);
     SigningKey::from_bytes(&okm)
 }
 

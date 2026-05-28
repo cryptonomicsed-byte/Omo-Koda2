@@ -45,7 +45,6 @@ impl Wallet {
             0 | 0x8000_0000,
         ];
 
-
         let (mut kl, mut kr) = (il, ir);
         for &index in &path {
             (kl, kr) = Self::derive_child(kl, kr, index)?;

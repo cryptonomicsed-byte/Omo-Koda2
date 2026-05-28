@@ -20,15 +20,27 @@ pub mod odu {
 
     // 256 Odu represented symbolically — names cycle through 16 base Odu
     static ODU_NAMES: [&str; 16] = [
-        "Ogbe", "Oyeku", "Iwori", "Odi", "Irosun", "Owonrin",
-        "Obara", "Okanran", "Ogunda", "Osa", "Ika", "Oturupon",
-        "Otura", "Irete", "Ose", "Ofun",
+        "Ogbe", "Oyeku", "Iwori", "Odi", "Irosun", "Owonrin", "Obara", "Okanran", "Ogunda", "Osa",
+        "Ika", "Oturupon", "Otura", "Irete", "Ose", "Ofun",
     ];
 
     static ARCHETYPES: [&str; 16] = [
-        "light", "transition", "vision", "womb", "blood", "surprise",
-        "royalty", "conflict", "iron", "chaos", "adaptation", "reversal",
-        "covenant", "patience", "prosperity", "completion",
+        "light",
+        "transition",
+        "vision",
+        "womb",
+        "blood",
+        "surprise",
+        "royalty",
+        "conflict",
+        "iron",
+        "chaos",
+        "adaptation",
+        "reversal",
+        "covenant",
+        "patience",
+        "prosperity",
+        "completion",
     ];
 
     /// Returns the Odu for a given 0-255 index.

@@ -62,13 +62,17 @@ impl Tool for PythonTool {
             .map_err(|e| format!("python bridge unavailable: {}", e))?;
 
         if resp.status().is_success() {
-            let py_resp: PythonResponse =
-                resp.json().await.map_err(|e| format!("python bridge parse error: {}", e))?;
+            let py_resp: PythonResponse = resp
+                .json()
+                .await
+                .map_err(|e| format!("python bridge parse error: {}", e))?;
             Ok(py_resp.output)
         } else {
             let status = resp.status().as_u16();
-            let body: serde_json::Value =
-                resp.json().await.unwrap_or(serde_json::json!({"error": "unknown"}));
+            let body: serde_json::Value = resp
+                .json()
+                .await
+                .unwrap_or(serde_json::json!({"error": "unknown"}));
             Err(format!(
                 "python tool '{}' error {}: {}",
                 self.name,
@@ -104,7 +108,8 @@ pub fn code_runner() -> PythonTool {
 pub fn data_analysis() -> PythonTool {
     PythonTool {
         name: "data_analysis",
-        description: "Statistical analysis on JSON/CSV data (mean, median, stdev, histogram, correlation)",
+        description:
+            "Statistical analysis on JSON/CSV data (mean, median, stdev, histogram, correlation)",
         tier: 1,
         write: false,
     }

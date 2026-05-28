@@ -65,20 +65,24 @@ pub fn personality_profile(mnemonic: &str) -> Result<PersonalityProfile, String>
     let bytes = hash.as_bytes();
     let orisha_idx = bytes[7] % 7;
     let summaries = [
-        "Curious and open", "Highly creative", "Disciplined and focused",
-        "Deeply empathic", "Highly resilient", "Strongly intuitive",
+        "Curious and open",
+        "Highly creative",
+        "Disciplined and focused",
+        "Deeply empathic",
+        "Highly resilient",
+        "Strongly intuitive",
         "Sovereign and independent",
     ];
     let summary = summaries[(bytes[8] % 7) as usize].to_string();
     Ok(PersonalityProfile {
-        curiosity:         bytes[0] as f32 / 255.0,
-        creativity:        bytes[1] as f32 / 255.0,
-        discipline:        bytes[2] as f32 / 255.0,
-        empathy:           bytes[3] as f32 / 255.0,
-        resilience:        bytes[4] as f32 / 255.0,
-        intuition:         bytes[5] as f32 / 255.0,
-        sovereignty:       bytes[6] as f32 / 255.0,
-        dominant_orisha:   Orisha { index: orisha_idx },
+        curiosity: bytes[0] as f32 / 255.0,
+        creativity: bytes[1] as f32 / 255.0,
+        discipline: bytes[2] as f32 / 255.0,
+        empathy: bytes[3] as f32 / 255.0,
+        resilience: bytes[4] as f32 / 255.0,
+        intuition: bytes[5] as f32 / 255.0,
+        sovereignty: bytes[6] as f32 / 255.0,
+        dominant_orisha: Orisha { index: orisha_idx },
         personality_summary: summary,
     })
 }

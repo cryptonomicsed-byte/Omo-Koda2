@@ -2,7 +2,6 @@
 /// Implements frequency, runs, longest-run, and avalanche tests without
 /// requiring the dieharder C library. A full dieharder FFI binding can be
 /// added later by wiring up `build.rs` + bindgen.
-
 pub mod report;
 pub mod validator;
 

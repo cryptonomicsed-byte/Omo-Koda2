@@ -60,7 +60,9 @@ fn runs_test(bits: &[bool]) -> TestResult {
 
     let runs: usize = bits.windows(2).filter(|w| w[0] != w[1]).count() + 1;
     let expected = 2.0 * n * proportion * (1.0 - proportion);
-    let variance = (2.0 * n * proportion * (1.0 - proportion) * (1.0 - 2.0 * proportion * (1.0 - proportion))).abs();
+    let variance =
+        (2.0 * n * proportion * (1.0 - proportion) * (1.0 - 2.0 * proportion * (1.0 - proportion)))
+            .abs();
 
     if variance < f64::EPSILON {
         return TestResult::Pass;
@@ -73,7 +75,10 @@ fn runs_test(bits: &[bool]) -> TestResult {
         TestResult::Pass
     } else {
         TestResult::Fail {
-            reason: format!("runs count {} deviates {:.2}σ from expected {:.1}", runs, z, expected),
+            reason: format!(
+                "runs count {} deviates {:.2}σ from expected {:.1}",
+                runs, z, expected
+            ),
         }
     }
 }
@@ -176,14 +181,21 @@ mod tests {
     fn sha3_of_hello_passes_all() {
         let seed = sha3_hash(b"hello world");
         let report = validate_entropy_seed(&seed);
-        assert!(report.all_passed, "SHA3 output should pass all NIST tests: {:#?}", report);
+        assert!(
+            report.all_passed,
+            "SHA3 output should pass all NIST tests: {:#?}",
+            report
+        );
     }
 
     #[test]
     fn all_zeros_fails_frequency() {
         let seed = [0u8; 32];
         let report = validate_entropy_seed(&seed);
-        assert!(!report.frequency.is_pass(), "all-zeros should fail frequency test");
+        assert!(
+            !report.frequency.is_pass(),
+            "all-zeros should fail frequency test"
+        );
     }
 
     #[test]
@@ -192,7 +204,10 @@ mod tests {
         let report = validate_entropy_seed(&seed);
         // SHA3([0]*32) XOR SHA3([0x80, 0...]) should differ substantially
         // but the seed itself (constant input) fails avalanche — let's check
-        assert!(!report.all_passed, "all-zeros entropy should not pass all tests");
+        assert!(
+            !report.all_passed,
+            "all-zeros entropy should not pass all tests"
+        );
     }
 
     #[test]
@@ -200,7 +215,11 @@ mod tests {
         // 0xAA = 10101010 in binary — exactly 50% ones
         let seed = [0xAAu8; 32];
         let freq = super::frequency_test(&bytes_to_bits(&seed));
-        assert!(freq.is_pass(), "alternating bits should pass frequency: {:?}", freq);
+        assert!(
+            freq.is_pass(),
+            "alternating bits should pass frequency: {:?}",
+            freq
+        );
     }
 
     #[test]
@@ -208,7 +227,9 @@ mod tests {
         use crate::report::{NistReport, TestResult};
         let report = NistReport::new(
             TestResult::Pass,
-            TestResult::Fail { reason: "x".to_string() },
+            TestResult::Fail {
+                reason: "x".to_string(),
+            },
             TestResult::Pass,
             TestResult::Pass,
         );

@@ -3,8 +3,6 @@ members = [
     "omokoda-core",
     "omokoda-hermetic",
     "omokoda-cli",
-    "bipon39-stub",
-    "ifascript-stub",
     "nautilus_integration",
     "nist_entropy",
 ]

@@ -17,7 +17,9 @@ jobs:
         with:
           path: Omo-Koda2
       - name: Checkout Bipon39-Rust
+        id: checkout_bipon39
         uses: actions/checkout@v4
+        continue-on-error: true
         with:
           repository: omo-koda/Bipon39-Rust
           path: Bipon39-Rust
@@ -31,10 +33,18 @@ jobs:
       - name: Fallback to vendored Ifascript stub
         if: steps.checkout_ifascript.outcome == 'failure'
         run: cp -r Omo-Koda2/ifascript-stub/. Ifascript/
+      - name: Install system dependencies
+        run: sudo apt-get install -y protobuf-compiler
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          toolchain: 1.94.1
+          components: rustfmt, clippy
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: Omo-Koda2
+          save-if: "true"
       - name: Check formatting
         working-directory: Omo-Koda2
         run: |
@@ -43,7 +53,10 @@ jobs:
           cargo fmt -p omokoda-cli -- --check
       - name: Test workspace
         working-directory: Omo-Koda2
-        run: cargo test --workspace
+        run: cargo test --workspace -j 1 -- --test-threads 1
+        env:
+          CARGO_INCREMENTAL: "0"
+          RUST_BACKTRACE: "1"
 
   frontend:
     name: Frontend
@@ -124,13 +137,12 @@ jobs:
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1.10'
-      - name: Install Julia deps if present
+      - name: Check Julia syntax if present
         run: |
           if [ -d "omokoda-memory" ]; then
-            julia --project=omokoda-memory -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
-            julia --project=omokoda-memory -e 'include("src/OmokodaMemory.jl")'
+            cd omokoda-memory && julia --startup-file=no -e 'include("src/OmokodaMemory.jl"); println("OmokodaMemory: OK")'
           else
-            echo "No omokoda-memory Julia project found; skipping instantiate."
+            echo "No omokoda-memory Julia project found; skipping."
           fi
 
   move:

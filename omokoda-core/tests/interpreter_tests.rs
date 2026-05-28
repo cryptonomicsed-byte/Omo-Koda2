@@ -3,7 +3,6 @@ mod interpreter_tests {
     use omokoda_core::interpreter::{Steward, TurnEvent};
     use omokoda_core::parser::parse;
     use omokoda_core::reputation::{tier_for, tool_allowed, tools_for_tier};
-    use std::path::PathBuf;
 
     macro_rules! test_steward {
         ($name:expr) => {{

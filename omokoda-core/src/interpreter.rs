@@ -2055,6 +2055,7 @@ impl Steward {
     /// Agentic think: LLM can request tools, get results, continue reasoning (up to max_turns).
     /// This is an internal multi-turn loop around the `think` primitive — not a separate primitive.
     /// Callers outside omokoda-core must route through `dispatch()` with a Think statement.
+    #[allow(dead_code)]
     pub(crate) async fn think_agentic(
         &mut self,
         prompt: String,
@@ -2278,6 +2279,7 @@ impl Steward {
     }
 
     /// Execute a single tool call during the agentic loop
+    #[allow(dead_code)]
     async fn execute_tool_call_for_agentic(
         &mut self,
         tool_name: &str,

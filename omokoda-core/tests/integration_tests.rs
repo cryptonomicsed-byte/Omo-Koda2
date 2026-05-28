@@ -1,7 +1,6 @@
 use omokoda_core::interpreter::Steward;
 use omokoda_core::parser::parse;
 use omokoda_core::session::MessageRole;
-use std::path::PathBuf;
 
 macro_rules! test_steward {
     ($name:expr) => {{

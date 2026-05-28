@@ -62,6 +62,12 @@ enum Command {
         #[command(subcommand)]
         action: SessionAction,
     },
+    /// Start the HTTP/SSE server
+    Serve {
+        /// Port to listen on
+        #[arg(short, long, default_value_t = 7777)]
+        port: u16,
+    },
 }
 
 #[derive(Subcommand)]
@@ -152,6 +158,12 @@ async fn main() -> Result<()> {
             repl().await?;
         }
 
+        Some(Command::Serve { port }) => {
+            omokoda_core::server::start_server(port)
+                .await
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+        }
+
         Some(Command::Session { action }) => match action {
             SessionAction::List => session_list()?,
             SessionAction::Resume { id } => session_resume(&id).await?,
@@ -206,8 +218,8 @@ async fn repl() -> Result<()> {
 }
 
 async fn handle_repl_line(steward: &mut Steward, line: &str) -> Result<()> {
-    if line.starts_with('/') {
-        let mut parts = line[1..].splitn(2, ' ');
+    if let Some(stripped) = line.strip_prefix('/') {
+        let mut parts = stripped.splitn(2, ' ');
         let cmd = parts.next().unwrap_or("");
         let arg = parts.next().map(|s| s.to_string());
         run_slash(steward, cmd, arg).await

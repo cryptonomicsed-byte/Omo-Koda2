@@ -12,3 +12,12 @@ omokoda-frontend/tsconfig.tsbuildinfo
 
 # Sui Move build artifacts
 omokoda-sui/build/
+omokoda-core/test_sessions_privacy_restart/
+omokoda-ops/omokoda-ops
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+omokoda-simulation/tools/__pycache__/
+

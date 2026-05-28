@@ -37,7 +37,7 @@ pub enum PermissionPromptDecision {
     Deny { reason: String },
 }
 
-pub trait PermissionPrompter: std::fmt::Debug {
+pub trait PermissionPrompter: std::fmt::Debug + Send {
     fn decide(&mut self, request: &PermissionRequest) -> PermissionPromptDecision;
 }
 
@@ -112,8 +112,7 @@ impl PatternPolicy {
         if pattern == "*" {
             return true;
         }
-        if pattern.ends_with('*') {
-            let prefix = &pattern[..pattern.len() - 1];
+        if let Some(prefix) = pattern.strip_suffix('*') {
             return target.starts_with(prefix);
         }
         pattern == target

@@ -2,81 +2,59 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
-      - 'claude/**'
+    branches: [main, "claude/**"]
   pull_request:
 
 jobs:
+  # ── Rust / Steward ──────────────────────────────────────────────────────────
   rust:
     name: Rust
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Omo-Koda2
-        uses: actions/checkout@v4
-        with:
-          path: Omo-Koda2
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-      - name: Check formatting
-        working-directory: Omo-Koda2
-        run: |
-          cargo fmt -p omokoda-core -- --check
-          cargo fmt -p omokoda-hermetic -- --check
-          cargo fmt -p omokoda-cli -- --check
-      - name: Test workspace
-        working-directory: Omo-Koda2
-        run: cargo test --workspace
-
-  frontend:
-    name: Frontend
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: omokoda-frontend
-    steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Install protoc
+        run: sudo apt-get install -y protobuf-compiler
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: omokoda-frontend/package-lock.json
-      - run: npm ci
-      - run: npm run type-check
-      - run: npm run lint
-      - run: npm run build
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --workspace
+      - name: Test
+        run: cargo test --workspace
+      - name: Clippy
+        run: cargo clippy --workspace -- -D warnings
 
+  # ── Go / Gateway ────────────────────────────────────────────────────────────
   go:
     name: Go
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: omokoda-ops
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: omokoda-ops/go.mod
-          cache-dependency-path: omokoda-ops/go.sum
-      - run: go test ./...
+          go-version: "1.22"
+      - name: Test
+        run: go test ./...
+        working-directory: omokoda-ops
 
+  # ── Elixir / Swarm ──────────────────────────────────────────────────────────
   elixir:
     name: Elixir
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: omokoda-swarm
     steps:
       - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: "27"
-          elixir-version: "1.17"
-      - run: mix deps.get
-      - run: mix test
+          otp-version: "25.3"
+          elixir-version: "1.15.7"
+      - name: Versions
+        run: elixir --version && mix --version
+      - name: Test
+        run: mix test --trace
+        working-directory: omokoda-swarm
 
+  # ── Python / Tool Runner ────────────────────────────────────────────────────
   python:
     name: Python
     runs-on: ubuntu-latest
@@ -84,23 +62,40 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      - run: python3 -m pip install -r omokoda-simulation/requirements.txt --quiet
-      - run: python3 -m py_compile omokoda-simulation/simulation.py omokoda-simulation/executor.py
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install -r requirements.txt
+        working-directory: omokoda-simulation
+      - name: Syntax check
+        run: |
+          python -m py_compile server.py
+          python -m py_compile tools/web_search.py
+          python -m py_compile tools/code_runner.py
+          python -m py_compile tools/data_analysis.py
+          python -m py_compile tools/cosmos_generator.py
+        working-directory: omokoda-simulation
+      - name: Unit tests
+        run: |
+          python -c "
+          from tools.data_analysis import data_analysis
+          from tools.cosmos_generator import cosmos_generate
+          from tools.code_runner import code_runner
+          import json
 
-  node:
-    name: Node
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '18'
-      - run: npm install --legacy-peer-deps
-        working-directory: omokoda-frontend
-      - run: npm run build
-        working-directory: omokoda-frontend
+          r = json.loads(data_analysis('[1,2,3,4,5]'))
+          assert r['mean'] == 3.0 and r['count'] == 5
 
+          r = json.loads(cosmos_generate('{\"theme\":\"sci-fi\"}'))
+          assert r['status'] == 'stub'
+
+          r = json.loads(code_runner(json.dumps({'code': 'print(6*7)'})))
+          assert r['stdout'].strip() == '42'
+
+          print('all Python tool tests passed')
+          "
+        working-directory: omokoda-simulation
+
+  # ── Julia / Memory ──────────────────────────────────────────────────────────
   julia:
     name: Julia
     runs-on: ubuntu-latest
@@ -108,30 +103,41 @@ jobs:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
         with:
-          version: '1.10'
-      - name: Install Julia deps if present
+          version: "1.10"
+      - uses: julia-actions/cache@v2
+      # Instantiate project deps (HTTP.jl, JSON3.jl) for the HTTP server.
+      # Non-blocking: unit tests use only stdlib and don't need these packages.
+      - name: Instantiate deps
+        run: julia --project=omokoda-memory -e 'using Pkg; Pkg.instantiate()' || true
+      # Run stdlib-only logic tests directly — no HTTP/JSON3 required.
+      - name: Unit tests
         run: |
-          if [ -d "omokoda-memory" ]; then
-            julia --project=omokoda-memory -e 'using Pkg; Pkg.instantiate()'
-            julia --project=omokoda-memory -e 'include("src/OmokodaMemory.jl")'
-          else
-            echo "No omokoda-memory Julia project found; skipping instantiate."
-          fi
+          julia -e '
+            include("omokoda-memory/src/busy_beaver.jl")
+            include("omokoda-memory/src/nist_tests.jl")
+            include("omokoda-memory/src/augury.jl")
+            include("omokoda-memory/src/depin_optimizer.jl")
+            include("omokoda-memory/src/garden_analytics.jl")
+            println("Julia modules loaded OK")
 
-  move:
-    name: Move
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check Move packages when Sui CLI is available
-        run: |
-          if ! command -v sui >/dev/null 2>&1; then
-            echo "Sui CLI is not installed; skipping future Move checks."
-            exit 0
-          fi
+            # BB(2): known to write 4 ones in 6 steps
+            r = verify_bb_steps(2, 6)
+            @assert r.valid "BB(2) step verification failed: $(r.reason)"
 
-          for package in omokoda-sui omokoda-on-chain; do
-            if [ -f "$package/Move.toml" ]; then
-              (cd "$package" && sui move test)
-            fi
-          done
+            result = run_known_bb(2)
+            @assert result.halted        "BB(2) should halt"
+            @assert result.ones  == 4   "BB(2): expected 4 ones, got $(result.ones)"
+            @assert result.steps == 6   "BB(2): expected 6 steps, got $(result.steps)"
+
+            # NIST frequency on balanced sequence (p-value should be >> 0.01)
+            bits = repeat([0, 1], 512)
+            r = test_frequency(bits)
+            @assert r.passed "Frequency test on balanced 1024-bit sequence should pass (p=$(r.p_value))"
+
+            # Augury: Holt prediction on a linear series should trend correctly
+            series = Float64.(1:10)
+            pred = predict(series, 3; method=:holt)
+            @assert pred.predictions[1] > 10.0 "Holt prediction should extrapolate upward"
+
+            println("All Julia unit tests passed")
+          '

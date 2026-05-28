@@ -11,6 +11,7 @@ pub mod emotion;
 pub mod error;
 pub mod execution;
 pub mod gates;
+pub mod server;
 pub mod identity;
 pub mod intent;
 pub mod interpreter;

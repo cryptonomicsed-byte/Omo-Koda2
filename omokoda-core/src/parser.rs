@@ -324,8 +324,8 @@ fn contains_raw_key_material(input: &str) -> bool {
         let word = word.trim_matches('"');
         for segment in word.split([':', '=', ',']) {
             let mut s = segment;
-            if s.starts_with("0x") || s.starts_with("0X") {
-                s = &s[2..];
+            if let Some(stripped) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+                s = stripped;
             }
             if s.len() >= 8 && s.chars().all(|c| hex_chars.contains(&c)) {
                 return true;

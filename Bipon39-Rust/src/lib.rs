@@ -1,134 +1,163 @@
-use serde::{Deserialize, Serialize};
+/// BIPỌ̀N39 vendored CI stub.
+///
+/// Used in CI when omo-koda/Bipon39-Rust is not accessible.
+/// API is kept compatible with what omokoda-core and omokoda-hermetic expect.
 
-/// One of 7 primary Orishas assigned at birth from the Odu seed.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Orisha {
-    index: u8,
+// ── Macro (7 Orisha groupings) ────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Macro {
+    Esu,
+    Sango,
+    Osun,
+    Yemoja,
+    Oya,
+    Ogun,
+    Obatala,
 }
 
-impl Orisha {
+impl Macro {
     pub fn name(&self) -> &'static str {
-        match self.index % 7 {
-            0 => "Esu",
-            1 => "Obatala",
-            2 => "Osun",
-            3 => "Yemoja",
-            4 => "Ogun",
-            5 => "Sango",
-            _ => "Oya",
+        match self {
+            Macro::Esu => "Esu",
+            Macro::Sango => "Sango",
+            Macro::Osun => "Osun",
+            Macro::Yemoja => "Yemoja",
+            Macro::Oya => "Oya",
+            Macro::Ogun => "Ogun",
+            Macro::Obatala => "Obatala",
         }
+    }
+
+    pub fn from_name(s: &str) -> Option<Self> {
+        match s {
+            "Esu" => Some(Macro::Esu),
+            "Sango" => Some(Macro::Sango),
+            "Osun" => Some(Macro::Osun),
+            "Yemoja" => Some(Macro::Yemoja),
+            "Oya" => Some(Macro::Oya),
+            "Ogun" => Some(Macro::Ogun),
+            "Obatala" => Some(Macro::Obatala),
+            _ => None,
+        }
+    }
+
+    fn all() -> [Macro; 7] {
+        [
+            Macro::Esu,
+            Macro::Sango,
+            Macro::Osun,
+            Macro::Yemoja,
+            Macro::Oya,
+            Macro::Ogun,
+            Macro::Obatala,
+        ]
     }
 }
 
-/// Personality profile derived from a BIPỌ̀N39 mnemonic.
-/// Fields map to behavioral tendencies seeded at birth.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+// ── MacroDistribution ─────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MacroDistribution {
+    pub counts: [(Macro, usize); 7],
+    pub total: usize,
+}
+
+// ── ElementalVector ───────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ElementalVector {
+    pub fire: usize,
+    pub water: usize,
+    pub earth: usize,
+    pub air: usize,
+    pub ether: usize,
+}
+
+// ── PersonalityProfile ────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct PersonalityProfile {
-    pub curiosity: f32,
-    pub creativity: f32,
-    pub discipline: f32,
-    pub empathy: f32,
-    pub resilience: f32,
-    pub intuition: f32,
-    pub sovereignty: f32,
-    pub dominant_orisha: Orisha,
+    pub macro_distribution: MacroDistribution,
+    pub macro_percentages: [(Macro, f64); 7],
+    pub elemental_signature: ElementalVector,
+    pub dominant_orisha: Macro,
+    pub ritual_suggestions: Vec<String>,
     pub personality_summary: String,
 }
 
-impl Default for PersonalityProfile {
-    fn default() -> Self {
-        Self {
-            curiosity: 0.5,
-            creativity: 0.5,
-            discipline: 0.5,
-            empathy: 0.5,
-            resilience: 0.5,
-            intuition: 0.5,
-            sovereignty: 0.5,
-            dominant_orisha: Orisha { index: 0 },
-            personality_summary: "Balanced".to_string(),
-        }
-    }
+// ── WordlistEntry stub ────────────────────────────────────────────────────
+
+pub struct WordlistEntry {
+    pub array_index: usize,
 }
 
-pub struct Entry {
-    pub array_index: u32,
-    pub word: String,
-}
+// ── Core functions ────────────────────────────────────────────────────────
 
-/// Derives a personality profile from the full mnemonic string.
-pub fn personality_profile(mnemonic: &str) -> Result<PersonalityProfile, String> {
-    if mnemonic.is_empty() {
-        return Ok(PersonalityProfile::default());
-    }
-    let hash = blake3::hash(mnemonic.as_bytes());
-    let bytes = hash.as_bytes();
-    let orisha_idx = bytes[7] % 7;
-    let summaries = [
-        "Curious and open",
-        "Highly creative",
-        "Disciplined and focused",
-        "Deeply empathic",
-        "Highly resilient",
-        "Strongly intuitive",
-        "Sovereign and independent",
-    ];
-    let summary = summaries[(bytes[8] % 7) as usize].to_string();
-    Ok(PersonalityProfile {
-        curiosity: bytes[0] as f32 / 255.0,
-        creativity: bytes[1] as f32 / 255.0,
-        discipline: bytes[2] as f32 / 255.0,
-        empathy: bytes[3] as f32 / 255.0,
-        resilience: bytes[4] as f32 / 255.0,
-        intuition: bytes[5] as f32 / 255.0,
-        sovereignty: bytes[6] as f32 / 255.0,
-        dominant_orisha: Orisha { index: orisha_idx },
-        personality_summary: summary,
-    })
-}
-
-/// Converts raw entropy bytes to a list of mnemonic words.
-/// BIPỌ̀N39 uses 8 bits per word (256-word vocabulary):
-/// 32 bytes entropy → 32 content words + 1 checksum word = 33 total.
+/// Encode entropy bytes into a 33-word mnemonic phrase.
 pub fn entropy_to_mnemonic(entropy: &[u8]) -> Result<Vec<String>, String> {
-    let mut words: Vec<String> = entropy
-        .iter()
-        .enumerate()
-        .map(|(i, &b)| format!("odu-{:02x}-{:02x}", b, i as u8))
+    if entropy.is_empty() {
+        return Err("empty entropy".to_string());
+    }
+    let words: Vec<String> = (0..33)
+        .map(|i| {
+            let byte = entropy[i % entropy.len()];
+            format!("b{:03}", (byte as usize + i * 7) % 256)
+        })
         .collect();
-    // Append checksum word derived from all content bytes
-    let checksum: u8 = entropy.iter().fold(0u8, |acc, &b| acc.wrapping_add(b));
-    words.push(format!("odu-chk-{:02x}", checksum));
     Ok(words)
 }
 
-/// Derives a 64-byte seed from mnemonic word slices and an optional passphrase.
-pub fn mnemonic_to_seed(words: &[&str], passphrase: &str) -> Result<[u8; 64], String> {
+/// Split a mnemonic string into its constituent words.
+pub fn split_mnemonic(phrase: &str) -> Vec<&str> {
+    phrase.split_whitespace().collect()
+}
+
+/// Derive a 64-byte seed from mnemonic words and passphrase.
+pub fn mnemonic_to_seed(words: &[&str], passphrase: &str) -> Result<Vec<u8>, String> {
+    if words.is_empty() {
+        return Err("empty mnemonic".to_string());
+    }
+    let mut seed = vec![0u8; 64];
     let input = format!("{}{}", words.join(" "), passphrase);
-    let hash = blake3::hash(input.as_bytes());
-    let mut seed = [0u8; 64];
-    seed[..32].copy_from_slice(hash.as_bytes());
-    let hash2 = blake3::hash(hash.as_bytes());
-    seed[32..].copy_from_slice(hash2.as_bytes());
+    for (i, byte) in input.bytes().enumerate() {
+        seed[i % 64] ^= byte.wrapping_add(i as u8);
+    }
     Ok(seed)
 }
 
-/// Splits a mnemonic string into individual word slices borrowed from the input.
-pub fn split_mnemonic(mnemonic: &str) -> Vec<&str> {
-    mnemonic.split_whitespace().collect()
+/// Look up a mnemonic word by its encoded form.
+pub fn entry_by_encoding(word: &str) -> Result<WordlistEntry, String> {
+    let index = if let Some(n) = word.strip_prefix('b') {
+        n.parse::<usize>().unwrap_or(0) % 256
+    } else {
+        word.bytes().fold(0usize, |acc, b| (acc + b as usize) % 256)
+    };
+    Ok(WordlistEntry { array_index: index })
 }
 
-/// Looks up a wordlist entry by its encoded form.
-pub fn entry_by_encoding(word: &str) -> Result<Entry, String> {
-    let idx = if let Some(hex) = word.strip_prefix("odu-") {
-        u32::from_str_radix(hex, 16).unwrap_or(0)
-    } else {
-        let hash = blake3::hash(word.as_bytes());
-        let b = hash.as_bytes();
-        u32::from_le_bytes([b[0], b[1], b[2], b[3]])
-    };
-    Ok(Entry {
-        array_index: idx % 256,
-        word: word.to_string(),
+/// Build a personality profile from a whitespace-separated mnemonic.
+pub fn personality_profile(mnemonic: &str) -> Result<PersonalityProfile, String> {
+    let macros = Macro::all();
+    let hash: usize = mnemonic.bytes().map(|b| b as usize).sum();
+    let counts: [(Macro, usize); 7] = macros.map(|m| (m, (hash + m.name().len()) % 10 + 1));
+    let total: usize = counts.iter().map(|(_, c)| c).sum();
+    let percentages: [(Macro, f64); 7] =
+        counts.map(|(m, c)| (m, (c as f64 / total as f64) * 100.0));
+    let dominant = macros[hash % 7];
+
+    Ok(PersonalityProfile {
+        macro_distribution: MacroDistribution { counts, total },
+        macro_percentages: percentages,
+        elemental_signature: ElementalVector {
+            fire: hash % 5 + 1,
+            water: (hash / 5) % 5 + 1,
+            earth: (hash / 25) % 5 + 1,
+            air: (hash / 125) % 5 + 1,
+            ether: (hash / 625) % 5 + 1,
+        },
+        dominant_orisha: dominant,
+        ritual_suggestions: vec![format!("Align with {}", dominant.name())],
+        personality_summary: format!("{} leads with elemental tone.", dominant.name()),
     })
 }

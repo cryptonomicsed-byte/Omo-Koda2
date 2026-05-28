@@ -46,39 +46,47 @@ A daily resonance engine that modulates agent behavior based on the time-stream,
 
 Ọmọ Kọ́dà maintains a rigorous testing standard across its multi-language ecosystem.
 
-**Current Audit Status (May 2026):** `PASSED` ✅
-*   **Total Verified Tests**: `710+`
-*   **Rust Workspace**: `619` tests — (395 core unit, 63 hermetic, 161 integration/e2e)
+**Current Audit Status (May 2026, post-synthesis merge):** `PASSED` ✅
+*   **Total Verified Tests**: `759`
+*   **Rust Workspace**: `637` tests — (409 core unit, 156 core integration/e2e, 63 hermetic unit, 6 hermetic integration, 3 nist_entropy)
 *   **Go (Ops & Monitoring)**: `41` tests — ops, bridge, remote, teleport
-*   **Elixir (Swarm Coordination)**: `50` tests — backends, teammate FSM, permission sync
+*   **Elixir (Swarm Coordination)**: `49` tests — backends, teammate FSM, permission sync
+*   **Julia (Augury & BB oracle)**: `32` tests — exponential smoothing, garden analytics, BB verifier
 *   **Economic Simulation**: `Verified` (365-day cycle, reputation & synapse decay)
 *   **E2E Flow**: `Verified` (Birth → Think → Act via WASM)
 
 ### Core Invariants Verified
-1.  **Identity Anchor**: DNA fingerprints are deterministic and permanent.
-2.  **Sealed Memory**: Private thoughts are encrypted with Argon2id + ChaCha20Poly1305.
-3.  **Hermetic Gate**: Pre-execution ethics evaluation (Mentalism, Polarity, etc.) for all primitives.
-4.  **Tier Enforcement**: Reputation strictly controls tool access.
+1.  **Identity Anchor**: DNA fingerprints are deterministic and permanent; `IdentityMerkleTree::from_soul` binds `agent_id + birth_timestamp + odu_index + dna`.
+2.  **Sealed Memory**: Private thoughts encrypted with Argon2id + ChaCha20Poly1305; `/private` is a hard fail on non-local providers (no silent rerouting).
+3.  **Hermetic Gate**: Pre-execution ethics evaluation across all 7 principles, plus Sabbath gate (Sunday-only soul mutations) and Ebo exception (Advisory / Caution / Critical deliberation).
+4.  **Tier Enforcement**: Reputation strictly controls tool access; `difficulty(rep) = 107 / BB(5)^((rep-80)/20)` compresses earning above tier-5 threshold.
 5.  **Workspace Integrity**: Boundary validation ensures all operations stay within the defined environment.
+6.  **Receipt Chain**: `ActReceipt` carries `PoCWProof` (steps, bb_bound, tape_hash), `EpistemicSeverity`, `previous_hash` — `dry_run` is a structural invariant fixed to `false`.
+7.  **WASM Bridge**: Exactly **6 functions** exposed to the frontend — adding a seventh is a structural security regression.
+8.  **Sovereign Tools**: `sovereign_tool_list()` returns exactly **18 OpenClaw capabilities** at Tier 5.
 
 ---
 
 ## 🏗️ Technical Status (Audit Findings)
 
 ### 🟢 Completed & Verified
-*   **3-Primitive Surface**: `birth`, `think`, `act` strictly enforced by the parser.
-*   **Fractal Kernel**: 7-phase dispatch lifecycle (21 operations) implemented in the Steward.
-*   **Hermetic Ethics Gate**: Stateless scoring for all 7 principles — `omokoda-core/src/justice/hermetic.rs`.
-*   **Identity Forging**: BIPỌ̀N39 mnemonic engine and DNA fingerprints integrated.
-*   **Privacy Engine**: Sealed session memory using Argon2id key derivation and ChaCha20Poly1305 encryption.
+*   **3-Primitive Surface**: `birth`, `think`, `act` strictly enforced by the parser. Frozen public surface.
+*   **Fractal Kernel**: 7-phase dispatch lifecycle (21 operations) implemented in the Steward (Èṣù — mandatory gatekeeper).
+*   **Hermetic Ethics Gate**: Stateless scoring for all 7 principles — `omokoda-core/src/justice/hermetic.rs`. Extended with Sabbath gate, Ebo exception, flow modules (DayResonance, TensionTracker, ToneEngine), wisdom ensemble (11 Òrìṣà lobes), consensus engine, persona engine.
+*   **Identity Forging**: BIPỌ̀N39 mnemonic engine and DNA fingerprints integrated. `CloakSeed` display-layer cipher, `DuressHandler` BLAKE3-hashed panic phrase, `PoisonRadar` address poisoning scan, `IdentityMerkleTree`.
+*   **Privacy Engine**: Sealed session memory using Argon2id key derivation and ChaCha20Poly1305 encryption. `/private` is a hard fail on non-local providers.
 *   **Permission System**: Tier-gated tool permissions with bash security, SSRF guard, and sandbox adapter — `omokoda-core/src/permissions.rs`.
-*   **Session Lifecycle**: Auto-compact (configurable threshold), dream-state consolidation, Odu memdir persistence.
+*   **Session Lifecycle**: Auto-compact (configurable threshold), dream-state consolidation, Odu memdir persistence. `MAX_TOOL_ITERATIONS_PER_TURN=16`; TwelfthFace triggers at `dispatch_depth > 1024`.
 *   **Hook System**: 16 event types (`PreThink`, `PostThink`, `PreAct`, `PostAct`, `OnError`, `OnCompact`, `OnDream`, …), shell and Python hook handlers, and a glob-based rule engine in `omokoda-hermetic`.
 *   **Plugin Ecosystem**: Garden Marketplace manifest validation, command forge, plugin toolkits with sequential/parallel/hierarchical/pipeline activation — `omokoda-frontend/lib/`.
-*   **On-chain Registry**: Sui Move plugin registry with `PluginEntry` and capability-gated publish/install — `omokoda-sui/`.
+*   **On-chain Registry (Move)**: 8 contracts — `soul.move`, `agent.move`, `zbt_errors.move`, `zbt_guard.move`, `zbt_core.move`, `consensus_ledger.move`, `epistemic_nft.move`, `hive.move` (DOPAMINE_TOTAL_POOL=86B).
 *   **Multi-agent Swarm (Elixir)**: Pluggable backends (local Task, remote `:erpc`, Docker container), 5-state teammate FSM, distributed permission sync via `persistent_term` — `omokoda-swarm/`.
 *   **Bridge & Teleport (Go)**: Remote session bridge, session migration/teleport between nodes — `omokoda-ops/bridge`, `omokoda-ops/teleport`.
 *   **Task Heterogeneity**: `Dream` (consolidation) and `Delegate` (sub-agent) task kinds, budgeted scheduler integrating `QueryEngine` and `BackgroundRegistry` — `omokoda-core/src/tasks/`.
+*   **SOMA Memory**: `MemCell` (emotional_weight), `MemScene` (salience), `Lpm` (lifelong personal model); causal DAG (no vector DB).
+*   **Frontend (Week 3)**: 6-function WASM bridge (security boundary), AsciiPet (31 templates / 6 tiers), ReputationDisplay (3 decimals + log), CommandForge (3-primitive terminal), birth ritual (3-step), Garden marketplace.
+*   **Julia Augury** (server-side only): `AuguryPredict` (exponential smoothing), `GardenAnalytics` (tip velocity), BB verifier with PoCW floor verification.
+*   **Soul Interface Spec** (`specs/soul-interface.md`): frozen BIPỌ̀N39 / Ed25519 / K_root contract.
 *   **Agent & Skill Definitions**: Markdown-frontmatter agent registry (`agents.rs`), hierarchical skill discovery with reference loading (`skills.rs`).
 
 ### 🟡 In Progress / Gaps

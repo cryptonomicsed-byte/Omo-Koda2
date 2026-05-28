@@ -185,3 +185,54 @@ jobs:
 
             println("All Julia unit tests passed")
           '
+
+  # ── Frontend ────────────────────────────────────────────────────────────────
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: omokoda-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: omokoda-frontend/package-lock.json
+      - run: npm ci
+      - run: npm run type-check
+      - run: npm run lint
+      - run: npm run build
+
+  # ── Node (legacy build check) ───────────────────────────────────────────────
+  node:
+    name: Node
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '18'
+      - run: npm install --legacy-peer-deps
+        working-directory: omokoda-frontend
+      - run: npm run build
+        working-directory: omokoda-frontend
+
+  # ── Move / Sui ───────────────────────────────────────────────────────────────
+  move:
+    name: Move
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Move packages when Sui CLI is available
+        run: |
+          if ! command -v sui >/dev/null 2>&1; then
+            echo "Sui CLI is not installed; skipping Move checks."
+            exit 0
+          fi
+          for package in omokoda-sui omokoda-on-chain; do
+            if [ -f "$package/Move.toml" ]; then
+              (cd "$package" && sui move test)
+            fi
+          done

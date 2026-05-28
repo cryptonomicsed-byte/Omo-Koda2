@@ -51,14 +51,9 @@ jobs:
           cargo fmt -p omokoda-core -- --check
           cargo fmt -p omokoda-hermetic -- --check
           cargo fmt -p omokoda-cli -- --check
-      - name: Build workspace
-        working-directory: Omo-Koda2
-        run: cargo build --workspace --tests -j 1
-        env:
-          CARGO_INCREMENTAL: "0"
       - name: Test workspace
         working-directory: Omo-Koda2
-        run: cargo test --workspace --no-fail-fast -- --nocapture
+        run: cargo test --workspace -j 1 -- --test-threads 1
         env:
           CARGO_INCREMENTAL: "0"
           RUST_BACKTRACE: "1"

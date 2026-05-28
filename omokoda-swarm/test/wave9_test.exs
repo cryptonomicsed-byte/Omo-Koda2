@@ -3,7 +3,7 @@ defmodule OmokodaSwarm.Wave9Test do
 
   setup do
     Application.ensure_started(:omokoda_swarm)
-    Process.sleep(100)
+    Process.sleep(200)
     :ok
   end
 

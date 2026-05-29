@@ -66,7 +66,10 @@ impl VanityClient for StubVanityClient {
         // Stub address: hex of first 20 bytes prefixed with 0x
         let address = format!("0x{}", hex::encode(&signing_key[..20]));
 
-        Ok(WalletResult { signing_key, address })
+        Ok(WalletResult {
+            signing_key,
+            address,
+        })
     }
 
     fn cloak_display(&self, words: &[String], offset: u8) -> Result<CloakResult, ClientError> {
@@ -91,17 +94,27 @@ impl VanityClient for StubVanityClient {
         Ok(CloakResult { cloaked_words })
     }
 
-    fn scan_poison(&self, candidate: &str, known: &[String]) -> Result<PoisonScanResult, ClientError> {
+    fn scan_poison(
+        &self,
+        candidate: &str,
+        known: &[String],
+    ) -> Result<PoisonScanResult, ClientError> {
         for k in known {
             if candidate.len() >= 4 && k.len() >= 4 {
                 let prefix_match = &candidate[..4] == &k[..4];
                 let suffix_match = &candidate[candidate.len() - 4..] == &k[k.len() - 4..];
                 if (prefix_match || suffix_match) && candidate != k.as_str() {
-                    return Ok(PoisonScanResult { is_safe: false, similar_to: Some(k.clone()) });
+                    return Ok(PoisonScanResult {
+                        is_safe: false,
+                        similar_to: Some(k.clone()),
+                    });
                 }
             }
         }
-        Ok(PoisonScanResult { is_safe: true, similar_to: None })
+        Ok(PoisonScanResult {
+            is_safe: true,
+            similar_to: None,
+        })
     }
 }
 
@@ -116,7 +129,10 @@ impl RitualClient for StubRitualClient {
     fn verify_pocw(&self, tier: u8, steps: u64) -> Result<PocwResult, ClientError> {
         let idx = (tier as usize).min(5);
         let floor = BB_KNOWN[idx];
-        Ok(PocwResult { verified: steps >= floor, floor })
+        Ok(PocwResult {
+            verified: steps >= floor,
+            floor,
+        })
     }
 
     fn score_bbu(&self, code: &str) -> Result<BbuResult, ClientError> {
@@ -129,7 +145,8 @@ impl RitualClient for StubRitualClient {
         for b in code.bytes() {
             counts[b as usize] += 1;
         }
-        let entropy: f64 = counts.iter()
+        let entropy: f64 = counts
+            .iter()
             .filter(|&&c| c > 0)
             .map(|&c| {
                 let p = c as f64 / len;
@@ -137,16 +154,27 @@ impl RitualClient for StubRitualClient {
             })
             .sum();
         let score = 1.0 + (entropy / 8.0 * 40.0);
-        Ok(BbuResult { score: score.min(47.1) })
+        Ok(BbuResult {
+            score: score.min(47.1),
+        })
     }
 
     fn augury_predict(&self, patterns: &[MemoryPattern]) -> Result<AuguryResult, ClientError> {
         // Stub: return the most recently accessed branch
-        let best = patterns.iter()
-            .max_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap_or(std::cmp::Ordering::Equal));
+        let best = patterns.iter().max_by(|a, b| {
+            a.timestamp
+                .partial_cmp(&b.timestamp)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         match best {
-            Some(p) => Ok(AuguryResult { predicted_branch: p.branch_id.clone(), confidence: 0.6 }),
-            None => Ok(AuguryResult { predicted_branch: "root".to_string(), confidence: 0.3 }),
+            Some(p) => Ok(AuguryResult {
+                predicted_branch: p.branch_id.clone(),
+                confidence: 0.6,
+            }),
+            None => Ok(AuguryResult {
+                predicted_branch: "root".to_string(),
+                confidence: 0.3,
+            }),
         }
     }
 }
@@ -202,7 +230,10 @@ impl NexClient for StubNexClient {
     fn submit_graph(&self, nodes: Vec<GraphNode>) -> Result<GraphResult, ClientError> {
         // Stub: acknowledge graph submission without distributed execution
         let graph_id = format!("stub-graph-{}", nodes.len());
-        Ok(GraphResult { graph_id, nodes_executed: nodes.len() as u32 })
+        Ok(GraphResult {
+            graph_id,
+            nodes_executed: nodes.len() as u32,
+        })
     }
 
     fn graph_status(&self, graph_id: &str) -> Result<GraphStatus, ClientError> {

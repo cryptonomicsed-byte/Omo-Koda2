@@ -1,5 +1,5 @@
-pub mod stubs;
 pub mod http;
+pub mod stubs;
 
 use serde::{Deserialize, Serialize};
 
@@ -168,7 +168,11 @@ pub trait BiponClient: Send + Sync {
 pub trait VanityClient: Send + Sync {
     fn derive_wallet(&self, mnemonic: &str, passphrase: &str) -> Result<WalletResult, ClientError>;
     fn cloak_display(&self, words: &[String], offset: u8) -> Result<CloakResult, ClientError>;
-    fn scan_poison(&self, candidate: &str, known: &[String]) -> Result<PoisonScanResult, ClientError>;
+    fn scan_poison(
+        &self,
+        candidate: &str,
+        known: &[String],
+    ) -> Result<PoisonScanResult, ClientError>;
 }
 
 /// Ritual-codex-Julia: PoCW verification + BBU scoring + Augury prediction

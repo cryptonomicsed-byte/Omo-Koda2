@@ -15,26 +15,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: Omo-Koda2
-      - name: Checkout Bipon39-Rust
-        id: checkout_bipon39
-        uses: actions/checkout@v4
-        continue-on-error: true
-        with:
-          repository: omo-koda/Bipon39-Rust-
-          path: Omo-Koda2/Bipon39-Rust
-      - name: Fallback to vendored Bipon39 stub
-        if: steps.checkout_bipon39.outcome == 'failure'
-        run: cp -r Omo-Koda2/bipon39-stub/. Omo-Koda2/Bipon39-Rust/
-      - name: Checkout Ifascript
-        id: checkout_ifascript
-        uses: actions/checkout@v4
-        continue-on-error: true
-        with:
-          repository: omo-koda/ifascript
-          path: Omo-Koda2/Ifascript
-      - name: Fallback to vendored Ifascript stub
-        if: steps.checkout_ifascript.outcome == 'failure'
-        run: cp -r Omo-Koda2/ifascript-stub/. Omo-Koda2/Ifascript/
       - name: Install system dependencies
         run: sudo apt-get install -y protobuf-compiler
       - name: Install Rust

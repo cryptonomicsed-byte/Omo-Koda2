@@ -1,9 +1,14 @@
 defmodule OmokodaSwarmTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: false
 
   # ---------------------------------------------------------------------------
   # Swarm integration tests (require the application to be running)
   # ---------------------------------------------------------------------------
+
+  setup do
+    Application.ensure_all_started(:omokoda_swarm)
+    :ok
+  end
 
   test "submits a task to the swarm" do
     task = %{type: :think, prompt: "Test task"}
@@ -73,11 +78,12 @@ defmodule OmokodaSwarmTest do
     end
 
     test "advisory consensus succeeds with one live witness for tier 0" do
-      # Start a real agent and use it as a witness
-      OmokodaSwarm.SwarmSupervisor.start_agent("witness_test_agent")
+      agent_id = "witness_test_#{System.unique_integer([:positive])}"
+      OmokodaSwarm.SwarmSupervisor.start_agent(agent_id)
+      on_exit(fn -> OmokodaSwarm.SwarmSupervisor.stop_agent(agent_id) end)
 
       assert {:ok, result} =
-               OmokodaSwarm.Witness.consensus(%{type: :think}, ["witness_test_agent"], 0)
+               OmokodaSwarm.Witness.consensus(%{type: :think}, [agent_id], 0)
 
       assert is_boolean(result.approved)
       assert is_integer(result.total_votes)

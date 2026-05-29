@@ -7,3 +7,7 @@ members = [
     "nist_entropy",
 ]
 resolver = "2"
+
+[profile.dev]
+debug = 1
+split-debuginfo = "off"

@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod clients;
 pub mod background;
 pub mod behavioral;
 pub mod bootstrap;

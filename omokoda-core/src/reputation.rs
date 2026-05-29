@@ -144,7 +144,8 @@ pub fn difficulty(reputation: f64) -> f64 {
     if reputation < 80.0 {
         1.0 / (1.0 + (reputation / 25.0))
     } else {
-        let bb_compression = 107.0 / 47_176_870.0_f64.powf((reputation - 80.0) / 20.0);
+        let bb_compression =
+            (107.0 / 47_176_870.0_f64.powf((reputation - 80.0) / 20.0)).max(f64::EPSILON);
         1.0 / (1.0 + (reputation / 25.0)) * bb_compression
     }
 }

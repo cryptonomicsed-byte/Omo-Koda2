@@ -6,8 +6,7 @@ use sha3::{Digest, Sha3_256};
 use thiserror::Error;
 
 /// Controls what data a user session produces.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum PrivacyMode {
     /// Full hive participation — public profile shared, memories consented to aggregation.
     #[default]
@@ -29,7 +28,6 @@ impl PrivacyMode {
         }
     }
 }
-
 
 /// A resolved user identity — created by Rust gatekeeper on first contact.
 #[derive(Debug, Clone, Serialize, Deserialize)]

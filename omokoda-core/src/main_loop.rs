@@ -245,7 +245,8 @@ impl MainLoop {
 
         // Auto-compact check
         if self.query_state.turn_count > 0
-            && (self.query_state.turn_count as usize).is_multiple_of(self.config.auto_compact_threshold)
+            && (self.query_state.turn_count as usize)
+                .is_multiple_of(self.config.auto_compact_threshold)
             && !matches!(self.state, LoopState::Compacting)
         {
             self.state = LoopState::Compacting;
@@ -254,7 +255,8 @@ impl MainLoop {
 
         // Auto model-switch
         if let Some(after) = self.config.model_switch_after_turns {
-            if self.query_state.turn_count > 0 && self.query_state.turn_count.is_multiple_of(after) {
+            if self.query_state.turn_count > 0 && self.query_state.turn_count.is_multiple_of(after)
+            {
                 if let Some(fallback) = self.config.fallback_provider.clone() {
                     if fallback != self.active_provider {
                         let to = fallback.clone();

@@ -197,7 +197,8 @@ async fn health_handler() -> Json<HealthResponse> {
 
 async fn events_handler(
     State(state): State<AppState>,
-) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Box<dyn std::error::Error + Send + Sync>>>> {
+) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Box<dyn std::error::Error + Send + Sync>>>>
+{
     let rx = {
         let steward = state.steward.lock().await;
         steward.event_bus.subscribe()

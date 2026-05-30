@@ -74,8 +74,7 @@ impl PluginSettings {
 
 fn parse_settings_from_markdown(content: &str) -> Result<PluginSettings, String> {
     let stripped = content.trim_start();
-    let frontmatter = if stripped.starts_with("---") {
-        let after_open = &stripped[3..];
+    let frontmatter = if let Some(after_open) = stripped.strip_prefix("---") {
         let close = after_open
             .find("\n---")
             .ok_or("unclosed frontmatter fence")?;

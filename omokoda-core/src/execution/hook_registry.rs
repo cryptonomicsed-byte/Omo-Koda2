@@ -55,7 +55,7 @@ impl HookEventType {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn from_hook_str(s: &str) -> Option<Self> {
         match s {
             "pre_tool_use" => Some(Self::PreToolUse),
             "post_tool_use" => Some(Self::PostToolUse),
@@ -580,7 +580,7 @@ pub fn register_skill_hooks(
     hook_configs: &[HookConfig],
 ) {
     for config in hook_configs {
-        let Some(event) = HookEventType::from_str(&config.event) else {
+        let Some(event) = HookEventType::from_hook_str(&config.event) else {
             continue;
         };
         let id = format!("{}::{}", plugin_name, config.command);
@@ -762,7 +762,7 @@ mod tests {
     fn test_event_type_round_trip() {
         for &event in HookEventType::all() {
             assert_eq!(
-                HookEventType::from_str(event.as_str()),
+                HookEventType::from_hook_str(event.as_str()),
                 Some(event),
                 "round-trip failed for {:?}",
                 event
@@ -788,7 +788,7 @@ mod tests {
             "on_dream",
         ] {
             assert!(
-                HookEventType::from_str(name).is_some(),
+                HookEventType::from_hook_str(name).is_some(),
                 "{} not found",
                 name
             );

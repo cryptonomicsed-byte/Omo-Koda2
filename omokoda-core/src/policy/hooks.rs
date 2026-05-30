@@ -205,7 +205,7 @@ impl PolicyHookRunner {
                             let msg = child
                                 .stderr
                                 .as_mut()
-                                .and_then(|_| {
+                                .and({
                                     // Already exited, capture via wait_with_output is no longer possible.
                                     // The message is in the hook's exit; use a generic message.
                                     None::<String>

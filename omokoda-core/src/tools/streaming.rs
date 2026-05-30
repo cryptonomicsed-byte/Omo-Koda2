@@ -31,11 +31,13 @@ pub enum ToolHookDecision {
     Warn(String),
 }
 
+type ToolHookFn = Box<dyn Fn(&str, &str) -> ToolHookDecision + Send + Sync>;
+
 /// A pre-execution or post-execution hook for the streaming executor
 pub struct ToolHook {
     pub name: String,
     pub phase: ToolHookPhase,
-    pub run: Box<dyn Fn(&str, &str) -> ToolHookDecision + Send + Sync>,
+    pub run: ToolHookFn,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

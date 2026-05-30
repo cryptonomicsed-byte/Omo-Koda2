@@ -7,8 +7,10 @@ use thiserror::Error;
 
 /// Controls what data a user session produces.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum PrivacyMode {
     /// Full hive participation — public profile shared, memories consented to aggregation.
+    #[default]
     Public,
     /// Private session — local inference only, minimal public footprint, no hive contribution.
     Private,
@@ -28,11 +30,6 @@ impl PrivacyMode {
     }
 }
 
-impl Default for PrivacyMode {
-    fn default() -> Self {
-        Self::Public
-    }
-}
 
 /// A resolved user identity — created by Rust gatekeeper on first contact.
 #[derive(Debug, Clone, Serialize, Deserialize)]

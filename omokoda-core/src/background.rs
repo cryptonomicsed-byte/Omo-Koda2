@@ -164,7 +164,7 @@ impl BackgroundRegistry {
         self.completed_count += newly_done.len();
 
         if let Some(every) = self.config.auto_compact_every {
-            if self.completed_count > 0 && self.completed_count % every == 0 {
+            if self.completed_count > 0 && self.completed_count.is_multiple_of(every) {
                 self.compact_requested = true;
             }
         }

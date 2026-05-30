@@ -255,7 +255,7 @@ impl MemoryEntry {
 }
 impl AgentCore {
     pub fn from_snapshot(snapshot: AgentSnapshot, k_root: [u8; 32]) -> Self {
-        let current_memory_key = snapshot.odu_seed.as_bytes().clone();
+        let current_memory_key = *snapshot.odu_seed.as_bytes();
         Self {
             snapshot,
             private_data: None,
@@ -430,7 +430,7 @@ impl AgentCore {
 
     pub fn increment_act_counter(&mut self) {
         self.snapshot.act_counter += 1;
-        if self.snapshot.act_counter % 100 == 0 {
+        if self.snapshot.act_counter.is_multiple_of(100) {
             self.rotate_memory_key();
         }
     }
@@ -1130,7 +1130,7 @@ impl Steward {
                         &self.permission_policy,
                         self.permission_prompter
                             .as_deref_mut()
-                            .map(|p| p as &mut dyn crate::permissions::PermissionPrompter),
+                            .map(|p| p as &mut (dyn crate::permissions::PermissionPrompter + Send)),
                     )
                     .await
                 {
@@ -1743,7 +1743,7 @@ impl Steward {
                 &self.permission_policy,
                 self.permission_prompter
                     .as_deref_mut()
-                    .map(|p| p as &mut dyn crate::permissions::PermissionPrompter),
+                    .map(|p| p as &mut (dyn crate::permissions::PermissionPrompter + Send)),
             )
             .await
         {
@@ -1951,7 +1951,6 @@ impl Steward {
                 .await;
         }
 
-        let stmt = stmt;
         let mut iterations = 0;
         let max_iterations = 16;
 

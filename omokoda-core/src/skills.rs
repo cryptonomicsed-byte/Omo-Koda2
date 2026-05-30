@@ -197,8 +197,7 @@ fn parse_odu_module(path: &Path, content: &str, source: OduSource) -> Option<Odu
     let content = content.trim();
 
     // Extract frontmatter between --- delimiters
-    let (frontmatter_str, body) = if content.starts_with("---") {
-        let rest = &content[3..];
+    let (frontmatter_str, body) = if let Some(rest) = content.strip_prefix("---") {
         if let Some(end) = rest.find("\n---") {
             let fm = &rest[..end];
             let body = rest[end + 4..].trim().to_string();

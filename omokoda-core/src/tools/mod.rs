@@ -218,7 +218,7 @@ impl ToolRegistry {
         params: &str,
         context: ExecutionContext,
         policy: &crate::permissions::PermissionPolicy,
-        prompter: Option<&mut dyn crate::permissions::PermissionPrompter>,
+        prompter: Option<&mut (dyn crate::permissions::PermissionPrompter + Send)>,
     ) -> Result<(String, crate::usage::TokenUsage), String> {
         let tool = self
             .tools
@@ -767,7 +767,7 @@ impl Tool for WasmTool {
         }
 
         let workspace_root = &context.workspace_root;
-        if let Err(_) = validate_path_boundary(workspace_root, Path::new(module_path)) {
+        if validate_path_boundary(workspace_root, Path::new(module_path)).is_err() {
             return Err("module path must be relative and within workspace".to_string());
         }
 

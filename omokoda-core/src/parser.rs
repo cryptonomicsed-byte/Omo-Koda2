@@ -88,6 +88,16 @@ const VALID_SLASH_COMMANDS: &[&str] = &[
     "tools",
     "unlock",
     "seal",
+    "model",
+    "export",
+    "history",
+    "skills",
+    "receipts",
+    "compact",
+    "sessions",
+    "memory",
+    "clear",
+    "think",
 ];
 
 fn contains_blocked_identifiers(input: &str) -> bool {

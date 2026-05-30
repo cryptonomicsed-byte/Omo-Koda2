@@ -1,3 +1,5 @@
+mod tui;
+
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
@@ -62,6 +64,8 @@ enum Command {
         #[command(subcommand)]
         action: SessionAction,
     },
+    /// Launch the full-screen TUI
+    Tui,
 }
 
 #[derive(Subcommand)]
@@ -150,6 +154,10 @@ async fn main() -> Result<()> {
 
         Some(Command::Repl) | None => {
             repl().await?;
+        }
+
+        Some(Command::Tui) => {
+            tui::run()?;
         }
 
         Some(Command::Session { action }) => match action {

@@ -40,9 +40,15 @@ var tracker = &rhythmTracker{
 	lastUsed: make(map[string]time.Time),
 }
 
+// sabbathCheck is a package-level hook so tests can override Sabbath detection
+// without changing production behaviour.
+var sabbathCheck = func() bool {
+	return time.Now().UTC().Weekday() == time.Saturday
+}
+
 // IsSabbath returns true when the current UTC time falls on a Saturday.
 func IsSabbath() bool {
-	return time.Now().UTC().Weekday() == time.Saturday
+	return sabbathCheck()
 }
 
 // CheckRhythm evaluates whether a tool call is permitted at the gateway level.

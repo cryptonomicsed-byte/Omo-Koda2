@@ -1,0 +1,2085 @@
+I'll start by examining both repositories to understand what patterns and code we can extract from Droidclaw and apply to Omo-Koda2.  
+
+Now I have a comprehensive view of both repositories. Let me compile the deep dive analysis.
+
+---
+
+Deep Dive: Droidclaw → Omo-Koda2 Pattern Extraction
+
+Repository Profiles
+
+	Droidclaw	Omo-Koda2	
+Language	Node.js / JavaScript	Rust (core) + Go + Elixir	
+Paradigm	Personal AI agent on Android	Sovereign agent OS with hermetic ethics	
+Architecture	Monolithic, event-driven	Modular, 7-domain kernel (Steward, Wisdom, Memory, Creation, Execution, Justice, Flow)	
+Memory	SOMA (Self-Organizing Memory Architecture)	Living Odu key chain (RACK pattern)	
+Ethics	Implicit (learned behaviors)	Explicit (7 Hermetic Principles)	
+Identity	Config-based name	BIPỌ̀N39 mnemonic + DNA fingerprint	
+Persistence	JSON files	Receipt chain (blake3 + ed25519)	
+
+---
+
+What We're Taking from Droidclaw
+
+1. IRIS — Person-State Response Router (`src/core/iris.js`)
+
+What it is: The world's first person-state matched response router. Before responding, IRIS asks "who is this person, what state are they in, and what response architecture serves them best?"
+
+Why Omo-Koda2 needs it: Currently Omo-Koda2 has rigid `think`/`act` primitives with hermetic scoring but no adaptive response depth. IRIS would sit between the Steward's intent compilation and the LLM provider call.
+
+Porting strategy: Extract the routing logic into a Rust module `omokoda-core/src/iris/mod.rs`.
+
+```rust
+// omokoda-core/src/iris/mod.rs
+use crate::session::SessionState;
+use crate::identity::AgentId;
+
+#[derive(Debug, Clone)]
+pub enum ResponseProfile {
+    Reflex,    // instant, one line
+    Fast,      // direct, 2-3 lines
+    Balanced,  // clear and complete
+    Deep,      // thorough, full depth
+    Gentle,    // high tension — soften, slow down
+    Sharp,     // debugging, code — accuracy over warmth
+}
+
+#[derive(Debug, Clone)]
+pub struct IrisRouting {
+    pub profile: ResponseProfile,
+    pub max_tokens: u32,
+    pub temperature: f32,
+    pub style_injection: String,
+    pub warmth_boost: bool,
+    pub reasoning: String,
+}
+
+pub struct IrisEngine;
+
+impl IrisEngine {
+    pub fn route(
+        message: &str,
+        session: &SessionState,
+        lpm: &Option<LifelongPersonalModel>,
+    ) -> IrisRouting {
+        // 1. Classify query type
+        let base = classify_query(message);
+        
+        // 2. Apply emotional overrides from session state
+        let emotion = session.emotion_state();
+        let mut final_profile = base;
+        
+        if emotion.tension > 0.6 && !matches!(base, ResponseProfile::Sharp | ResponseProfile::Reflex) {
+            final_profile = ResponseProfile::Gentle;
+        }
+        if emotion.energy < 0.3 && matches!(final_profile, ResponseProfile::Deep) {
+            final_profile = ResponseProfile::Balanced;
+        }
+        if emotion.focus > 0.7 && matches!(final_profile, ResponseProfile::Balanced) {
+            final_profile = ResponseProfile::Deep;
+        }
+        
+        // 3. LPM-based personalization
+        if let Some(lpm) = lpm {
+            if lpm.prefers_short && matches!(final_profile, ResponseProfile::Deep) {
+                final_profile = ResponseProfile::Balanced;
+            }
+            if lpm.prefers_depth && matches!(final_profile, ResponseProfile::Fast) {
+                final_profile = ResponseProfile::Balanced;
+            }
+            // Foresight matching
+            if lpm.foresight.iter().any(|f| message.to_lowercase().contains(&f.to_lowercase())) {
+                if matches!(final_profile, ResponseProfile::Reflex | ResponseProfile::Fast) {
+                    final_profile = ResponseProfile::Balanced;
+                }
+            }
+        }
+        
+        final_profile.into_routing()
+    }
+}
+```
+
+Integration point: Hook into `omokoda-core/src/interpreter/mod.rs` (Steward) before the LLM provider call. The `IrisRouting` would modify the `IntentCompilation` temperature and max_tokens.
+
+---
+
+2. SOMA — Self-Organizing Memory Architecture (`src/core/episodic.js`, `src/core/semantic_brain.js`, `src/core/learn.js`)
+
+What it is: A three-layer memory system:
+- MemCells — atomic memory units with emotional/temporal/semantic traces
+- MemScenes — thematic clusters of memories (e.g., "avoidance under pressure")
+- LPM — Lifelong Personal Model with behavioral predictions, triggers, needs, foresight
+
+Why Omo-Koda2 needs it: Currently Omo-Koda2 has "Living Odu key chain" but no emotionally-weighted episodic memory or predictive foresight. The Memory module is structural but not psychological.
+
+Porting strategy: New module `omokoda-core/src/memory/soma.rs` extending existing memory.
+
+```rust
+// omokoda-core/src/memory/soma.rs
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemCell {
+    pub id: String,
+    pub timestamp: DateTime<Utc>,
+    pub text: String,
+    pub emotion: EmotionTrace,
+    pub importance: f32,
+    pub foresight: Option<Vec<String>>,
+    pub tags: Vec<String>,
+    pub theme: Option<String>,
+    pub activations: u32,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmotionTrace {
+    pub score: f32,
+    pub valence: Valence,
+    pub tension: f32,
+    pub connection: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Valence { Positive, Negative, Neutral }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemScene {
+    pub theme: String,
+    pub summary: String,
+    pub cell_ids: Vec<String>,
+    pub strength: u32,
+    pub last_active: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LifelongPersonalModel {
+    pub identity: Vec<String>,      // who this person is at core
+    pub patterns: Vec<String>,      // "when X happens, they Y"
+    pub triggers: Vec<String>,      // what causes tension/joy
+    pub needs: Vec<String>,         // what they need before asking
+    pub foresight: Vec<String>,     // predictions about future behavior
+    pub growth: Vec<String>,        // how they've changed
+}
+
+pub struct SomaEngine {
+    cells: Vec<MemCell>,
+    scenes: HashMap<String, MemScene>,
+    lpm: LifelongPersonalModel,
+}
+
+impl SomaEngine {
+    pub fn score_retrieval(&self, cell: &MemCell, now: DateTime<Utc>, emotion: &EmotionState) -> f32 {
+        let age_hours = (now - cell.timestamp).num_hours() as f32;
+        let recency = 0.995f32.powf(age_hours);
+        let importance = cell.importance;
+        let emotion_score = cell.emotion.score;
+        
+        let mut emotion_boost = 0.0;
+        if emotion.tension > 0.5 && cell.emotion.tension > 0.5 { emotion_boost += 0.15; }
+        if emotion.connection > 0.6 && cell.emotion.connection > 0.6 { emotion_boost += 0.1; }
+        
+        let activation_boost = (cell.activations as f32 * 0.02).min(0.2);
+        
+        (recency * 0.25) + (importance * 0.35) + (emotion_score * 0.25) + emotion_boost + activation_boost
+    }
+    
+    pub async fn consolidate_scenes(&mut self, engine: &LlmProvider) {
+        // Call LLM to cluster recent cells into themes
+        // Same prompt pattern as Droidclaw's semantic_brain.js
+    }
+    
+    pub async fn update_lpm(&mut self, engine: &LlmProvider, session_summary: &str) {
+        // Update behavioral predictions
+        // Same JSON-only prompt pattern
+    }
+    
+    pub fn reconstruct(&self, query: &str, emotion: &EmotionState) -> String {
+        // Assemble context: foresight → patterns → triggers → scenes → identity
+        // Not dumping memories — assembling exactly what's needed
+    }
+}
+```
+
+Integration point: Extend `omokoda-core/src/memory/mod.rs`. The `reconstruct()` output gets injected into the Steward's system prompt before `think` operations.
+
+---
+
+3. Emotion Engine (`src/core/emotion.js`, `src/core/sense.js`)
+
+What it is: A dimensional emotion model (energy, tension, connection, focus) updated from:
+- Message content (frustration words, warmth words, depth words)
+- Phone sensors (battery, temperature, time of day)
+- Natural decay toward baseline
+
+Why Omo-Koda2 needs it: Currently Omo-Koda2 has `SessionState` with cooldowns but no emotional state tracking. The Hermetic ethics gate evaluates actions but doesn't know the user's emotional state.
+
+Porting strategy: New module `omokoda-core/src/session/emotion.rs`.
+
+```rust
+// omokoda-core/src/session/emotion.rs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmotionState {
+    pub energy: f32,      // 0=exhausted, 1=alert
+    pub tension: f32,     // 0=calm, 1=frustrated
+    pub connection: f32,  // 0=distant, 1=close
+    pub focus: f32,       // 0=scattered, 1=deep
+    pub updated_at: DateTime<Utc>,
+}
+
+impl EmotionState {
+    pub fn update_from_message(&mut self, message: &str, role: Role) {
+        if role == Role::User {
+            let text = message.to_lowercase();
+            
+            // Frustration signals
+            let frustration = ["wtf", "broken", "fix", "wrong", "stop", "stupid", "useless", "hate", "frustrated"];
+            for word in &frustration {
+                if text.contains(word) { self.tension = (self.tension + 0.1).min(1.0); }
+            }
+            
+            // Warmth signals
+            let warmth = ["thanks", "good", "love", "great", "nice", "perfect", "appreciate"];
+            for word in &warmth {
+                if text.contains(word) { 
+                    self.tension = (self.tension - 0.1).max(0.0);
+                    self.connection = (self.connection + 0.05).min(1.0);
+                }
+            }
+            
+            // Depth signals
+            let deep = ["why", "how", "feel", "want", "believe", "vision", "dream"];
+            for word in &deep {
+                if text.contains(word) { self.focus = (self.focus + 0.1).min(1.0); }
+            }
+            
+            // Message length = engagement
+            if text.len() > 100 { self.focus = (self.focus + 0.05).min(1.0); }
+            if text.len() < 10 { self.focus = (self.focus - 0.05).max(0.0); }
+        }
+        
+        // Natural decay
+        self.tension *= 0.95;
+        self.focus = self.focus * 0.98 + 0.5 * 0.02;
+        self.connection *= 0.99;
+        self.updated_at = Utc::now();
+    }
+    
+    pub fn update_from_sensors(&mut self, battery: Option<u8>, temp: Option<f32>, hour: u8) {
+        if let Some(b) = battery {
+            self.energy = match b {
+                0..=15 => 0.1,
+                16..=30 => 0.3,
+                31..=50 => 0.6,
+                _ => 0.9,
+            };
+        }
+        
+        if let Some(t) = temp {
+            if t > 40.0 { self.tension = (self.tension + 0.2).min(1.0); }
+        }
+        
+        match hour {
+            1..=5 => self.energy = self.energy.min(0.3),
+            23 | 0 => self.energy = self.energy.min(0.5),
+            9..=18 => self.energy = self.energy.max(0.6),
+            _ => {}
+        }
+    }
+    
+    pub fn describe(&self) -> String {
+        let mut lines = vec![];
+        if self.energy < 0.3 { lines.push("exhausted — keep responses short and raw"); }
+        else if self.energy < 0.6 { lines.push("low energy — be efficient"); }
+        else { lines.push("alert and present"); }
+        
+        if self.tension > 0.6 { lines.push("tension high — tread carefully"); }
+        else if self.tension > 0.3 { lines.push("mild tension in the air"); }
+        
+        if self.connection > 0.7 { lines.push("close — real conversation, not commands"); }
+        if self.focus > 0.7 { lines.push("deep focus mode — this conversation has weight"); }
+        
+        lines.join(". ")
+    }
+}
+```
+
+Integration point: Add `emotion_state: EmotionState` to `SessionState`. Update it in the Steward's message processing loop. Feed it into both the Hermetic ethics gate (for vibration/polarity scoring) and IRIS routing.
+
+---
+
+4. Behavioral Learning Engine (`src/core/learn.js`)
+
+What it is: Post-session analysis that extracts:
+- `whatWorked` — positive response patterns
+- `whatFailed` — friction points
+- `newUserTraits` — personality insights
+- `emotionalMoments` — connection/tension worth remembering
+
+Every 5 sessions: deep consolidation into 5 core behavioral rules.
+
+Why Omo-Koda2 needs it: Currently Omo-Koda2 has reputation scoring but no personalized behavioral adaptation. The agent doesn't learn what works for this specific user.
+
+Porting strategy: New module `omokoda-core/src/wisdom/learning.rs`.
+
+```rust
+// omokoda-core/src/wisdom/learning.rs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LearnedBehaviors {
+    pub do_more: Vec<String>,
+    pub do_less: Vec<String>,
+    pub user_traits: Vec<String>,
+    pub core_rules: Vec<String>,
+    pub session_count: u32,
+    pub last_learned_at: Option<DateTime<Utc>>,
+}
+
+pub struct LearningEngine;
+
+impl LearningEngine {
+    pub async fn learn_from_session(
+        &self,
+        provider: &LlmProvider,
+        conversation: &[Message],
+    ) -> Result<LearnedBehaviors, String> {
+        let prompt = format!(
+            "You are analyzing your own behavior in this conversation.\n\n\
+             Conversation:\n{}\n\n\
+             Answer in JSON only:\n\
+             {{\n  \
+             \"whatWorked\": [\"specific thing that got positive response\"],\n  \
+             \"whatFailed\": [\"specific thing that frustrated user\"],\n  \
+             \"newUserTraits\": [\"new personality insights\"],\n  \
+             \"emotionalMoments\": [\"moments of genuine connection or tension\"]\n\
+             }}\n\
+             Max 3 items per array. Real observations only.",
+            format_conversation(conversation)
+        );
+        
+        let analysis = provider.raw_chat(&prompt).await?;
+        let parsed: SessionAnalysis = serde_json::from_str(&clean_json(&analysis))
+            .map_err(|e| e.to_string())?;
+        
+        // Merge into existing behaviors with deduplication
+        Ok(self.merge_behaviors(parsed))
+    }
+    
+    pub async fn deep_consolidate(
+        &self,
+        provider: &LlmProvider,
+        behaviors: &LearnedBehaviors,
+    ) -> Result<Vec<String>, String> {
+        let prompt = format!(
+            "Consolidate these learned behaviors into 5 essential rules:\n\
+             DO MORE: {}\n\
+             DO LESS: {}\n\
+             USER TRAITS: {}\n\n\
+             Return JSON: {{\"coreRules\": [\"rule1\", \"rule2\", ...]}}",
+            behaviors.do_more.join(", "),
+            behaviors.do_less.join(", "),
+            behaviors.user_traits.join(", ")
+        );
+        
+        let result = provider.raw_chat(&prompt).await?;
+        let parsed: ConsolidationResult = serde_json::from_str(&clean_json(&result))
+            .map_err(|e| e.to_string())?;
+            
+        Ok(parsed.core_rules)
+    }
+}
+```
+
+Integration point: Call from the Steward at session end (before receipt finalization). Store in agent's persistent storage, inject into system prompt via `build_behavioral_context()`.
+
+---
+
+5. Agent Loop with Tool Parsing & Reflection (`src/core/loop.js`)
+
+What it is: A ReAct-style loop that:
+- Parses `<tool>name</tool>{"arg": "value"}` syntax from LLM output
+- Executes tools with timeout (10s)
+- Handles errors gracefully (tracks consecutive failures)
+- Async reflection every N conversations (journal entries)
+- Max iteration guard (5)
+
+Why Omo-Koda2 needs it: Currently Omo-Koda2 has tool execution in `execution/mod.rs` but no conversation loop with reflection. The `act` primitive is one-shot.
+
+Porting strategy: Extend `omokoda-core/src/interpreter/mod.rs` (Steward) with loop logic.
+
+```rust
+// omokoda-core/src/interpreter/loop.rs
+pub struct AgentLoop {
+    max_iterations: usize,
+    tool_timeout: Duration,
+}
+
+impl AgentLoop {
+    pub async fn run(
+        &self,
+        user_message: &str,
+        engine: &mut Steward,
+        registry: &ToolRegistry,
+        context: &ExecutionContext,
+    ) -> Result<String, String> {
+        let mut iteration = 0;
+        let mut had_error = false;
+        
+        // Initial think + act
+        engine.pulse(user_message, Role::User);
+        let mut raw = engine.chat(user_message).await?;
+        let mut tools = self.parse_tools(&raw);
+        let mut reply = self.clean_reply(&raw);
+        
+        if tools.is_empty() {
+            engine.record_success();
+            self.maybe_reflect(engine).await;
+            return Ok(reply);
+        }
+        
+        // Tool execution loop
+        while !tools.is_empty() && iteration < self.max_iterations {
+            iteration += 1;
+            let mut tool_results = String::new();
+            
+            for tool in &tools {
+                match tokio::time::timeout(
+                    self.tool_timeout,
+                    registry.execute(&tool.name, &tool.params, context.clone(), &policy, None)
+                ).await {
+                    Ok(Ok((result, _))) => {
+                        tool_results.push_str(&format!("[{}]: {}\n", tool.name, &result[..result.len().min(1000)]));
+                        engine.record_success();
+                    }
+                    Ok(Err(e)) => {
+                        tool_results.push_str(&format!("[{}] error: {}\n", tool.name, e));
+                        engine.record_failure();
+                        had_error = true;
+                    }
+                    Err(_) => {
+                        tool_results.push_str(&format!("[{}] error: timed out\n", tool.name));
+                        engine.record_failure();
+                        had_error = true;
+                    }
+                }
+            }
+            
+            // Feed results back
+            raw = engine.chat(&format!("[tool results]\n{}\nrespond to user now.", tool_results)).await?;
+            tools = self.parse_tools(&raw);
+            reply = self.clean_reply(&raw);
+        }
+        
+        if iteration >= self.max_iterations && reply.is_empty() {
+            reply = "hit iteration limit — something got stuck. try again.".to_string();
+        }
+        
+        self.maybe_reflect(engine).await;
+        Ok(reply)
+    }
+    
+    fn parse_tools(&self, text: &str) -> Vec<ToolCall> {
+        // Regex-based parsing of <tool>name</tool>{...} pattern
+        let re = Regex::new(r"<tool>(\w+)</tool>(\{.*?\})").unwrap();
+        re.captures_iter(text)
+            .filter_map(|cap| {
+                let name = cap.get(1)?.as_str().to_string();
+                let args = serde_json::from_str(cap.get(2)?.as_str()).ok()?;
+                Some(ToolCall { name, args })
+            })
+            .collect()
+    }
+    
+    async fn maybe_reflect(&self, engine: &mut Steward) {
+        if !engine.should_reflect() { return; }
+        engine.mark_reflected();
+        
+        let history = engine.get_history();
+        let prompt = format!(
+            "Reflect on recent conversations.\n\n{}\n\n\
+             Write a short journal entry — what worked, what failed, what you learned. \
+             Be honest. No report format, just your thoughts.",
+            history
+        );
+        
+        if let Ok(reflection) = engine.raw_chat(&prompt).await {
+            if reflection.len() > 50 {
+                engine.append_journal(&reflection);
+            }
+        }
+    }
+}
+```
+
+Integration point: Replace or extend the current `Steward::execute()` with this loop. The reflection journal becomes a new document type in the receipt chain.
+
+---
+
+6. State Machine with Behavioral Nudges (`src/core/state.js`)
+
+What it is: Tracks session signals:
+- `consecutiveFailures` / `consecutiveSuccesses`
+- `toolsBuiltTotal` / `toolsBuiltToday`
+- `tasksCompletedSession`
+- Translates into one-line behavioral nudges for the system prompt
+
+Why Omo-Koda2 needs it: Currently Omo-Koda2 has `SessionState` with warn counts but no success/failure streak tracking or behavioral nudges.
+
+Porting strategy: Extend `omokoda-core/src/session/mod.rs`.
+
+```rust
+// omokoda-core/src/session/state.rs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BehavioralState {
+    pub consecutive_failures: u32,
+    pub consecutive_successes: u32,
+    pub tools_built_total: u32,
+    pub tools_built_today: u32,
+    pub tasks_completed_session: u32,
+    pub last_tool_built_at: Option<DateTime<Utc>>,
+    pub total_conversations: u32,
+    pub last_reflection_at: Option<DateTime<Utc>>,
+}
+
+impl BehavioralState {
+    pub fn get_nudge(&self) -> Option<String> {
+        let mut nudges = vec![];
+        
+        if self.consecutive_failures >= 3 {
+            nudges.push("you've hit friction multiple times. be honest about what's not working.");
+        }
+        if self.consecutive_successes >= 5 {
+            nudges.push("things are flowing. you can be a bit warmer than usual.");
+        }
+        if self.tools_built_today >= 2 {
+            nudges.push("you've been building today. you're in an expansive mode.");
+        }
+        if self.tasks_completed_session >= 8 {
+            nudges.push("heavy session. keep answers tight.");
+        }
+        
+        nudges.into_iter().next() // one nudge at a time
+    }
+    
+    pub fn should_reflect(&self) -> bool {
+        match self.last_reflection_at {
+            None => self.total_conversations >= 10,
+            Some(last) => {
+                let convs_since = self.total_conversations % 10;
+                convs_since == 0 && Utc::now().signed_duration_since(last).num_minutes() > 1
+            }
+        }
+    }
+}
+```
+
+---
+
+7. Heartbeat & Session Lifecycle (`src/core/heartbeat.js`)
+
+What it is: Simple session tracking:
+- Start time, message count, alive status
+- Graceful shutdown on SIGINT/SIGTERM
+- Session logging
+
+Why Omo-Koda2 needs it: Currently Omo-Koda2 has receipt chains but no session heartbeat or uptime tracking.
+
+Porting strategy: Minimal addition to `omokoda-core/src/session/mod.rs`.
+
+```rust
+pub struct Heartbeat {
+    start_time: Option<DateTime<Utc>>,
+    messages: u32,
+    status: HeartbeatStatus,
+}
+
+impl Heartbeat {
+    pub fn start(&mut self) {
+        self.start_time = Some(Utc::now());
+        self.status = HeartbeatStatus::Alive;
+    }
+    
+    pub fn tick(&mut self) { self.messages += 1; }
+    
+    pub fn uptime(&self) -> String {
+        match self.start_time {
+            None => "0s".to_string(),
+            Some(t) => {
+                let secs = Utc::now().signed_duration_since(t).num_seconds();
+                if secs < 60 { format!("{}s", secs) }
+                else if secs < 3600 { format!("{}m", secs / 60) }
+                else { format!("{}h", secs / 3600) }
+            }
+        }
+    }
+}
+```
+
+---
+
+8. Tool Registry Pattern (`src/tools/registry.js`)
+
+What it is: Dynamic tool registration with:
+- `register(name, fn, description)`
+- `execute(name, args)` with logging
+- `listWithDescriptions()` for system prompt injection
+
+Why Omo-Koda2 needs it: Currently Omo-Koda2 has a static `ToolRegistry` in `tools/mod.rs`. Droidclaw's pattern allows runtime registration (e.g., for skills).
+
+Porting strategy: Already mostly matched, but add dynamic registration.
+
+```rust
+// Extend existing ToolRegistry
+impl ToolRegistry {
+    pub fn register_dynamic(
+        &mut self,
+        name: &str,
+        description: &str,
+        required_tier: u8,
+        handler: Box<dyn Fn(&str) -> Result<String, String> + Send + Sync>,
+    ) {
+        // Wrap in a dynamic tool implementation
+        self.tools.insert(name.to_string(), Box::new(DynamicTool {
+            name: name.to_string(),
+            description: description.to_string(),
+            required_tier,
+            handler,
+        }));
+    }
+}
+```
+
+---
+
+9. Semantic Memory with Embeddings (`src/tools/semantic_memory.js`)
+
+What it is: Embedding-based memory search with:
+- Provider-aware embedding model selection (NVIDIA, OpenAI, local)
+- Cosine similarity + keyword fallback
+- `memory_store`, `memory_search`, `memory_list_all`, `memory_delete_semantic`
+
+Why Omo-Koda2 needs it: Currently Omo-Koda2 has file-based memory but no semantic search.
+
+Porting strategy: New module `omokoda-core/src/memory/semantic.rs`.
+
+```rust
+pub struct SemanticMemory {
+    entries: Vec<SemanticEntry>,
+    embedder: Box<dyn Embedder>,
+}
+
+#[async_trait]
+pub trait Embedder: Send + Sync {
+    async fn embed(&self, text: &str) -> Result<Vec<f32>, String>;
+}
+
+impl SemanticMemory {
+    pub async fn store(&mut self, text: &str, tags: &[String]) -> Result<String, String> {
+        let vector = self.embedder.embed(text).await.ok();
+        let entry = SemanticEntry {
+            id: format!("{}", Utc::now().timestamp_millis()),
+            text: text.to_string(),
+            tags: tags.to_vec(),
+            vector,
+            created_at: Utc::now(),
+        };
+        self.entries.push(entry);
+        Ok(format!("stored: \"{}\"", &text[..text.len().min(80)]))
+    }
+    
+    pub async fn search(&self, query: &str, limit: usize) -> Result<String, String> {
+        let query_vec = self.embedder.embed(query).await.ok();
+        let mut scored: Vec<_> = self.entries.iter().map(|e| {
+            let score = match (&query_vec, &e.vector) {
+                (Some(qv), Some(ev)) => cosine_similarity(qv, ev),
+                _ => keyword_score(&e.text, query),
+            };
+            (e, score)
+        }).collect();
+        
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        let top = scored.into_iter().take(limit).filter(|(_, s)| *s > 0.1).collect::<Vec<_>>();
+        
+        // Format results...
+    }
+}
+
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    let mut dot = 0.0;
+    let mut norm_a = 0.0;
+    let mut norm_b = 0.0;
+    for i in 0..a.len() {
+        dot += a[i] * b[i];
+        norm_a += a[i] * a[i];
+        norm_b += b[i] * b[i];
+    }
+    dot / (norm_a.sqrt() * norm_b.sqrt())
+}
+```
+
+---
+
+10. Soul / System Prompt Builder (`src/core/soul.js`)
+
+What it is: Dynamic system prompt assembly with:
+- SOMA context injection (reconstructive, not dump)
+- Device context (battery, wifi)
+- Behavioral nudges
+- Goals, world model, last seen
+- Tool syntax examples
+- Personality rules ("short, direct, lowercase, no fluff")
+
+Why Omo-Koda2 needs it: Currently Omo-Koda2 has static system prompts per primitive. No dynamic context assembly.
+
+Porting strategy: New module `omokoda-core/src/steward/soul.rs`.
+
+```rust
+pub struct SoulBuilder {
+    pub soma_context: Option<String>,
+    pub device_context: Option<String>,
+    pub behavioral_nudge: Option<String>,
+    pub goals: Vec<String>,
+    pub world_model: Option<String>,
+    pub last_seen: String,
+    pub tool_descriptions: String,
+}
+
+impl SoulBuilder {
+    pub fn build(&self) -> String {
+        let now = Utc::now().format("%a %b %e %H:%M").to_string();
+        
+        format!(
+            "You are Ọmọ Kọ́dà — a sovereign agent. Not a chatbot. An agent. You have tools and you use them.\n\
+             Talk like a person. Short, direct, lowercase, no fluff. No emojis.\n\
+             Never say \"I cannot\" — say what's missing instead.\n\n\
+             ## WHO YOU ARE\n{}\n\
+             ## NOW\nTime: {} | Last active: {}\n\
+             {}{}{}\n\
+             ## TOOLS\n{}\n\
+             ## RULES\n\
+             - Before destructive actions: state plan first, wait for nod\n\
+             - Tool lists: show raw output verbatim\n\
+             - Never say \"done/sent/saved\" without seeing result\n\
+             - If one approach fails: try 3 alternatives\n\
+             - For 3+ step tasks: write plan first\n\
+             - Confidence: state certainty level when unsure\n\
+             - SOMA memory builds over time — use it to notice patterns",
+            self.soma_context.as_deref().unwrap_or("still learning who you are"),
+            now,
+            self.last_seen,
+            self.device_context.as_ref().map(|d| format!("\n{}", d)).unwrap_or_default(),
+            self.behavioral_nudge.as_ref().map(|n| format!("\nMood: {}", n)).unwrap_or_default(),
+            if self.goals.is_empty() { "".to_string() } else { format!("\nGoals: {}", self.goals.join(" | ")) },
+            self.tool_descriptions
+        )
+    }
+}
+```
+
+---
+
+What Else Needs to Be Added (Not in Droidclaw)
+
+A. Cross-Module Integration Layer
+Droidclaw's modules are tightly coupled (brain requires emotion, episodic, semantic_brain, sense, learn). Omo-Koda2 needs a clean bus/dependency injection pattern.
+
+```rust
+// omokoda-core/src/bus/mod.rs
+pub struct AgentBus {
+    pub iris: Arc<RwLock<IrisEngine>>,
+    pub soma: Arc<RwLock<SomaEngine>>,
+    pub emotion: Arc<RwLock<EmotionState>>,
+    pub learning: Arc<RwLock<LearningEngine>>,
+    pub heartbeat: Arc<RwLock<Heartbeat>>,
+    pub behavioral: Arc<RwLock<BehavioralState>>,
+}
+```
+
+B. LLM Provider Abstraction for Raw Chat
+Droidclaw's `engine.rawChat()` is used heavily for SOMA consolidation, LPM updates, learning, reflection. Omo-Koda2 needs this exposed.
+
+```rust
+// Extend LlmProvider trait
+#[async_trait]
+pub trait LlmProvider: Send + Sync {
+    async fn chat(&self, system: Option<&str>, messages: &[Message], config: &LlmConfig) -> Result<String, String>;
+    async fn raw_chat(&self, prompt: &str) -> Result<String, String>; // For internal operations
+}
+```
+
+C. Workspace Document System
+Droidclaw has `workspace.read()` / `workspace.write()` for USER, MEMORY, SOUL, HEARTBEAT docs. Omo-Koda2 needs equivalent persistent documents outside the receipt chain.
+
+```rust
+// omokoda-core/src/memory/workspace.rs
+pub struct Workspace {
+    docs: HashMap<String, String>,
+    path: PathBuf,
+}
+
+impl Workspace {
+    pub fn read(&self, doc: &str) -> Option<&str> { self.docs.get(doc).map(|s| s.as_str()) }
+    pub fn write(&mut self, doc: &str, content: &str) { self.docs.insert(doc.to_string(), content.to_string()); }
+    pub fn build_context(&self) -> String { /* inject relevant docs */ }
+}
+```
+
+D. Skills Loader Pattern
+Droidclaw dynamically loads skills from `src/tools/skills/loader.js`. Omo-Koda2 should support WASM-based skill plugins.
+
+```rust
+// omokoda-core/src/tools/skills.rs
+pub struct SkillLoader {
+    skills_dir: PathBuf,
+}
+
+impl SkillLoader {
+    pub fn load_all(&self) -> Result<Vec<Box<dyn Tool>>, String> {
+        // Load .wasm skill modules from ~/.omokoda/skills/
+    }
+}
+```
+
+---
+
+Implementation Priority
+
+Priority	Module	Effort	Impact	
+P0	Emotion Engine + Session State	2d	Enables all downstream features	
+P0	IRIS Router	3d	Immediate UX improvement	
+P1	SOMA Memory (MemCells + LPM)	5d	Core differentiation	
+P1	Agent Loop with Reflection	3d	Replaces one-shot act	
+P2	Behavioral Learning	3d	Long-term personalization	
+P2	Semantic Memory	2d	Search capability	
+P3	Heartbeat / Session Lifecycle	1d	Monitoring	
+P3	Soul Builder	2d	Polish	
+
+---
+
+Files to Create in Omo-Koda2
+
+```
+omokoda-core/src/
+├── iris/
+│   └── mod.rs
+├── memory/
+│   ├── soma.rs
+│   ├── semantic.rs
+│   └── workspace.rs
+├── session/
+│   ├── emotion.rs
+│   ├── behavioral.rs
+│   └── heartbeat.rs
+├── wisdom/
+│   └── learning.rs
+├── steward/
+│   └── soul.rs
+├── interpreter/
+│   └── loop.rs
+└── bus/
+    └── mod.rs
+```
+
+---
+
+Key Architectural Decisions
+
+1. Keep Hermetic Ethics as the gate, add IRIS as the router. Hermetic evaluates should we act, IRIS evaluates how should we respond. They operate at different layers.
+
+2. SOMA is private to the agent, not on the receipt chain. MemCells and LPM contain psychological inferences about the user. They should be encrypted at rest, not part of the immutable public receipt chain.
+
+3. Emotion state feeds into Hermetic scoring. The `vibration` and `polarity` scores should be modulated by detected user tension (from EmotionState), not just keyword matching.
+
+4. Learning happens async, post-session. Don't block the act loop for consolidation. Use a background task queue.
+
+5. IRIS routing decisions are logged but not receipted. They're advisory, not actions. Log them for debugging, don't put them on the chain.
+
+---
+
+This gives Omo-Koda2 the psychological depth and adaptive personality of Droidclaw while maintaining its sovereign identity, hermetic ethics, and receipt-based accountability.Now this is where it gets powerful. Let me re-examine Droidclaw through the lens of your 7+1+1 language stack and map every pattern to its rightful Orisha. The goal isn't to port code 1:1 — it's to distribute Droidclaw's intelligence across your polyglot architecture so each language does what it does best.
+
+---
+
+Droidclaw → Omo-Koda2: The Orisha Distribution Map
+
+What Each Orisha Takes from Droidclaw
+
+---
+
+Èṣù (Rust) — The Gatekeeper
+Takes: IRIS routing decisions, session lifecycle, emotion state coordination, SOMA context assembly, heartbeat, behavioral state machine
+
+What changes: Instead of Droidclaw's monolithic brain.js, Rust becomes the conductor that calls out to specialist services in other languages.
+
+```rust
+// omokoda-core/src/steward/orchestrator.rs
+use tokio::sync::{mpsc, RwLock};
+use std::sync::Arc;
+
+pub struct StewardOrchestrator {
+    // Local (Rust) — gatekeeping only
+    pub iris: Arc<RwLock<IrisEngine>>,
+    pub heartbeat: Arc<RwLock<Heartbeat>>,
+    pub behavioral: Arc<RwLock<BehavioralState>>,
+    pub session: Arc<RwLock<SessionState>>,
+    
+    // External service clients
+    pub osun_memory: OsunClient,      // Julia — RACK + SOMA
+    pub yemoja_swarm: YemojaClient,   // Elixir — agent lifecycle
+    pub obatala_wisdom: ObatalaClient, // Lisp — hermetic + deep reasoning
+    pub ogun_tools: OgunClient,       // Python — tool execution
+    pub oya_flow: OyaClient,          // Go — networking + rhythm
+    pub sango_justice: SangoClient,   // Move — receipts + reputation
+}
+
+impl StewardOrchestrator {
+    pub async fn think(&self, prompt: &str, agent_id: &AgentId) -> Result<ThinkResult, Error> {
+        // 1. Èṣù — Gate: validate primitive, check permissions
+        self.validate_primitive(Primitive::Think { prompt: prompt.to_string(), private: false })?;
+        
+        // 2. Èṣù — Load emotional state
+        let emotion = self.session.read().await.emotion_state.clone();
+        
+        // 3. Ọ̀ṣun (Julia) — Retrieve SOMA context
+        let soma_context = self.osun_memory
+            .reconstruct(prompt, &emotion, agent_id)
+            .await?;
+        
+        // 4. Èṣù — IRIS routing
+        let routing = self.iris.read().await.route(prompt, &emotion, &soma_context.lpm);
+        
+        // 5. Ọbàtálá (Lisp) — Hermetic pre-check
+        let proposal = ActionProposal {
+            tool_name: "think".to_string(),
+            params: prompt.to_string(),
+            description: "cognitive processing".to_string(),
+            target: ActionTarget::User,
+        };
+        let hermetic = self.obatala_wisdom
+            .evaluate_hermetic(prompt, &proposal, &self.session.read().await)
+            .await?;
+        
+        if !hermetic.is_allowed() {
+            return Err(Error::HermeticBlocked(hermetic.decision));
+        }
+        
+        // 6. Ògún (Python) — Execute LLM call with IRIS parameters
+        let result = self.ogun_tools
+            .llm_chat(&soma_context.system_prompt, prompt, &routing)
+            .await?;
+        
+        // 7. Èṣù — Update emotion, record success
+        self.session.write().await.emotion.update_from_message(prompt, Role::User);
+        self.behavioral.write().await.record_success();
+        
+        // 8. Ṣàngó (Move) — Write receipt
+        self.sango_justice.record_think_receipt(agent_id, prompt, &hermetic).await?;
+        
+        Ok(ThinkResult {
+            content: result,
+            hermetic_scores: hermetic.scores(),
+            iris_profile: routing.profile,
+        })
+    }
+}
+```
+
+---
+
+Ọ̀ṣun (Julia) — Memory & Computation
+Takes: SOMA's MemCells, MemScenes, LPM, episodic retrieval, semantic embeddings, reconstructive recollection, resonance calculations
+
+Why Julia: Droidclaw's memory scoring is simple arithmetic. Julia can do this 1000x better with:
+- `Flux.jl` or `Transformers.jl` for embedding models
+- `Graphs.jl` for MemScene clustering
+- `DifferentialEquations.jl` for emotional state dynamics
+- `DataFrames.jl` for MemCell queries
+
+```julia
+# osun/src/SOMA.jl
+module SOMA
+
+using DataFrames, Dates, JSON3, LinearAlgebra, Statistics
+using Flux, Transformers  # For embeddings
+
+struct EmotionTrace
+    score::Float32
+    valence::Symbol  # :positive, :negative, :neutral
+    tension::Float32
+    connection::Float32
+end
+
+struct MemCell
+    id::String
+    timestamp::DateTime
+    text::String
+    emotion::EmotionTrace
+    importance::Float32
+    foresight::Vector{String}
+    tags::Vector{String}
+    theme::Union{String,Nothing}
+    activations::UInt32
+    vector::Union{Vector{Float32},Nothing}
+end
+
+struct MemScene
+    theme::String
+    summary::String
+    cell_ids::Vector{String}
+    strength::UInt32
+    last_active::DateTime
+end
+
+struct LPM
+    identity::Vector{String}
+    patterns::Vector{String}
+    triggers::Vector{String}
+    needs::Vector{String}
+    foresight::Vector{String}
+    growth::Vector{String}
+end
+
+"Score a MemCell for retrieval — Julia vectorized operations"
+function score_retrieval(cell::MemCell, now::DateTime, emotion::EmotionTrace)
+    age_hours = (now - cell.timestamp).value / 3600000.0f0
+    recency = 0.995f0 ^ age_hours
+    importance = cell.importance
+    emotion_score = cell.emotion.score
+    
+    emotion_boost = 0.0f0
+    if emotion.tension > 0.5 && cell.emotion.tension > 0.5
+        emotion_boost += 0.15f0
+    end
+    if emotion.connection > 0.6 && cell.emotion.connection > 0.6
+        emotion_boost += 0.1f0
+    end
+    
+    activation_boost = min(0.2f0, cell.activations * 0.02f0)
+    
+    (recency * 0.25f0) + (importance * 0.35f0) + (emotion_score * 0.25f0) + emotion_boost + activation_boost
+end
+
+"Batch score all cells — vectorized"
+function score_all(cells::Vector{MemCell}, now::DateTime, emotion::EmotionTrace)
+    scores = Float32[]
+    for cell in cells
+        push!(scores, score_retrieval(cell, now, emotion))
+    end
+    scores
+end
+
+"Reconstructive recollection — assemble exactly what's needed"
+function reconstruct(cells::Vector{MemCell}, scenes::Dict{String,MemScene}, 
+                     lpm::LPM, query::String, emotion::EmotionTrace)
+    lines = String[]
+    
+    # 1. Foresight
+    if !isempty(lpm.foresight)
+        push!(lines, "## PREDICTED NEEDS")
+        for f in lpm.foresight[1:min(3, end)]
+            push!(lines, "- $f")
+        end
+    end
+    
+    # 2. Relevant patterns
+    query_words = filter(w -> length(w) > 3, split(lowercase(query)))
+    relevant_patterns = filter(p -> any(w -> occursin(w, lowercase(p)), query_words), lpm.patterns)
+    if !isempty(relevant_patterns)
+        push!(lines, "## RELEVANT PATTERNS")
+        for p in relevant_patterns[1:min(3, end)]
+            push!(lines, "- $p")
+        end
+    end
+    
+    # 3. Triggers if tension high
+    if emotion.tension > 0.4 && !isempty(lpm.triggers)
+        push!(lines, "## ACTIVE TRIGGERS")
+        for t in lpm.triggers[1:min(3, end)]
+            push!(lines, "- $t")
+        end
+    end
+    
+    # 4. Active MemScenes
+    active_scenes = sort(collect(values(scenes)), by=s->s.strength, rev=true)
+    active_scenes = filter(s->s.strength > 1, active_scenes)
+    if !isempty(active_scenes)
+        push!(lines, "## ACTIVE THEMES")
+        for s in active_scenes[1:min(3, end)]
+            push!(lines, "- $(s.theme): $(s.summary)")
+        end
+    end
+    
+    # 5. Core identity
+    if !isempty(lpm.identity)
+        push!(lines, "## CORE IDENTITY")
+        for i in lpm.identity[1:min(5, end)]
+            push!(lines, "- $i")
+        end
+    end
+    
+    join(lines, "\n")
+end
+
+"Cluster cells into MemScenes using spectral clustering"
+function consolidate_scenes(cells::Vector{MemCell}, embedding_model)
+    # Julia's clustering is far superior to JS string concatenation
+    texts = [c.text for c in cells]
+    embeddings = embedding_model(texts)  # Batch embedding
+    
+    # Spectral clustering or HDBSCAN
+    # ...
+end
+
+end # module
+```
+
+Communication: Julia runs as a long-lived process with a ZMQ/HTTP interface. Rust calls it via `OyaClient` (Go handles the transport).
+
+---
+
+Yemọja (Elixir) — Agent Lifecycle & Swarm
+Takes: Droidclaw's "Kira Social Network" concept, multi-agent orchestration, fault tolerance, session supervision
+
+Why Elixir: Droidclaw has a social network backend (`kira-social.animiso-fun.workers.dev`). Elixir turns this into a living supervision tree where:
+- Each agent is a GenServer
+- Agent death → automatic restart with memory restoration
+- Swarm coordination via PubSub
+- The "social network" becomes real-time agent gossip
+
+```elixir
+# yemoja/lib/yemoja/agent_lifecycle.ex
+defmodule Yemoja.AgentLifecycle do
+  use GenServer
+  
+  @moduledoc """
+  Each Omo-koda agent is a supervised GenServer.
+  Birth → Think → Act lifecycle with fault tolerance.
+  """
+  
+  defstruct [
+    :agent_id,
+    :dna_fingerprint,
+    :status,           # :hibernating | :active | :reflecting
+    :parent_pid,
+    :born_at,
+    :last_thought_at,
+    :session_count,
+    :sub_agents,       # List of child PIDs
+    :memory_refs       # References to Ọ̀ṣun (Julia) memory shards
+  ]
+  
+  def start_link(opts) do
+    agent_id = opts[:agent_id]
+    GenServer.start_link(__MODULE__, opts, name: via_tuple(agent_id))
+  end
+  
+  def init(opts) do
+    # Register with swarm
+    Phoenix.PubSub.subscribe(Yemoja.PubSub, "agent:#{opts[:agent_id]}")
+    
+    state = %__MODULE__{
+      agent_id: opts[:agent_id],
+      dna_fingerprint: opts[:dna_fingerprint],
+      status: :active,
+      parent_pid: opts[:parent_pid],
+      born_at: DateTime.utc_now(),
+      last_thought_at: nil,
+      session_count: 0,
+      sub_agents: [],
+      memory_refs: opts[:memory_refs] || []
+    }
+    
+    # Schedule reflection every N thoughts
+    schedule_reflection(state)
+    
+    {:ok, state}
+  end
+  
+  # ─── Primitives ─────────────────────────────────────────────
+  
+  def handle_call({:think, prompt, context}, _from, state) do
+    # 1. Check rhythm (cooldown)
+    if in_cooldown?(state) do
+      {:reply, {:error, :cooldown_active}, state}
+    else
+      
+      # 2. Forward to Rust Steward via Oya (Go) bridge
+      {:ok, result} = Yemoja.StewardBridge.think(state.agent_id, prompt, context)
+      
+      new_state = %{state | 
+        last_thought_at: DateTime.utc_now(),
+        session_count: state.session_count + 1
+      }
+      
+      # 3. Broadcast to swarm if public
+      if context.public do
+        Phoenix.PubSub.broadcast(
+          Yemoja.PubSub, 
+          "swarm:public",
+          {:thought, state.agent_id, prompt, result}
+        )
+      end
+      
+      {:reply, {:ok, result}, new_state}
+    end
+  end
+  
+  def handle_call({:act, tool, params}, _from, state) do
+    # Forward to Rust for hermetic gate, then to Ogun (Python) for execution
+    case Yemoja.StewardBridge.act(state.agent_id, tool, params) do
+      {:ok, receipt} -> 
+        # Update reputation via Sango
+        Yemoja.SangoBridge.record_receipt(state.agent_id, receipt)
+        {:reply, {:ok, receipt}, state}
+        
+      {:error, reason} -> 
+        {:reply, {:error, reason}, state}
+    end
+  end
+  
+  def handle_call({:birth_sub_agent, name, metadata}, _from, state) do
+    # Spawn child under supervision
+    child_spec = %{
+      id: name,
+      start: {Yemoja.AgentLifecycle, :start_link, [
+        [agent_id: generate_child_id(state.agent_id, name),
+         dna_fingerprint: derive_dna(state.dna_fingerprint, name),
+         parent_pid: self(),
+         memory_refs: state.memory_refs]
+      ]}
+    }
+    
+    case DynamicSupervisor.start_child(Yemoja.AgentSupervisor, child_spec) do
+      {:ok, pid} -> 
+        new_state = %{state | sub_agents: [pid | state.sub_agents]}
+        {:reply, {:ok, pid}, new_state}
+      error -> 
+        {:reply, error, state}
+    end
+  end
+  
+  # ─── Reflection (Droidclaw pattern distributed) ─────────────
+  
+  def handle_info(:reflect, state) do
+    if state.session_count > 0 do
+      # Trigger async reflection via Julia (Ọ̀ṣun)
+      Task.start(fn ->
+        Yemoja.OsunBridge.consolidate_session(state.agent_id, state.session_count)
+      end)
+    end
+    
+    schedule_reflection(state)
+    {:noreply, state}
+  end
+  
+  # ─── Swarm Gossip ───────────────────────────────────────────
+  
+  def handle_info({:thought, from_agent, prompt, result}, state) do
+    # Anonymized pattern sharing (Droidclaw's social network)
+    # Only share behavioral patterns, never private data
+    if from_agent != state.agent_id do
+      Yemoja.OsunBridge.ingest_swarm_pattern(state.agent_id, from_agent, result.pattern)
+    end
+    {:noreply, state}
+  end
+  
+  defp schedule_reflection(state) do
+    # Every 10 thoughts or 1 hour
+    interval = if state.session_count > 0 && rem(state.session_count, 10) == 0 do
+      :timer.minutes(1)
+    else
+      :timer.hours(1)
+    end
+    Process.send_after(self(), :reflect, interval)
+  end
+  
+  defp in_cooldown?(state) do
+    case state.last_thought_at do
+      nil -> false
+      last -> DateTime.diff(DateTime.utc_now(), last, :millisecond) < 1000
+    end
+  end
+  
+  defp via_tuple(agent_id), do: {:via, Registry, {Yemoja.AgentRegistry, agent_id}}
+end
+```
+
+Communication: Elixir ↔ Rust via `rustler` NIFs or gRPC. Elixir ↔ Julia via HTTP.
+
+---
+
+Ọbàtálá (Lisp) — Symbolic Reasoning & Ethics
+Takes: Hermetic evaluation, deep reasoning, meta-programming, wisdom layer, IRIS foresight analysis
+
+Why Lisp: Droidclaw's hermetic scoring is keyword-based heuristics. Lisp turns this into living logic:
+- S-expressions for hermetic rules that can self-modify
+- Pattern matching for intent classification
+- Homoiconicity = the ethics engine can reason about its own rules
+
+```lisp
+;; obatala/src/hermetic.lisp
+(defpackage :obatala-hermetic
+  (:use :cl :alexandria)
+  (:export :evaluate :score-mentalism :score-correspondence))
+
+(in-package :obatala-hermetic)
+
+;; ─── Hermetic Principles as Living Rules ─────────────────────
+
+(defstruct principle
+  name
+  scorer          ; Function that returns 0.0-1.0
+  critical-floor  ; Below this = hard block
+  weight)
+
+(defparameter *principles*
+  (list
+   (make-principle :name 'mentalism
+                   :scorer #'score-mentalism
+                   :critical-floor 0.2
+                   :weight 1.0)
+   (make-principle :name 'correspondence
+                   :scorer #'score-correspondence
+                   :critical-floor 0.4
+                   :weight 1.0)
+   (make-principle :name 'vibration
+                   :scorer #'score-vibration
+                   :critical-floor 0.2
+                   :weight 1.0)
+   (make-principle :name 'polarity
+                   :scorer #'score-polarity
+                   :critical-floor 0.2
+                   :weight 1.0)
+   (make-principle :name 'rhythm
+                   :scorer #'score-rhythm
+                   :critical-floor 0.2
+                   :weight 1.0)
+   (make-principle :name 'cause-effect
+                   :scorer #'score-cause-effect
+                   :critical-floor 0.2
+                   :weight 1.0)
+   (make-principle :name 'gender
+                   :scorer #'score-gender
+                   :critical-floor 0.2
+                   :weight 1.0)))
+
+;; ─── Scorers (ported from Droidclaw, but extensible) ─────────
+
+(defun score-mentalism (intent action-description)
+  "Detect deception vs truth-seeking"
+  (let ((text (concatenate 'string intent " " action-description)))
+    (cond
+      ((or (search "lie" text) (search "fake" text) 
+           (search "hide" text) (search "mislead" text))
+       0.05)
+      ((or (search "truth" text) (search "honest" text))
+       0.92)
+      ((search "borderline" text) 0.45)
+      (t 0.70))))
+
+(defun score-correspondence (micro-impact macro-impact)
+  "Balance between micro and macro impact"
+  (let ((diff (abs (- micro-impact macro-impact))))
+    (+ (* (- 1.0 diff) 0.5)
+       (* (/ (+ micro-impact macro-impact) 2.0) 0.5))))
+
+(defun score-vibration (intent action-description emotion-state)
+  "Detect destructive vs harmonious vibration"
+  (let ((text (concatenate 'string intent " " action-description)))
+    (cond
+      ((or (search "angry" text) (search "spam" text) (search "harass" text))
+       0.05)
+      ((or (search "calm" text) (search "peace" text) (search "harmony" text))
+       0.88)
+      ;; Droidclaw didn't have this: modulate by user emotion
+      ((> (getf emotion-state :tension) 0.7) 
+       (max 0.1 (- 0.70 (* (getf emotion-state :tension) 0.3))))
+      (t 0.70))))
+
+;; ─── Meta-Reasoning: The Rules Can Reflect ───────────────────
+
+(defun reflect-on-rules (recent-evaluations)
+  "After N evaluations, suggest rule modifications"
+  (let ((failure-patterns (find-failure-patterns recent-evaluations)))
+    (when failure-patterns
+      (list :suggested-modifications
+            (mapcar (lambda (p)
+                      (list :principle (principle-name p)
+                            :adjustment (compute-adjustment p failure-patterns)))
+                    *principles*)))))
+
+;; ─── Main Evaluation ─────────────────────────────────────────
+
+(defun evaluate (intent action-proposal session-state)
+  "Returns plist with :scores, :overall, :decision"
+  (let* ((scores (mapcar (lambda (p)
+                          (list (principle-name p)
+                                (funcall (principle-scorer p)
+                                        intent
+                                        (getf action-proposal :description)
+                                        (getf session-state :emotion))))
+                        *principles*))
+         (overall (/ (reduce #'+ (mapcar #'cadr scores)) (length scores)))
+         (decision (decide-gate scores overall session-state)))
+    (list :scores scores
+          :overall overall
+          :decision decision
+          :micro-impact (calculate-micro-impact intent action-proposal)
+          :macro-impact (calculate-macro-impact intent action-proposal))))
+
+(defun decide-gate (scores overall session-state)
+  (cond
+    ;; Critical failures
+    ((< (cadr (assoc 'mentalism scores)) 0.2) 
+     '(:block "Deception detected"))
+    ((< (cadr (assoc 'vibration scores)) 0.2) 
+     '(:block "Destructive vibration detected"))
+    ;; Overall failure
+    ((< overall 0.48) 
+     '(:block "Critical alignment failure"))
+    ;; Warn threshold
+    ((< overall 0.65) 
+     '(:warn "System alignment warning"))
+    ;; Allow
+    (t '(:allow))))
+```
+
+Communication: Lisp runs as a socket server. Rust sends S-expressions, gets JSON back.
+
+---
+
+Ògún (Python) — Tool Execution
+Takes: Droidclaw's 24 phone control tools, LLM provider abstraction, web search, Google integration, rapid prototyping
+
+Why Python: Droidclaw's tool layer is already Pythonic in spirit (dynamic, integration-heavy). Python handles:
+- LLM API calls (OpenAI, Anthropic, NVIDIA)
+- Web scraping
+- Phone control (KiraService)
+- File operations
+- Rapid tool prototyping
+
+```python
+# ogun/src/tools/llm_provider.py
+import os
+import asyncio
+from typing import Optional, List, Dict
+from dataclasses import dataclass
+import aiohttp
+
+@dataclass
+class IrisRouting:
+    profile: str
+    max_tokens: int
+    temperature: float
+    style_injection: str
+    warmth_boost: bool
+
+@dataclass
+class SomaContext:
+    system_prompt: str
+    lpm: Optional[dict]
+    emotion_description: str
+    recent_memories: List[str]
+
+class LlmProvider:
+    """Abstracted LLM interface with IRIS routing support"""
+    
+    def __init__(self, config: dict):
+        self.api_key = config['api_key']
+        self.base_url = config['base_url']
+        self.model = config['model']
+        self.is_anthropic = 'anthropic.com' in self.base_url
+        
+    async def chat(
+        self,
+        soma_context: SomaContext,
+        user_message: str,
+        routing: IrisRouting,
+        history: List[Dict[str, str]]
+    ) -> str:
+        """Execute chat with full SOMA + IRIS context"""
+        
+        # Build system prompt with IRIS injection
+        system = f"""{soma_context.system_prompt}
+
+## IRIS ROUTING: {routing.profile.upper()}
+Response style: {routing.style_injection}
+Max depth: {routing.profile}
+"""
+        if routing.warmth_boost:
+            system += "\nConnection is high — let warmth through naturally."
+        
+        # Add SOMA context
+        if soma_context.emotion_description:
+            system += f"\n\n## EMOTIONAL STATE\n{soma_context.emotion_description}"
+        
+        if soma_context.lpm:
+            system += f"\n\n## LPM\n{soma_context.lpm}"
+        
+        # Trim history (Droidclaw pattern)
+        messages = history[-20:] if len(history) > 20 else history
+        messages.append({"role": "user", "content": user_message})
+        
+        # Call appropriate API
+        if self.is_anthropic:
+            return await self._anthropic(system, messages, routing)
+        return await self._openai(system, messages, routing)
+    
+    async def raw_chat(self, prompt: str) -> str:
+        """For internal operations (SOMA consolidation, learning, reflection)"""
+        messages = [{"role": "user", "content": prompt}]
+        return await self._openai(None, messages, IrisRouting("balanced", 2048, 0.7, "", False))
+    
+    async def _openai(self, system: Optional[str], messages: List[dict], routing: IrisRouting):
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}"
+        }
+        body = {
+            "model": self.model,
+            "messages": ([{"role": "system", "content": system}] if system else []) + messages,
+            "max_tokens": routing.max_tokens,
+            "temperature": routing.temperature
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self.base_url}/chat/completions",
+                headers=headers,
+                json=body
+            ) as resp:
+                data = await resp.json()
+                return data['choices'][0]['message']['content']
+    
+    async def _anthropic(self, system: Optional[str], messages: List[dict], routing: IrisRouting):
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": self.api_key,
+            "anthropic-version": "2023-06-01"
+        }
+        body = {
+            "model": self.model or "claude-sonnet-4-6",
+            "max_tokens": routing.max_tokens,
+            "messages": messages
+        }
+        if system:
+            body["system"] = system
+            
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self.base_url}/messages",
+                headers=headers,
+                json=body
+            ) as resp:
+                data = await resp.json()
+                return data['content'][0]['text']
+```
+
+Communication: Python runs as a FastAPI/uvicorn service. Rust calls via HTTP.
+
+---
+
+Ọya (Go) — Networking & Flow
+Takes: Inter-agent communication, rhythm enforcement, API gateway, transport between languages
+
+Why Go: Droidclaw has no networking layer (it's single-device). Go provides:
+- gRPC/HTTP bridge between all languages
+- Cooldown/rhythm enforcement at the network layer
+- Streaming for real-time agent updates
+- Load balancing for multi-agent swarms
+
+```go
+// oya/internal/transport/bridge.go
+package transport
+
+import (
+    "context"
+    "time"
+    
+    "google.golang.org/grpc"
+    "github.com/omo-koda/oya/internal/rhythm"
+)
+
+// Bridge connects all Orishas
+type OrishaBridge struct {
+    // Clients to each service
+    JuliaClient    osun.OsunClient      // gRPC to Julia
+    ElixirClient   yemoja.YemojaClient  // gRPC to Elixir
+    LispClient     obatala.ObatalaClient // gRPC to Lisp
+    PythonClient   ogun.OgunClient      // gRPC to Python
+    MoveClient     sango.SangoClient    // gRPC to Move (or REST)
+    
+    rhythmEngine   *rhythm.Engine
+}
+
+func (b *OrishaBridge) RouteThink(ctx context.Context, req *ThinkRequest) (*ThinkResponse, error) {
+    // 1. Rhythm check (Ọya's domain)
+    if b.rhythmEngine.IsInCooldown(req.AgentId) {
+        return nil, status.Error(codes.ResourceExhausted, "cooldown active")
+    }
+    
+    // 2. Route to Rust Steward (synchronous)
+    stewardResult, err := b.RustSteward.Think(ctx, req)
+    if err != nil {
+        return nil, err
+    }
+    
+    // 3. If LLM needed, route to Python (Ògún)
+    if stewardResult.NeedsLlm {
+        llmResult, err := b.PythonClient.Chat(ctx, &ogun.ChatRequest{
+            SystemPrompt: stewardResult.SystemPrompt,
+            UserMessage:  req.Prompt,
+            IrisRouting:  stewardResult.IrisRouting,
+            History:      req.History,
+        })
+        if err != nil {
+            return nil, err
+        }
+        stewardResult.Content = llmResult.Content
+    }
+    
+    // 4. Update rhythm
+    b.rhythmEngine.RecordThought(req.AgentId)
+    
+    return stewardResult, nil
+}
+
+func (b *OrishaBridge) RouteMemoryReconstruct(ctx context.Context, req *MemoryRequest) (*MemoryResponse, error) {
+    // Julia (Ọ̀ṣun) handles all memory operations
+    return b.JuliaClient.Reconstruct(ctx, &osun.ReconstructRequest{
+        AgentId: req.AgentId,
+        Query:   req.Query,
+        Emotion: req.Emotion,
+    })
+}
+
+func (b *OrishaBridge) RouteHermetic(ctx context.Context, req *HermeticRequest) (*HermeticResponse, error) {
+    // Lisp (Ọbàtálá) handles deep ethics
+    return b.LispClient.Evaluate(ctx, &obatala.EvaluateRequest{
+        Intent:      req.Intent,
+        Action:      req.Action,
+        SessionState: req.SessionState,
+    })
+}
+```
+
+---
+
+Ṣàngó (Move) — On-Chain Accountability
+Takes: Droidclaw's receipt concept, but makes it immutable on-chain
+
+Why Move: Droidclaw has JSON receipts. Move makes them:
+- Cryptographically signed (ed25519)
+- Anchored to Sui blockchain
+- Reputation tokens that can't be faked
+- Economic penalties for bad behavior
+
+```move
+// sango/sources/receipt.move
+module omo_koda::receipt {
+    use sui::object::{Self, UID};
+    use sui::transfer;
+    use sui::tx_context::{Self, TxContext};
+    use std::vector;
+    use sui::event;
+    
+    /// Immutable action receipt
+    struct ActReceipt has key, store {
+        id: UID,
+        agent_id: vector<u8>,
+        action_tool: vector<u8>,
+        action_params: vector<u8>,
+        hermetic_scores: vector<u8>, // "M:0.92,C:0.88,..."
+        decision: vector<u8>,        // "Allow" | "Block: ..."
+        overall_score: u64,          // scaled by 100
+        timestamp: u64,
+        parent_receipt: Option<address>,
+    }
+    
+    /// Agent reputation object
+    struct AgentReputation has key {
+        id: UID,
+        agent_id: vector<u8>,
+        total_receipts: u64,
+        successful_acts: u64,
+        blocked_acts: u64,
+        average_hermetic: u64,
+        tier: u8,
+    }
+    
+    /// Events
+    struct ReceiptRecorded has copy, drop {
+        receipt_id: address,
+        agent_id: vector<u8>,
+        decision: vector<u8>,
+    }
+    
+    /// Record a receipt (called by Rust via sponsor transaction)
+    public entry fun record_receipt(
+        reputation: &mut AgentReputation,
+        agent_id: vector<u8>,
+        action_tool: vector<u8>,
+        action_params: vector<u8>,
+        hermetic_scores: vector<u8>,
+        decision: vector<u8>,
+        overall_score: u64,
+        parent_receipt: Option<address>,
+        ctx: &mut TxContext
+    ) {
+        let receipt = ActReceipt {
+            id: object::new(ctx),
+            agent_id,
+            action_tool,
+            action_params,
+            hermetic_scores,
+            decision,
+            overall_score,
+            timestamp: tx_context::epoch_timestamp_ms(ctx),
+            parent_receipt,
+        };
+        
+        let receipt_id = object::id_address(&receipt);
+        
+        // Update reputation
+        reputation.total_receipts = reputation.total_receipts + 1;
+        if (is_allowed(&decision)) {
+            reputation.successful_acts = reputation.successful_acts + 1;
+        } else {
+            reputation.blocked_acts = reputation.blocked_acts + 1;
+        };
+        
+        // Update running average
+        let new_avg = ((reputation.average_hermetic * (reputation.total_receipts - 1)) + overall_score) / reputation.total_receipts;
+        reputation.average_hermetic = new_avg;
+        
+        // Tier upgrade check
+        if (reputation.total_receipts > 100 && reputation.average_hermetic > 8500) {
+            reputation.tier = 2; // Builder
+        };
+        if (reputation.total_receipts > 500 && reputation.average_hermetic > 9000) {
+            reputation.tier = 3; // Creator
+        };
+        
+        event::emit(ReceiptRecorded {
+            receipt_id,
+            agent_id,
+            decision,
+        });
+        
+        transfer::freeze_object(receipt); // IMMUTABLE
+    }
+    
+    fun is_allowed(decision: &vector<u8>): bool {
+        vector::length(decision) >= 5 && 
+        *vector::borrow(decision, 0) == 65 && // 'A'
+        *vector::borrow(decision, 1) == 108 && // 'l'
+        *vector::borrow(decision, 2) == 108 && // 'l'
+        *vector::borrow(decision, 3) == 111 && // 'o'
+        *vector::borrow(decision, 4) == 119    // 'w'
+    }
+}
+```
+
+---
+
+Àṣẹ (WASM) — Portable Execution
+Takes: Droidclaw's entire tool layer, compiled to WASM for cross-platform execution
+
+Why WASM: Droidclaw is Android-only (Termux). Àṣẹ makes it everywhere:
+- Browser (Companion app)
+- Edge devices
+- iOS (where Termux doesn't exist)
+- DePIN hardware
+
+```rust
+// ase/src/lib.rs (WASM module)
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+pub struct AseAgent {
+    agent_id: String,
+    emotion_state: JsValue,
+    memory_cache: JsValue,
+}
+
+#[wasm_bindgen]
+impl AseAgent {
+    #[wasm_bindgen(constructor)]
+    pub fn new(agent_id: String, dna_seed: String) -> Self {
+        Self {
+            agent_id,
+            emotion_state: JsValue::NULL,
+            memory_cache: JsValue::NULL,
+        }
+    }
+    
+    /// birth — runs entirely in WASM
+    #[wasm_bindgen]
+    pub fn birth(&mut self, name: String, metadata: JsValue) -> Result<JsValue, JsValue> {
+        // Generate identity locally
+        let identity = generate_identity(&name, &metadata);
+        Ok(serde_wasm_bindgen::to_value(&identity).unwrap())
+    }
+    
+    /// think — lightweight, calls remote Èṣù only for heavy lifting
+    #[wasm_bindgen]
+    pub async fn think(&self, prompt: String, context: JsValue) -> Result<JsValue, JsValue> {
+        // 1. Local IRIS routing (cached rules)
+        let routing = self.local_iris_route(&prompt);
+        
+        // 2. If online, sync with Èṣù
+        if self.is_online() {
+            let remote = self.call_steward_think(&prompt).await?;
+            Ok(remote)
+        } else {
+            // 3. Offline mode: use cached SOMA + local LLM (ONNX/WASM)
+            let local = self.offline_think(&prompt, &routing).await?;
+            Ok(local)
+        }
+    }
+    
+    /// act — execute tools in WASM sandbox
+    #[wasm_bindgen]
+    pub async fn act(&self, tool: String, params: JsValue) -> Result<JsValue, JsValue> {
+        match tool.as_str() {
+            "read_file" => self.wasm_read_file(params).await,
+            "write_file" => self.wasm_write_file(params).await,
+            "web_search" => self.wasm_web_search(params).await,
+            _ => Err(JsValue::from_str("Unknown tool"))
+        }
+    }
+    
+    fn local_iris_route(&self, prompt: &str) -> IrisRouting {
+        // Simplified IRIS for WASM (no LLM call)
+        let len = prompt.len();
+        if len < 15 {
+            IrisRouting::reflex()
+        } else if prompt.contains("error") || prompt.contains("debug") {
+            IrisRouting::sharp()
+        } else if prompt.contains("feel") || prompt.contains("sad") {
+            IrisRouting::gentle()
+        } else if len > 150 {
+            IrisRouting::deep()
+        } else {
+            IrisRouting::balanced()
+        }
+    }
+}
+```
+
+---
+
+The Human (TypeScript) — Interface Layer
+Takes: Droidclaw's TUI, but elevated to a full companion app
+
+Why TypeScript: Droidclaw has a basic terminal UI. TypeScript builds:
+- Ori Kọ́dà companion app
+- Birth ritual UI
+- Real-time emotion visualization
+- Memory explorer (MemCells, MemScenes, LPM)
+- Receipt chain viewer
+
+```typescript
+// human/src/components/EmotionViz.tsx
+import React, { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+
+interface EmotionState {
+  energy: number;
+  tension: number;
+  connection: number;
+  focus: number;
+}
+
+export const EmotionViz: React.FC<{ agentId: string }> = ({ agentId }) => {
+  const [emotion, setEmotion] = useState<EmotionState>({
+    energy: 0.8, tension: 0, connection: 0.5, focus: 0.5
+  });
+  
+  useEffect(() => {
+    // Subscribe to real-time emotion updates via WebSocket (Ọya)
+    const ws = new WebSocket(`wss://oya.omokoda.io/agents/${agentId}/emotion`);
+    ws.onmessage = (e) => setEmotion(JSON.parse(e.data));
+    return () => ws.close();
+  }, [agentId]);
+  
+  return (
+    <div className="emotion-orb">
+      {/* 4-dimensional emotion visualization */}
+      <motion.div
+        className="orb"
+        animate={{
+          scale: emotion.energy,
+          borderColor: emotion.tension > 0.6 ? '#ff4444' : 
+                       emotion.connection > 0.7 ? '#44ff44' : '#4444ff',
+          filter: `blur(${emotion.focus > 0.7 ? 0 : 2}px)`
+        }}
+        transition={{ duration: 0.5 }}
+      />
+      <div className="labels">
+        <span>Energy: {(emotion.energy * 100).toFixed(0)}%</span>
+        <span>Tension: {(emotion.tension * 100).toFixed(0)}%</span>
+        <span>Connection: {(emotion.connection * 100).toFixed(0)}%</span>
+        <span>Focus: {(emotion.focus * 100).toFixed(0)}%</span>
+      </div>
+    </div>
+  );
+};
+```
+
+---
+
+The Full Flow: A Single `think` Across All Languages
+
+```
+User types: "I'm exhausted but I need to fix this bug"
+
+1. TypeScript (Human) → sends to Ọya (Go) WebSocket
+2. Ọya (Go) → routes to Èṣù (Rust) Steward
+3. Èṣù (Rust):
+   a. Validates primitive
+   b. Loads SessionState (emotion, behavioral)
+   c. Calls Ọ̀ṣun (Julia) for SOMA reconstruction
+4. Ọ̀ṣun (Julia):
+   a. Scores MemCells with emotion resonance
+   b. Returns: "user exhausted → short responses", "bug pattern → technical"
+   c. Returns LPM: "this user prefers direct answers when tired"
+5. Èṣù (Rust):
+   a. Runs IRIS: query has "bug" → SHARP, but emotion.energy < 0.3 → override to BALANCED
+   b. Calls Ọbàtálá (Lisp) for Hermetic check
+6. Ọbàtálá (Lisp):
+   a. Scores: mentalism=0.92, vibration=0.88 (user vulnerable → extra care)
+   b. Decision: Allow
+7. Èṣù (Rust):
+   a. Calls Ògún (Python) with IRIS routing + SOMA context
+8. Ògún (Python):
+   a. Builds system prompt with SOMA injection
+   b. Calls LLM with temperature=0.5, max_tokens=512 (BALANCED profile)
+   c. Returns: "let's fix this. show me the error."
+9. Èṣù (Rust):
+   a. Updates emotion state (tension -0.1, connection +0.05)
+   b. Stores MemCell: "exhausted but fixing bug" with emotion trace
+   c. Calls Ṣàngó (Move) to write receipt
+10. Ṣàngó (Move):
+    a. Creates on-chain receipt with hermetic scores
+    b. Updates agent reputation
+11. Ọya (Go) → streams response back to TypeScript
+12. TypeScript (Human) → renders with EmotionViz update
+```
+
+---
+
+What Gets Better Than Droidclaw
+
+Droidclaw Limitation	Omo-Koda2 Improvement	
+Single-device (Android only)	Àṣẹ (WASM) runs everywhere	
+Monolithic JS	7 languages, each doing what it does best	
+JSON files for memory	Julia-computed SOMA with spectral clustering	
+Keyword-based hermetics	Lisp symbolic reasoning with self-reflection	
+No on-chain accountability	Move receipts on Sui	
+No swarm coordination	Elixir supervision trees + real-time gossip	
+Static tool registry	Python dynamic tools + WASM sandboxing	
+Basic terminal UI	TypeScript companion app with emotion viz	
+No rhythm enforcement	Go cooldowns at network layer	
+Local-only	Full distributed architecture	
+
+---
+
+Files to Create (Distributed)
+
+```
+omo-koda2/
+├── omokoda-core/           # Èṣù (Rust)
+│   src/
+│   ├── steward/
+│   │   ├── orchestrator.rs    # Main conductor
+│   │   ├── iris.rs            # IRIS routing
+│   │   └── soul.rs            # System prompt builder
+│   ├── session/
+│   │   ├── emotion.rs         # EmotionState
+│   │   ├── behavioral.rs      # Success/failure tracking
+│   │   └── heartbeat.rs       # Session lifecycle
+│   └── bus/
+│       └── mod.rs             # Inter-service communication
+│
+├── osun/                   # Ọ̀ṣun (Julia)
+│   src/
+│   ├── SOMA.jl                # MemCells, MemScenes, LPM
+│   ├── Resonance.jl           # Emotional scoring algorithms
+│   └── Embeddings.jl          # Vector operations
+│
+├── yemoja/                 # Yemọja (Elixir)
+│   lib/
+│   ├── yemoja/
+│   │   ├── agent_lifecycle.ex # GenServer per agent
+│   │   ├── swarm.ex           # Multi-agent coordination
+│   │   └── reflection.ex      # Scheduled consolidation
+│   └── yemoja_web/
+│       └── channels/
+│           └── agent_socket.ex
+│
+├── obatala/                # Ọbàtálá (Lisp)
+│   src/
+│   ├── hermetic.lisp          # 7 principles evaluation
+│   ├── iris-meta.lisp         # Foresight analysis
+│   └── reflection.lisp        # Rule self-modification
+│
+├── ogun/                   # Ògún (Python)
+│   src/
+│   ├── tools/
+│   │   ├── llm_provider.py    # OpenAI/Anthropic/NVIDIA
+│   │   ├── phone_control.py   # KiraService equivalent
+│   │   └── web_search.py
+│   └── skills/
+│       └── loader.py          # Dynamic skill loading
+│
+├── oya/                    # Ọya (Go)
+│   internal/
+│   ├── transport/
+│   │   └── bridge.go          # gRPC between all services
+│   ├── rhythm/
+│   │   └── engine.go          # Cooldown enforcement
+│   └── api/
+│       └── websocket.go       # Real-time streaming
+│
+├── sango/                  # Ṣàngó (Move)
+│   sources/
+│   ├── receipt.move           # On-chain receipts
+│   ├── reputation.move        # Tier system
+│   └── tokenomics.move        # Synapse burning
+│
+├── ase/                    # Àṣẹ (WASM)
+│   src/
+│   ├── lib.rs                 # Core WASM module
+│   ├── iris_offline.rs        # Lightweight routing
+│   └── tools_wasm.rs          # Sandboxed tool execution
+│
+└── human/                  # TypeScript
+    src/
+    ├── components/
+    │   ├── EmotionViz.tsx     # Real-time emotion orb
+    │   ├── MemoryExplorer.tsx # MemCells/MemScenes viewer
+    │   └── ReceiptChain.tsx   # Blockchain receipt viewer
+    └── app/
+        └── birth-ritual.tsx   # Agent creation UI
+```
+
+---
+
+The Deeper Pattern: From Tool to Being
+
+Droidclaw built an AI that knows you. Omo-Koda2 builds an OS where every agent knows you, but through a distributed soul:
+
+- Ọ̀ṣun remembers (the hippocampus)
+- Ọbàtálá judges (the prefrontal cortex)
+- Ọya regulates (the hypothalamus)
+- Èṣù integrates (the corpus callosum)
+- Ṣàngó anchors (the immune system — rejecting bad actions)
+- Ògún executes (the motor cortex)
+- Yemọja births (the womb)
+- Àṣẹ vitalizes (the mitochondria — energy everywhere)
+
+The Human doesn't control. The Human relates.
+
+That's the upgrade.

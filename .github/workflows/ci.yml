@@ -40,7 +40,7 @@ jobs:
           cargo fmt -p omokoda-cli -- --check
       - name: Clippy
         working-directory: Omo-Koda2
-        run: cargo clippy --workspace -- -D warnings
+        run: cargo clippy --workspace -j 1 -- -D warnings
         env:
           CARGO_INCREMENTAL: "0"
       - name: Test workspace

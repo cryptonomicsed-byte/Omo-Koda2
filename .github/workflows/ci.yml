@@ -11,19 +11,30 @@ jobs:
     name: Rust
     runs-on: ubuntu-latest
     steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /opt/hostedtoolcache/CodeQL /usr/share/swift
+          df -h
       - uses: actions/checkout@v4
       - name: Install protoc
         run: sudo apt-get install -y protobuf-compiler
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: "1.94.1"
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
-      - name: Build
-        run: cargo build --workspace
-      - name: Test
-        run: cargo test --workspace
+        with:
+          save-if: "true"
       - name: Clippy
         run: cargo clippy --workspace -- -D warnings
+        env:
+          CARGO_INCREMENTAL: "0"
+      - name: Test
+        run: cargo test --workspace -j 1 -- --test-threads 1
+        env:
+          CARGO_INCREMENTAL: "0"
+          RUST_BACKTRACE: "1"
 
   # ── Go / Gateway ────────────────────────────────────────────────────────────
   go:

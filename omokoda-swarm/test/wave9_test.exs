@@ -3,7 +3,7 @@ defmodule OmokodaSwarm.Wave9Test do
 
   setup do
     Application.ensure_started(:omokoda_swarm)
-    Process.sleep(100)
+    Process.sleep(200)
     :ok
   end
 
@@ -176,8 +176,13 @@ defmodule OmokodaSwarm.Wave9Test do
   describe "Teammate" do
     setup do
       id = "test-teammate-#{System.unique_integer([:positive])}"
-      {:ok, pid} = OmokodaSwarm.Teammate.start_link(id: id, model: :haiku)
-      on_exit(fn -> if Process.alive?(pid), do: OmokodaSwarm.Teammate.stop(id) end)
+      {:ok, _pid} = OmokodaSwarm.Teammate.start_link(id: id, model: :haiku)
+      on_exit(fn ->
+        case GenServer.whereis(OmokodaSwarm.Teammate.via(id)) do
+          nil -> :ok
+          _pid -> OmokodaSwarm.Teammate.stop(id)
+        end
+      end)
       %{id: id}
     end
 

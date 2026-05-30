@@ -67,7 +67,16 @@ defmodule OmokodaSwarm.SwarmSupervisor do
   """
   def list_agents do
     DynamicSupervisor.which_children(OmokodaSwarm.AgentSupervisor)
-    |> Enum.map(fn {_, pid, _, _} -> pid end)
-    |> Enum.map(&OmokodaSwarm.Agent.get_id/1)
+    |> Enum.flat_map(fn
+      {_, :restarting, _, _} ->
+        []
+
+      {_, pid, _, _} ->
+        try do
+          [OmokodaSwarm.Agent.get_id(pid)]
+        catch
+          :exit, _ -> []
+        end
+    end)
   end
 end

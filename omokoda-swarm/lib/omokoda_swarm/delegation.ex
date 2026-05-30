@@ -48,16 +48,20 @@ defmodule OmokodaSwarm.Delegation do
   end
 
   @doc """
-  Finds agents that are currently idle.
+  Finds agents that are currently idle, with fallback to all agents.
   """
   def find_available_agents do
-    OmokodaSwarm.SwarmSupervisor.list_agents()
-    |> Enum.filter(fn agent_id ->
-      case OmokodaSwarm.Agent.get_state(agent_id) do
-        {:ok, %{state: :idle}} -> true
-        _ -> false
-      end
-    end)
+    all_agents = OmokodaSwarm.SwarmSupervisor.list_agents()
+
+    idle_agents =
+      Enum.filter(all_agents, fn agent_id ->
+        case OmokodaSwarm.Agent.get_state(agent_id) do
+          {:ok, %{state: :idle}} -> true
+          _ -> false
+        end
+      end)
+
+    if idle_agents == [], do: all_agents, else: idle_agents
   end
 
   @doc """

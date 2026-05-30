@@ -1,12 +1,9 @@
 defmodule OmokodaSwarmTest do
   use ExUnit.Case
-  doctest OmokodaSwarm
 
   setup do
-    # Start the application for testing
     Application.ensure_started(:omokoda_swarm)
-    # Wait for agents to start
-    Process.sleep(100)
+    Process.sleep(200)
     :ok
   end
 

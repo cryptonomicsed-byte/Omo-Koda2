@@ -9,5 +9,7 @@ members = [
 resolver = "2"
 
 [profile.dev]
-debug = 1
+debug = 0
+strip = "debuginfo"
 split-debuginfo = "off"
+incremental = false

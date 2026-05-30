@@ -11,6 +11,11 @@ jobs:
     name: Rust
     runs-on: ubuntu-latest
     steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /opt/hostedtoolcache/CodeQL /usr/share/swift
+          df -h
       - name: Checkout Omo-Koda2
         uses: actions/checkout@v4
         with:
@@ -33,17 +38,17 @@ jobs:
           cargo fmt -p omokoda-core -- --check
           cargo fmt -p omokoda-hermetic -- --check
           cargo fmt -p omokoda-cli -- --check
+      - name: Clippy
+        working-directory: Omo-Koda2
+        run: cargo clippy --workspace -- -D warnings
+        env:
+          CARGO_INCREMENTAL: "0"
       - name: Test workspace
         working-directory: Omo-Koda2
         run: cargo test --workspace -j 1 -- --test-threads 1
         env:
           CARGO_INCREMENTAL: "0"
           RUST_BACKTRACE: "1"
-      - name: Clippy
-        working-directory: Omo-Koda2
-        run: cargo clippy --workspace -- -D warnings
-        env:
-          CARGO_INCREMENTAL: "0"
 
   # ── Go / Gateway ────────────────────────────────────────────────────────────
   go:

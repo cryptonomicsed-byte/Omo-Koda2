@@ -8,6 +8,8 @@ defmodule OmokodaSwarm.Application do
     children = [
       {Registry, keys: :unique, name: OmokodaSwarm.Registry},
       OmokodaSwarm.SwarmSupervisor,
+      OmokodaSwarm.Hive,
+      OmokodaSwarm.ConstitutionalSupervisor,
       OmokodaSwarm.Coordinator,
       OmokodaSwarm.BackendRegistry,
       OmokodaSwarm.TeammateLayoutManager,

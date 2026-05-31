@@ -10,11 +10,14 @@ include("augury/analytics.jl")
 include("soma/MemCell.jl")
 include("soma/Resonance.jl")
 include("soma/LPMUpdater.jl")
+include("soma/ConstitutionalMemory.jl")
 
 export calculate_bbu, validate_entropy, check_bb_bound
 export MemCell, MemScene, LPM, EmotionTrace
 export score_retrieval, score_all, reconstruct
 export cosine_similarity, keyword_score, resonance_boost
 export update_lpm, lpm_to_context
+export ConstitutionalStory, ConstitutionalPrior, ConstitutionalMemory
+export update_prior!, constitutional_recall, prior_to_context
 
 end # module

@@ -1,3 +1,4 @@
+pub mod ase;
 pub mod bipon39;
 pub mod cloak;
 pub mod dna;

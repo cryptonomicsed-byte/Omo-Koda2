@@ -73,10 +73,12 @@ pub enum StopCondition {
     ProviderError(String),
 }
 
+type StopCheckFn = Box<dyn Fn(&QueryState) -> Option<StopCondition> + Send + Sync>;
+
 /// A registered stop hook — called before each query turn
 pub struct StopHook {
     pub name: String,
-    pub check: Box<dyn Fn(&QueryState) -> Option<StopCondition> + Send + Sync>,
+    pub check: StopCheckFn,
 }
 
 impl StopHook {

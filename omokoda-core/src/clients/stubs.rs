@@ -101,8 +101,8 @@ impl VanityClient for StubVanityClient {
     ) -> Result<PoisonScanResult, ClientError> {
         for k in known {
             if candidate.len() >= 4 && k.len() >= 4 {
-                let prefix_match = &candidate[..4] == &k[..4];
-                let suffix_match = &candidate[candidate.len() - 4..] == &k[k.len() - 4..];
+                let prefix_match = candidate[..4] == k[..4];
+                let suffix_match = candidate[candidate.len() - 4..] == k[k.len() - 4..];
                 if (prefix_match || suffix_match) && candidate != k.as_str() {
                     return Ok(PoisonScanResult {
                         is_safe: false,

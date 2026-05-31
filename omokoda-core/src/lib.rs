@@ -30,6 +30,7 @@ pub mod receipt;
 pub mod reputation;
 pub mod rhythm;
 pub mod sandbox;
+pub mod server;
 pub mod session;
 pub mod skills;
 pub mod steward;

@@ -214,8 +214,8 @@ async fn repl() -> Result<()> {
 }
 
 async fn handle_repl_line(steward: &mut Steward, line: &str) -> Result<()> {
-    if line.starts_with('/') {
-        let mut parts = line[1..].splitn(2, ' ');
+    if let Some(rest) = line.strip_prefix('/') {
+        let mut parts = rest.splitn(2, ' ');
         let cmd = parts.next().unwrap_or("");
         let arg = parts.next().map(|s| s.to_string());
         run_slash(steward, cmd, arg).await

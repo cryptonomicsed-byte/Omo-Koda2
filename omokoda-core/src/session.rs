@@ -539,18 +539,13 @@ fn current_unix_timestamp() -> u64 {
 
 // ── Session Lifecycle ─────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum SessionPhase {
+    #[default]
     Birth,
     Active,
     Hibernating,
     Dead,
-}
-
-impl Default for SessionPhase {
-    fn default() -> Self {
-        SessionPhase::Birth
-    }
 }
 
 impl std::fmt::Display for SessionPhase {

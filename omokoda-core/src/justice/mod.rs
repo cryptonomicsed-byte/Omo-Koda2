@@ -199,7 +199,7 @@ impl HookRunner {
             event: Some(crate::bus::events::sovereign_event::Event::Audit(
                 crate::bus::events::Audit {
                     event_type: "hook_post_run".to_string(),
-                    details: redact_secrets(&ctx.output.as_deref().unwrap_or_default()),
+                    details: redact_secrets(ctx.output.as_deref().unwrap_or_default()),
                     timestamp: current_unix_timestamp(),
                 },
             )),

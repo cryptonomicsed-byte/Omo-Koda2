@@ -23,6 +23,12 @@ pub struct HookManager {
     plugins: Vec<Box<dyn AgentPlugin>>,
 }
 
+impl Default for HookManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HookManager {
     pub fn new() -> Self {
         Self {

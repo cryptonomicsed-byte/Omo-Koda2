@@ -112,8 +112,7 @@ impl PatternPolicy {
         if pattern == "*" {
             return true;
         }
-        if pattern.ends_with('*') {
-            let prefix = &pattern[..pattern.len() - 1];
+        if let Some(prefix) = pattern.strip_suffix('*') {
             return target.starts_with(prefix);
         }
         pattern == target
@@ -194,7 +193,7 @@ impl PermissionPolicy {
         &self,
         tool_name: &str,
         input: &str,
-        mut prompter: Option<&mut dyn PermissionPrompter>,
+        mut prompter: Option<&mut (dyn PermissionPrompter + Send)>,
     ) -> PermissionOutcome {
         // 1. Pattern policy check (granular allow/deny layer)
         // Map tool_name to action type

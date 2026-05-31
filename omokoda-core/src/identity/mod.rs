@@ -3,6 +3,7 @@ pub mod cloak;
 pub mod dna;
 pub mod duress;
 pub mod merkle;
+pub mod oauth;
 pub mod odu;
 pub mod pet;
 pub mod safety;

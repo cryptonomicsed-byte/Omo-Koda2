@@ -2,7 +2,7 @@
 /// Drop-in replacements for the Local*Stub types once services are deployed.
 /// Each client is constructed with a base URL; all I/O uses reqwest + JSON.
 use crate::bus::clients::{
-    AgentStatus, HermeticResult, OgunClient, ObatalaClient, OsunClient, OyaClient, SangoClient,
+    AgentStatus, HermeticResult, ObatalaClient, OgunClient, OsunClient, OyaClient, SangoClient,
     YemojaClient,
 };
 use crate::emotion::EmotionState;
@@ -301,7 +301,12 @@ impl HttpSangoClient {
 
 #[async_trait]
 impl SangoClient for HttpSangoClient {
-    async fn write_receipt(&self, agent_id: &AgentId, action_tool: &str, hermetic: &HermeticResult) {
+    async fn write_receipt(
+        &self,
+        agent_id: &AgentId,
+        action_tool: &str,
+        hermetic: &HermeticResult,
+    ) {
         let req = SangoReceiptReq {
             agent_id: agent_id.as_str(),
             action_tool,
@@ -368,17 +373,16 @@ impl YemojaClient for HttpYemojaClient {
     async fn agent_status(&self, agent_id: &str) -> AgentStatus {
         let url = format!("{}/agents/{}/status", self.base_url, agent_id);
         match self.client.get(&url).send().await {
-            Ok(resp) if resp.status().is_success() => {
-                resp.json::<YemojaStatusResp>()
-                    .await
-                    .map(|r| match r.status.as_str() {
-                        "running" | "busy" => AgentStatus::Running,
-                        "complete" | "idle" => AgentStatus::Complete,
-                        "failed" => AgentStatus::Failed,
-                        _ => AgentStatus::Idle,
-                    })
-                    .unwrap_or(AgentStatus::Idle)
-            }
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<YemojaStatusResp>()
+                .await
+                .map(|r| match r.status.as_str() {
+                    "running" | "busy" => AgentStatus::Running,
+                    "complete" | "idle" => AgentStatus::Complete,
+                    "failed" => AgentStatus::Failed,
+                    _ => AgentStatus::Idle,
+                })
+                .unwrap_or(AgentStatus::Idle),
             _ => AgentStatus::Idle,
         }
     }
@@ -453,12 +457,12 @@ impl ServiceRegistry {
     #[must_use]
     pub fn local() -> Self {
         Self {
-            osun_url: "http://localhost:4001".to_string(),    // Julia
+            osun_url: "http://localhost:4001".to_string(), // Julia
             obatala_url: "http://localhost:4002".to_string(), // Lisp
-            oya_url: "http://localhost:4003".to_string(),     // Go
-            sango_url: "http://localhost:4004".to_string(),   // Move/Sui relay
-            yemoja_url: "http://localhost:4005".to_string(),  // Elixir
-            ogun_url: "http://localhost:4006".to_string(),    // Python
+            oya_url: "http://localhost:4003".to_string(),  // Go
+            sango_url: "http://localhost:4004".to_string(), // Move/Sui relay
+            yemoja_url: "http://localhost:4005".to_string(), // Elixir
+            ogun_url: "http://localhost:4006".to_string(), // Python
         }
     }
 

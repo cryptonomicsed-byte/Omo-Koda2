@@ -58,11 +58,19 @@ fn base64url_encode(bytes: &[u8]) -> String {
 
 fn base64_encode(bytes: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
         let b0 = chunk[0] as usize;
-        let b1 = if chunk.len() > 1 { chunk[1] as usize } else { 0 };
-        let b2 = if chunk.len() > 2 { chunk[2] as usize } else { 0 };
+        let b1 = if chunk.len() > 1 {
+            chunk[1] as usize
+        } else {
+            0
+        };
+        let b2 = if chunk.len() > 2 {
+            chunk[2] as usize
+        } else {
+            0
+        };
         out.push(TABLE[(b0 >> 2) & 0x3F] as char);
         out.push(TABLE[((b0 << 4) | (b1 >> 4)) & 0x3F] as char);
         if chunk.len() > 1 {
@@ -186,11 +194,7 @@ pub struct TokenRequest {
 
 impl TokenRequest {
     /// Build an authorization_code exchange request.
-    pub fn authorization_code(
-        code: &str,
-        verifier: &CodeVerifier,
-        config: &OAuthConfig,
-    ) -> Self {
+    pub fn authorization_code(code: &str, verifier: &CodeVerifier, config: &OAuthConfig) -> Self {
         Self {
             grant_type: "authorization_code".to_string(),
             code: code.to_string(),

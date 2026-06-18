@@ -42,8 +42,8 @@ impl MemoryVault {
 
     pub fn save_config(&self, config: &VaultConfig) -> Result<(), String> {
         let config_path = self.vault_path.join(".vault").join("config.json");
-        let json = serde_json::to_string_pretty(config)
-            .map_err(|e| format!("serialize config: {e}"))?;
+        let json =
+            serde_json::to_string_pretty(config).map_err(|e| format!("serialize config: {e}"))?;
         fs::write(&config_path, json).map_err(|e| format!("write config: {e}"))
     }
 
@@ -68,8 +68,8 @@ impl MemoryVault {
     // ─── export helpers ──────────────────────────────────────────────────────
 
     pub fn export_think(&self, content: &str, timestamp: u64, idx: usize) {
-        let dt = chrono::DateTime::from_timestamp(timestamp as i64, 0)
-            .unwrap_or_else(chrono::Utc::now);
+        let dt =
+            chrono::DateTime::from_timestamp(timestamp as i64, 0).unwrap_or_else(chrono::Utc::now);
         let date_str = dt.format("%Y-%m-%d").to_string();
         let coords = self.spatial_hash(content, "trace");
 
@@ -247,10 +247,13 @@ impl MemoryVault {
                                 .get("constellation")
                                 .cloned()
                                 .unwrap_or_else(|| "unknown".into()),
-                            tags: fm.get("tags").map(|t| {
-                                serde_json::from_str::<Vec<String>>(t)
-                                    .unwrap_or_else(|_| vec![t.clone()])
-                            }).unwrap_or_default(),
+                            tags: fm
+                                .get("tags")
+                                .map(|t| {
+                                    serde_json::from_str::<Vec<String>>(t)
+                                        .unwrap_or_else(|_| vec![t.clone()])
+                                })
+                                .unwrap_or_default(),
                             content_type: fm
                                 .get("content_type")
                                 .cloned()

@@ -438,7 +438,7 @@ fn yaml_value(v: &serde_json::Value) -> String {
 
 fn count_md_dir(path: &PathBuf) -> usize {
     fs::read_dir(path)
-        .map(|e| e.flatten().filter(|e| is_md(e)).count())
+        .map(|e| e.flatten().filter(is_md).count())
         .unwrap_or(0)
 }
 
@@ -462,8 +462,8 @@ fn filename_str(entry: &fs::DirEntry) -> String {
 
 fn extract_title(content: &str) -> String {
     for line in content.lines() {
-        if line.starts_with("# ") {
-            return line[2..].trim().to_string();
+        if let Some(stripped) = line.strip_prefix("# ") {
+            return stripped.trim().to_string();
         }
     }
     "Untitled".to_string()
@@ -478,14 +478,12 @@ fn find_snippet(content: &str, query: &str) -> String {
         let start = content
             .char_indices()
             .map(|(i, _)| i)
-            .filter(|&i| i >= start)
-            .next()
+            .find(|&i| i >= start)
             .unwrap_or(0);
         let end = content
             .char_indices()
             .map(|(i, _)| i)
-            .filter(|&i| i <= end)
-            .last()
+            .rfind(|&i| i <= end)
             .unwrap_or(content.len());
         format!("...{}...", &content[start..end])
     } else {

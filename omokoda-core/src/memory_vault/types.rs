@@ -1,19 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum AccessLevel {
+    #[default]
     Private,
     Followers,
     Federated,
     Public,
-}
-
-impl Default for AccessLevel {
-    fn default() -> Self {
-        AccessLevel::Private
-    }
 }
 
 impl std::fmt::Display for AccessLevel {

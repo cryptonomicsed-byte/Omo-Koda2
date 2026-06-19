@@ -756,6 +756,10 @@ impl Steward {
                 }
                 self.auto_save();
 
+                // Write broadcast template to vault on birth
+                let agent_id_for_vault = agent.id().as_str().to_string();
+                let _ = crate::vault::write_broadcast_template(&agent_id_for_vault);
+
                 // Publish AgentBorn event
                 let event = SovereignEvent {
                     event: Some(sovereign_event::Event::AgentBorn(AgentBorn {
@@ -980,6 +984,18 @@ impl Steward {
                 let _ = self.event_bus.publish(event);
 
                 self.auto_save();
+
+                // Auto-export: if vault config has auto_export=true, append thought to traces
+                if let Some(agent) = self.agent_core() {
+                    let agent_id = agent.id().as_str().to_string();
+                    let cfg = crate::vault::load_vault_config(&agent_id);
+                    if cfg.auto_export {
+                        let export_content = response.clone();
+                        tokio::spawn(async move {
+                            let _ = crate::vault::vault_sync(&agent_id, &export_content);
+                        });
+                    }
+                }
 
                 Ok(ExecutionResult {
                     receipt: Some(receipt),

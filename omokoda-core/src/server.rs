@@ -233,7 +233,9 @@ async fn vault_read_file_handler(
         )
             .into_response(),
         Some(id) => match read_file(&id, &rel) {
-            Ok(content) => Json(serde_json::json!({"path": rel, "content": content})).into_response(),
+            Ok(content) => {
+                Json(serde_json::json!({"path": rel, "content": content})).into_response()
+            }
             Err(e) => (
                 axum::http::StatusCode::NOT_FOUND,
                 Json(serde_json::json!({"error": e})),

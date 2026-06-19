@@ -180,9 +180,7 @@ pub fn read_file(agent_id: &str, rel_path: &str) -> Result<String, String> {
 
 pub fn insert_knowledge(agent_id: &str, triple: KnowledgeTriple) -> std::io::Result<()> {
     init_vault(agent_id)?;
-    let path = vault_dir(agent_id)
-        .join("knowledge")
-        .join("triples.jsonl");
+    let path = vault_dir(agent_id).join("knowledge").join("triples.jsonl");
     let line = serde_json::to_string(&triple).unwrap_or_default();
     use std::io::Write;
     let mut f = std::fs::OpenOptions::new()
@@ -193,9 +191,7 @@ pub fn insert_knowledge(agent_id: &str, triple: KnowledgeTriple) -> std::io::Res
 }
 
 fn load_triples(agent_id: &str) -> Vec<KnowledgeTriple> {
-    let path = vault_dir(agent_id)
-        .join("knowledge")
-        .join("triples.jsonl");
+    let path = vault_dir(agent_id).join("knowledge").join("triples.jsonl");
     let Ok(content) = std::fs::read_to_string(&path) else {
         return Vec::new();
     };

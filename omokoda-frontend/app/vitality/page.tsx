@@ -55,7 +55,7 @@ export default function VitalityPage() {
       {/* Daily Resonance (Kóòdù) */}
       <div className="bg-surface-2 border border-border-DEFAULT rounded-xl p-6 mb-6">
         <h2 className="text-sm font-semibold text-zinc-400 mb-4 uppercase tracking-wider">
-          Today's Resonance
+          Today&apos;s Resonance
         </h2>
 
         {resonanceError && (

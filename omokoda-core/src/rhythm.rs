@@ -3,13 +3,13 @@ use serde_json::Value;
 
 // ─── Kóòdù Daily Resonance ────────────────────────────────────────────────────
 
-const KOODU_SUNDAY: &str = include_str!("../../../Koodu/json/sunday.json");
-const KOODU_MONDAY: &str = include_str!("../../../Koodu/json/monday.json");
-const KOODU_TUESDAY: &str = include_str!("../../../Koodu/json/tuesday.json");
-const KOODU_WEDNESDAY: &str = include_str!("../../../Koodu/json/wednesday.json");
-const KOODU_THURSDAY: &str = include_str!("../../../Koodu/json/thursday.json");
-const KOODU_FRIDAY: &str = include_str!("../../../Koodu/json/friday.json");
-const KOODU_SATURDAY: &str = include_str!("../../../Koodu/json/saturday.json");
+const KOODU_SUNDAY: &str = include_str!("koodu/sunday.json");
+const KOODU_MONDAY: &str = include_str!("koodu/monday.json");
+const KOODU_TUESDAY: &str = include_str!("koodu/tuesday.json");
+const KOODU_WEDNESDAY: &str = include_str!("koodu/wednesday.json");
+const KOODU_THURSDAY: &str = include_str!("koodu/thursday.json");
+const KOODU_FRIDAY: &str = include_str!("koodu/friday.json");
+const KOODU_SATURDAY: &str = include_str!("koodu/saturday.json");
 
 /// Returns today's Kóòdù resonance JSON parsed as a serde_json::Value.
 pub fn today_resonance() -> Value {

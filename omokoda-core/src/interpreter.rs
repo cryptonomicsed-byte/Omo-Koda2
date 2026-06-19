@@ -1280,6 +1280,23 @@ impl Steward {
                 };
                 let _ = self.event_bus.publish(event);
 
+                // Zàngbétò enforcement audit
+                {
+                    let state_bytes = hex::decode(&receipt.merkle_root).unwrap_or_default();
+                    let audit = zangbeto_enforcement::audit_state(&state_bytes);
+                    if audit.passed {
+                        let audit_event = SovereignEvent {
+                            event: Some(sovereign_event::Event::AuditPassed(
+                                crate::bus::events::AuditPassed {
+                                    receipt_id: audit.receipt_id,
+                                    zangbeto_sig: audit.sig,
+                                },
+                            )),
+                        };
+                        let _ = self.event_bus.publish(audit_event);
+                    }
+                }
+
                 self.auto_save();
 
                 Ok(ExecutionResult {

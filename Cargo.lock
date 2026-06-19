@@ -2859,6 +2859,7 @@ dependencies = [
  "wasmtime",
  "wasmtime-wasi",
  "wat",
+ "zangbeto-enforcement",
  "zeroize",
 ]
 
@@ -5672,6 +5673,14 @@ dependencies = [
  "quote",
  "syn",
  "synstructure",
+]
+
+[[package]]
+name = "zangbeto-enforcement"
+version = "0.1.0"
+dependencies = [
+ "sha2",
+ "uuid",
 ]
 
 [[package]]

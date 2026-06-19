@@ -1,0 +1,9 @@
+[package]
+name = "zangbeto-enforcement"
+version = "0.1.0"
+edition = "2021"
+description = "Zàngbétò CI stub — mirrors the public API of the real enforcement crate"
+
+[dependencies]
+sha2 = "0.10"
+uuid = { version = "1.0", features = ["v4"] }

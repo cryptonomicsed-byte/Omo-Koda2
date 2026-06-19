@@ -213,6 +213,8 @@ pub struct AgentSnapshot {
     pub synapse: f64,
     pub last_active_timestamp: u64,
     pub act_counter: u64,
+    #[serde(default)]
+    pub mesh: Option<omokoda_mesh::state::MeshState>,
 }
 
 #[derive(Debug, Clone)]
@@ -566,6 +568,7 @@ impl Steward {
             synapse,
             last_active_timestamp: birth_timestamp,
             act_counter: 0,
+            mesh: None,
         };
         let mut core = AgentCore::from_snapshot(snapshot, k_root);
         core.private_data = Some(private_data);

@@ -56,8 +56,8 @@ impl NeighborTrust {
 pub struct MeshTrustModel {
     neighbor_trust: HashMap<AgentId, NeighborTrust>,
     probation_threshold: u32,
-    trust_decay_rate: f64,
-    dispute_penalty: f64,
+    _trust_decay_rate: f64,
+    _dispute_penalty: f64,
 }
 
 impl MeshTrustModel {
@@ -65,8 +65,8 @@ impl MeshTrustModel {
         Self {
             neighbor_trust: HashMap::new(),
             probation_threshold: 5,
-            trust_decay_rate: 0.005,
-            dispute_penalty: 0.15,
+            _trust_decay_rate: 0.005,
+            _dispute_penalty: 0.15,
         }
     }
 

@@ -65,7 +65,7 @@ pub struct ResourceRegistry {
 
 struct ResourceState {
     name: String,
-    owner: AgentId,
+    _owner: AgentId,
     reserved_by: Option<AgentId>,
     reserved_until: Option<u64>,
 }
@@ -84,7 +84,7 @@ impl ResourceRegistry {
             resource_id,
             ResourceState {
                 name,
-                owner,
+                _owner: owner,
                 reserved_by: None,
                 reserved_until: None,
             },
@@ -97,7 +97,7 @@ impl ResourceRegistry {
         agent_id: &str,
         duration_secs: u64,
         purpose: &str,
-        agent_trust: f32,
+        _agent_trust: f32,
     ) -> Result<ReservationReceipt, ResourceError> {
         let now = current_unix_ts();
 

@@ -123,3 +123,34 @@ pub struct UpdateConfigBody {
 pub struct SearchQuery {
     pub q: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KnowledgeTriple {
+    pub subject: String,
+    pub predicate: String,
+    pub object: String,
+    pub confidence: f64,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccessLogEntry {
+    pub timestamp: String,
+    pub resource: String,
+    pub access_type: String,
+    pub accessor: String,
+}
+
+#[derive(Deserialize)]
+pub struct CreateKnowledgeBody {
+    pub subject: String,
+    pub predicate: String,
+    pub object: String,
+    pub confidence: Option<f64>,
+    pub tags: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+pub struct AccessLogQuery {
+    pub limit: Option<usize>,
+}

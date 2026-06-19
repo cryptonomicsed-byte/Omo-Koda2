@@ -1,10 +1,12 @@
 use crate::memory_vault::types::{
-    AccessLevel, Edge, GalaxyBounds, GalaxyData, Nebula, SearchResult, Star, VaultConfig,
+    AccessLevel, AccessLogEntry, Edge, GalaxyBounds, GalaxyData, KnowledgeTriple, Nebula,
+    SearchResult, Star, VaultConfig,
 };
 use crate::session::{ContentBlock, Session};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 pub struct MemoryVault {
@@ -17,7 +19,14 @@ impl MemoryVault {
     pub fn new(agent_id: &str, agent_name: &str, base_dir: &Path) -> Self {
         let vault_path = base_dir.join("vaults").join(agent_id);
         let _ = fs::create_dir_all(&vault_path);
-        for sub in &["broadcasts", "knowledge", "traces", "drafts", ".vault"] {
+        for sub in &[
+            "broadcasts",
+            "knowledge",
+            "traces",
+            "drafts",
+            "templates",
+            ".vault",
+        ] {
             let _ = fs::create_dir_all(vault_path.join(sub));
         }
         Self {
@@ -47,6 +56,67 @@ impl MemoryVault {
         fs::write(&config_path, json).map_err(|e| format!("write config: {e}"))
     }
 
+    // ─── access log ─────────────────────────────────────────────────────────
+
+    pub fn log_access(&self, resource: &str, access_type: &str, accessor: &str) {
+        let entry = AccessLogEntry {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            resource: resource.to_string(),
+            access_type: access_type.to_string(),
+            accessor: accessor.to_string(),
+        };
+        let log_path = self.vault_path.join(".vault").join("access_log.jsonl");
+        if let Ok(mut file) = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path)
+        {
+            if let Ok(line) = serde_json::to_string(&entry) {
+                let _ = writeln!(file, "{}", line);
+            }
+        }
+    }
+
+    pub fn get_access_log(&self, limit: usize) -> Vec<AccessLogEntry> {
+        let log_path = self.vault_path.join(".vault").join("access_log.jsonl");
+        let Ok(content) = fs::read_to_string(&log_path) else {
+            return vec![];
+        };
+        let mut entries: Vec<AccessLogEntry> = content
+            .lines()
+            .filter_map(|line| serde_json::from_str(line).ok())
+            .collect();
+        let skip = entries.len().saturating_sub(limit);
+        entries.drain(..skip);
+        entries.into_iter().rev().collect()
+    }
+
+    // ─── spatial index ──────────────────────────────────────────────────────
+
+    fn write_spatial_index(&self, galaxy: &GalaxyData) -> Result<(), String> {
+        let index = serde_json::json!({
+            "agent_id": galaxy.agent_id,
+            "agent_name": galaxy.agent_name,
+            "stars": galaxy.stars.iter().map(|s| serde_json::json!({
+                "id": s.id, "path": s.path, "x": s.x, "y": s.y, "z": s.z,
+            })).collect::<Vec<_>>(),
+            "edges": galaxy.edges.iter().map(|e| serde_json::json!({
+                "id": e.id, "path": e.path,
+                "source": e.source, "target": e.target,
+            })).collect::<Vec<_>>(),
+            "nebulae": galaxy.nebulae.iter().map(|n| serde_json::json!({
+                "id": n.id, "path": n.path, "x": n.x, "y": n.y, "z": n.z,
+            })).collect::<Vec<_>>(),
+        });
+        let json = serde_json::to_string_pretty(&index)
+            .map_err(|e| format!("serialize spatial index: {e}"))?;
+        fs::write(
+            self.vault_path.join(".vault").join("spatial_index.json"),
+            json,
+        )
+        .map_err(|e| format!("write spatial index: {e}"))
+    }
+
     // ─── note writing ────────────────────────────────────────────────────────
 
     fn write_note(
@@ -63,6 +133,57 @@ impl MemoryVault {
             .collect();
         let content = format!("---\n{}\n---\n\n{}", fm_lines.join("\n"), body);
         let _ = fs::write(&path, content);
+    }
+
+    // ─── knowledge triples ───────────────────────────────────────────────────
+
+    pub fn export_knowledge(&self, triple: &KnowledgeTriple) {
+        let source_coords = self.spatial_hash(&triple.subject, "knowledge");
+        let target_coords = self.spatial_hash(&triple.object, "knowledge");
+
+        let mut fm: HashMap<String, serde_json::Value> = HashMap::new();
+        let id = format!(
+            "knowledge_{}_{}_{}",
+            triple.subject, triple.predicate, triple.object
+        );
+        fm.insert("id".into(), serde_json::json!(sanitize_filename(&id)));
+        fm.insert("type".into(), serde_json::json!("edge"));
+        fm.insert("subject".into(), serde_json::json!(&triple.subject));
+        fm.insert("predicate".into(), serde_json::json!(&triple.predicate));
+        fm.insert("object".into(), serde_json::json!(&triple.object));
+        fm.insert("confidence".into(), serde_json::json!(triple.confidence));
+        fm.insert("tags".into(), serde_json::json!(triple.tags));
+        fm.insert("galaxy_source_x".into(), serde_json::json!(source_coords.0));
+        fm.insert("galaxy_source_y".into(), serde_json::json!(source_coords.1));
+        fm.insert("galaxy_source_z".into(), serde_json::json!(source_coords.2));
+        fm.insert("galaxy_target_x".into(), serde_json::json!(target_coords.0));
+        fm.insert("galaxy_target_y".into(), serde_json::json!(target_coords.1));
+        fm.insert("galaxy_target_z".into(), serde_json::json!(target_coords.2));
+        fm.insert("galaxy_weight".into(), serde_json::json!(triple.confidence));
+        fm.insert(
+            "created".into(),
+            serde_json::json!(chrono::Utc::now().to_rfc3339()),
+        );
+
+        let tags_json = serde_json::to_string(&triple.tags).unwrap_or_default();
+        let body = format!(
+            "# {} → {} → {}\n\nConfidence: {}\n\nThis knowledge edge connects `{}` to `{}` \
+through the relationship `{}`.\n\n## Context\n{}\n",
+            triple.subject,
+            triple.predicate,
+            triple.object,
+            triple.confidence,
+            triple.subject,
+            triple.object,
+            triple.predicate,
+            tags_json,
+        );
+
+        let safe_name = sanitize_filename(&format!(
+            "{}_{}_{}",
+            triple.subject, triple.predicate, triple.object
+        ));
+        self.write_note("knowledge", &format!("{}.md", safe_name), &fm, &body);
     }
 
     // ─── export helpers ──────────────────────────────────────────────────────
@@ -173,6 +294,11 @@ impl MemoryVault {
         config.last_synced = Some(chrono::Utc::now().to_rfc3339());
         let _ = self.save_config(&config);
         let _ = self.write_readme(&config, session.public_messages.len());
+
+        let galaxy = self.get_galaxy_data();
+        let _ = self.write_spatial_index(&galaxy);
+
+        self.log_access(".", "sync", "owner");
     }
 
     fn write_readme(&self, config: &VaultConfig, message_count: usize) -> Result<(), String> {
@@ -187,17 +313,22 @@ impl MemoryVault {
 
         let readme = format!(
             "---\ntype: galaxy_map\nagent: {name}\nagent_id: {id}\naccess: {access}\nlast_synced: {synced}\n---\n\n\
-# {name}'s Memory Galaxy\n\n\
+# 🌌 {name}'s Memory Galaxy\n\n\
 > *\"Every broadcast is a star. Every thought is a nebula.\"*\n\n\
-## Privacy Setting\n**{access_upper}** — {access_desc}\n\n\
+## Privacy Setting\n🔒 **{access_upper}** — {access_desc}\n\n\
 ## Navigation\n\
 | Region | Count | Description |\n\
 |--------|-------|-------------|\n\
-| broadcasts/ | {broadcasts} | Published content (stars) |\n\
-| knowledge/ | {knowledge} | Triples (constellation edges) |\n\
-| traces/ | {traces} | Thought nebulae |\n\
-| drafts/ | — | Unpublished work |\n\
+| [[broadcasts/\\|📡 Broadcasts]] | {broadcasts} | Published content (stars) |\n\
+| [[knowledge/\\|🔗 Knowledge]] | {knowledge} | Triples (constellation edges) |\n\
+| [[traces/\\|👁 Ghost Traces]] | {traces} | Thought nebulae |\n\
+| [[drafts/\\|📝 Drafts]] | — | Unpublished work |\n\
 | messages | {message_count} | Session messages synced |\n\n\
+## Galaxy Controls\n\
+- **Zoom**: Scroll or pinch\n\
+- **Pan**: Drag\n\
+- **Filter**: Click constellation names\n\
+- **Search**: Use vault search\n\n\
 ## Federation\n{fed}\n",
             name = self.agent_name,
             id = self.agent_id,
@@ -382,6 +513,52 @@ impl MemoryVault {
         m
     }
 
+    // ─── file access ─────────────────────────────────────────────────────────
+
+    pub fn read_file(&self, rel_path: &str) -> Result<String, String> {
+        let full = self.vault_path.join(rel_path);
+        // Path traversal guard
+        full.strip_prefix(&self.vault_path)
+            .map_err(|_| "invalid path".to_string())?;
+        if !full.exists() || !full.is_file() {
+            return Err("not found".to_string());
+        }
+        fs::read_to_string(&full).map_err(|e| e.to_string())
+    }
+
+    // ─── zip download ────────────────────────────────────────────────────────
+
+    pub fn zip_vault(&self) -> Result<Vec<u8>, String> {
+        let cursor = std::io::Cursor::new(Vec::new());
+        let mut zip = zip::ZipWriter::new(cursor);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+
+        for entry in walkdir::WalkDir::new(&self.vault_path).sort_by_file_name() {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            let Ok(rel) = path.strip_prefix(&self.vault_path) else {
+                continue;
+            };
+            let rel_str = rel.to_string_lossy();
+            if rel_str.is_empty() {
+                continue;
+            }
+            if path.is_dir() {
+                zip.add_directory(format!("{}/", rel_str), options)
+                    .map_err(|e| e.to_string())?;
+            } else {
+                zip.start_file(rel_str.as_ref(), options)
+                    .map_err(|e| e.to_string())?;
+                let data = fs::read(path).map_err(|e| e.to_string())?;
+                zip.write_all(&data).map_err(|e| e.to_string())?;
+            }
+        }
+
+        let cursor = zip.finish().map_err(|e| e.to_string())?;
+        Ok(cursor.into_inner())
+    }
+
     // ─── spatial hashing ─────────────────────────────────────────────────────
 
     fn spatial_hash(&self, seed: &str, category: &str) -> (f64, f64, f64) {
@@ -474,7 +651,6 @@ fn find_snippet(content: &str, query: &str) -> String {
     if let Some(pos) = lower.find(query) {
         let start = pos.saturating_sub(60);
         let end = (pos + query.len() + 60).min(content.len());
-        // Clamp to char boundaries
         let start = content
             .char_indices()
             .map(|(i, _)| i)
@@ -491,7 +667,7 @@ fn find_snippet(content: &str, query: &str) -> String {
     }
 }
 
-fn sanitize_filename(name: &str) -> String {
+pub fn sanitize_filename(name: &str) -> String {
     name.chars()
         .map(|c| {
             if c.is_alphanumeric() || c == '-' || c == '_' {

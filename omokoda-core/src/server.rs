@@ -1,7 +1,8 @@
 use crate::bus::events::sovereign_event;
 use crate::interpreter::{ExecutionResult, Steward};
 use crate::memory_vault::handlers::{
-    get_galaxy_data, get_vault_config, get_vault_status, post_vault_sync, put_vault_config,
+    get_access_log, get_galaxy_data, get_vault_config, get_vault_download, get_vault_file,
+    get_vault_status, post_vault_enable, post_vault_knowledge, post_vault_sync, put_vault_config,
     search_vault,
 };
 use crate::parser::{MetadataPair, Statement, ThinkModifiers};
@@ -308,6 +309,11 @@ pub fn create_router(state: AppState) -> Router {
         .route("/v1/vault/sync", post(post_vault_sync))
         .route("/v1/vault/galaxy", get(get_galaxy_data))
         .route("/v1/vault/search", get(search_vault))
+        .route("/v1/vault/enable", post(post_vault_enable))
+        .route("/v1/vault/knowledge", post(post_vault_knowledge))
+        .route("/v1/vault/access-log", get(get_access_log))
+        .route("/v1/vault/download", get(get_vault_download))
+        .route("/v1/vault/file/*path", get(get_vault_file))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }

@@ -10,6 +10,8 @@ import {
   RefreshCw,
   Settings,
   FolderOpen,
+  Download,
+  ClipboardList,
   X,
 } from 'lucide-react'
 import { GalaxyViewer, type GalaxyData } from './GalaxyViewer'
@@ -60,6 +62,9 @@ export function MemoryVaultTab({ isOwner = true }: Props) {
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [accessLog, setAccessLog] = useState<
+    { timestamp: string; resource: string; access_type: string; accessor: string }[] | null
+  >(null)
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -119,6 +124,17 @@ export function MemoryVaultTab({ isOwner = true }: Props) {
       setError(e instanceof Error ? e.message : 'Search failed')
     }
   }, [searchQuery])
+
+  const fetchAccessLog = useCallback(async () => {
+    try {
+      const r = await fetch('/v1/vault/access-log?limit=50')
+      if (!r.ok) return
+      const data = await r.json()
+      setAccessLog(data.access_log ?? [])
+    } catch {
+      // access log is non-critical, silently ignore
+    }
+  }, [])
 
   const accessMeta = status
     ? ACCESS_META[status.config.access]
@@ -254,11 +270,7 @@ export function MemoryVaultTab({ isOwner = true }: Props) {
             </div>
             <p className="vault-hint">
               Download this vault to open in{' '}
-              <a
-                href="https://obsidian.md"
-                target="_blank"
-                rel="noreferrer"
-              >
+              <a href="https://obsidian.md" target="_blank" rel="noreferrer">
                 Obsidian
               </a>{' '}
               for local editing and graph view.
@@ -280,6 +292,53 @@ export function MemoryVaultTab({ isOwner = true }: Props) {
                 )
               })}
             </div>
+            <div className="vault-file-actions">
+              <a className="vault-download-btn" href="/v1/vault/download" download="memory-vault.zip">
+                <Download size={13} />
+                Download Vault (.zip)
+              </a>
+              {isOwner && (
+                <button
+                  className="vault-log-btn"
+                  onClick={() => {
+                    if (accessLog === null) fetchAccessLog()
+                    else setAccessLog(null)
+                  }}
+                >
+                  <ClipboardList size={13} />
+                  {accessLog === null ? 'View Access Log' : 'Hide Access Log'}
+                </button>
+              )}
+            </div>
+            {accessLog !== null && (
+              <div className="access-log">
+                <h4 className="log-title">Access Log</h4>
+                {accessLog.length === 0 ? (
+                  <p className="log-empty">No access events yet.</p>
+                ) : (
+                  <table className="log-table">
+                    <thead>
+                      <tr>
+                        <th>Time</th>
+                        <th>Resource</th>
+                        <th>Type</th>
+                        <th>Accessor</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {accessLog.map((e, i) => (
+                        <tr key={i}>
+                          <td>{new Date(e.timestamp).toLocaleString()}</td>
+                          <td><code>{e.resource}</code></td>
+                          <td>{e.access_type}</td>
+                          <td>{e.accessor}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -654,6 +713,95 @@ export function MemoryVaultTab({ isOwner = true }: Props) {
         .search-result-path {
           font-size: 10px;
           color: #333;
+        }
+        .vault-file-actions {
+          display: flex;
+          gap: 10px;
+          margin-top: 20px;
+          flex-wrap: wrap;
+        }
+        .vault-download-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          background: rgba(176, 38, 255, 0.08);
+          border: 1px solid #b026ff66;
+          color: #b026ff;
+          padding: 9px 16px;
+          border-radius: 5px;
+          text-decoration: none;
+          font-size: 12px;
+          font-family: monospace;
+          transition: all 0.15s;
+        }
+        .vault-download-btn:hover {
+          background: rgba(176, 38, 255, 0.14);
+          border-color: #b026ff;
+        }
+        .vault-log-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          background: rgba(0, 240, 255, 0.06);
+          border: 1px solid #00f0ff44;
+          color: #00f0ff;
+          padding: 9px 16px;
+          border-radius: 5px;
+          font-size: 12px;
+          font-family: monospace;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .vault-log-btn:hover {
+          background: rgba(0, 240, 255, 0.12);
+          border-color: #00f0ff;
+        }
+        .access-log {
+          margin-top: 20px;
+          border: 1px solid #1a1a3e;
+          border-radius: 6px;
+          overflow: hidden;
+        }
+        .log-title {
+          margin: 0;
+          padding: 10px 14px;
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          color: #666;
+          background: rgba(0,0,0,0.2);
+          border-bottom: 1px solid #1a1a3e;
+        }
+        .log-empty {
+          padding: 16px;
+          color: #444;
+          font-size: 12px;
+          text-align: center;
+        }
+        .log-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 11px;
+        }
+        .log-table th {
+          padding: 7px 12px;
+          text-align: left;
+          color: #555;
+          font-weight: 500;
+          border-bottom: 1px solid #0e0e2e;
+          background: rgba(0,0,0,0.15);
+        }
+        .log-table td {
+          padding: 7px 12px;
+          color: #888;
+          border-bottom: 1px solid #0a0a1a;
+        }
+        .log-table tr:last-child td {
+          border-bottom: none;
+        }
+        .log-table td code {
+          font-size: 10px;
+          color: #00f0ff99;
         }
       `}</style>
     </div>

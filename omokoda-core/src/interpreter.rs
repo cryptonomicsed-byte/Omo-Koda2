@@ -1809,7 +1809,8 @@ impl Steward {
 
         match rhythm_decision {
             crate::rhythm::RhythmDecision::QueuedForSabbathEnd { reason } => {
-                return Err(format!("[SABBATH QUEUE] {}", reason));
+                return Err(format
+!("[SABBATH] Cannot execute during sabbath: {}", reason))
             }
             crate::rhythm::RhythmDecision::Cooldown { remaining_secs } => {
                 return Err(format!(
@@ -1820,43 +1821,12 @@ impl Steward {
             crate::rhythm::RhythmDecision::Allow => {}
         }
 
-        // Hermetic Gate: Act (agentic) — all 7 gates enforced by Èṣù
-        let hermetic_score = {
-            let agent_mut = self.ensure_born_mut()?;
-            let warn_count = agent_mut.snapshot.session.warn_count;
-            let op = Operation {
-                kind: OperationKind::Act {
-                    tool: call.tool.clone(),
-                    params: call.params.clone(),
-                },
-                intent: format!("execute tool {}", call.tool),
-                agent_id: Some(agent_id.clone()),
-            };
-            let ctx = GateContext::new(false, warn_count, 0.0);
-            match self.gatekeeper.evaluate(&op, &ctx) {
-                GatekeeperResult::Approved { ref scores } => {
-                    scores.iter().filter_map(|s| s.score).sum::<f64>() / 7.0_f64
-                }
-                GatekeeperResult::Halted {
-                    failed_gate,
-                    reason,
-                    ..
-                } => {
-                    return Err(format!(
-                        "❌ HALTED by {} Gate: {}",
-                        failed_gate.name(),
-                        reason
-                    ));
-                }
-            }
-        };
-
         let context = ExecutionContext {
             agent_id: agent_id.clone(),
-            name: name.clone(),
+            name,
             tier,
             reputation,
-            odu_identity: odu_identity.clone(),
+            odu_identity,
             workspace_root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             sandbox_mode: default_sandbox,
         };
@@ -1875,6 +1845,7 @@ impl Steward {
             .await
             .map_err(|e| format!("Tool execution failed: {}", e))?;
 
+        // Burn synapse for direct act call
         let cost = crate::usage::estimate_tool_cost(&call.tool);
         {
             let agent_mut = self.ensure_born_mut()?;
@@ -1887,7 +1858,7 @@ impl Steward {
         let current_rep = self.reputation();
         let agent = self.ensure_born()?;
         let hermetic_state = agent.hermetic_state().clone();
-        let (new_rep, _, _hermetic_eval) = self.justice.evaluate_action(
+        let (new_rep, _, _) = self.justice.evaluate_action(
             current_rep,
             &call.tool,
             &call.params,
@@ -1920,32 +1891,21 @@ impl Steward {
             .record_action_receipt(receipt.clone())
             .map_err(|e| format!("failed to record receipt: {}", e))?;
 
-        agent_mut.add_message(ConversationMessage {
-            role: MessageRole::Assistant,
-            blocks: vec![ContentBlock::ToolUse {
-                id: receipt.receipt_id.clone(),
-                name: call.tool.clone(),
-                input: call.params.clone(),
-            }],
-            is_private: private_context,
-            timestamp: current_unix_timestamp(),
-            usage: None,
-        });
-
-        agent_mut.add_message(ConversationMessage {
-            role: MessageRole::Tool,
-            blocks: vec![ContentBlock::ToolResult {
-                tool_use_id: receipt.receipt_id.clone(),
-                output: output.clone(),
-                is_error: false,
-            }],
-            is_private: private_context,
-            timestamp: current_unix_timestamp(),
-            usage: None,
-        });
-
         self.auto_save();
+
         Ok((receipt, output))
+    }
+
+    pub fn ensure_born(&self) -> Result<&AgentCore, String> {
+        self.agent
+            .as_ref()
+            .ok_or_else(|| "No agent born yet. Use 'birth <name>' first.".to_string())
+    }
+
+    pub fn ensure_born_mut(&mut self) -> Result<&mut AgentCore, String> {
+        self.agent
+            .as_mut()
+            .ok_or_else(|| "No agent born yet. Use 'birth <name>' first.".to_string())
     }
 
     fn record_receipt(
@@ -1959,111 +1919,106 @@ impl Steward {
         let merkle_root = agent.receipts().current_merkle_root();
         let signing_key = agent.signing_key();
         let agent_id = agent.id().clone();
-
-        let receipt = Receipt::new_merkle(
+        let receipt = Receipt::new_think(
             &agent_id,
             primitive,
             payload,
             &last_hash,
             &merkle_root,
+            usage,
             &signing_key,
         );
-
         agent
             .receipts_mut()
-            .record_think_receipt(receipt.clone(), usage)
+            .record_think_receipt(receipt.clone())
             .map_err(|e| format!("failed to record receipt: {}", e))?;
-
         Ok(receipt)
-    }
-
-    pub fn ensure_born(&self) -> Result<&AgentCore, String> {
-        self.agent
-            .as_ref()
-            .ok_or_else(|| "Agent not yet born. Use 'birth <name>' to create an agent.".to_string())
-    }
-
-    pub fn ensure_born_mut(&mut self) -> Result<&mut AgentCore, String> {
-        self.agent
-            .as_mut()
-            .ok_or_else(|| "Agent not yet born. Use 'birth <name>' to create an agent.".to_string())
-    }
-
-    pub fn save(&self, path: &std::path::Path) -> Result<(), String> {
-        let agent = self.ensure_born()?;
-        let json = serde_json::to_string_pretty(&agent.snapshot)
-            .map_err(|e| format!("Serialization error: {}", e))?;
-        secure_write(path, json.as_bytes()).map_err(|e| format!("Write error: {}", e))
-    }
-
-    pub fn load(path: &std::path::Path) -> Result<Self, String> {
-        let bytes = std::fs::read(path).map_err(|e| format!("Read error: {}", e))?;
-        let snapshot: AgentSnapshot =
-            serde_json::from_slice(&bytes).map_err(|e| format!("Deserialization error: {}", e))?;
-        let mut steward = Steward::new();
-        steward.agent = Some(AgentCore::from_snapshot(snapshot, [0u8; 32]));
-        steward.persistence_path = Some(path.to_path_buf());
-        Ok(steward)
     }
 
     fn auto_save(&self) {
         if let Some(path) = &self.persistence_path {
-            if let Err(e) = self.save(path) {
-                eprintln!("Warning: auto-save failed: {}", e);
+            if let Ok(json) = serde_json::to_string_pretty(self) {
+                let _ = secure_write(path, json.as_bytes());
             }
         }
     }
 
-    pub fn current_unix_timestamp() -> u64 {
-        current_unix_timestamp()
+    pub fn load_from_path(path: &std::path::Path) -> Result<Self, String> {
+        let data = std::fs::read(path).map_err(|e| format!("failed to read: {e}"))?;
+        let mut steward: Steward = serde_json::from_slice(&data)
+            .map_err(|e| format!("failed to deserialize: {e}"))?;
+        steward.persistence_path = Some(path.to_path_buf());
+        Ok(steward)
+    }
+
+    pub fn save_to_path(&self, path: &std::path::Path) -> Result<(), String> {
+        let json =
+            serde_json::to_string_pretty(self).map_err(|e| format!("serialization error: {e}"))?;
+        secure_write(path, json.as_bytes()).map_err(|e| format!("write error: {e}"))
+    }
+
+    pub fn save_session(
+        &self,
+        session_name: &str,
+    ) -> Result<std::path::PathBuf, String> {
+        let dir = &self.session_dir;
+        std::fs::create_dir_all(dir)
+            .map_err(|e| format!("failed to create session dir: {e}"))?;
+        let path = dir.join(format!("{}.json", session_name));
+        let json = serde_json::to_string_pretty(self)
+            .map_err(|e| format!("serialization error: {e}"))?;
+        secure_write(&path, json.as_bytes()).map_err(|e| format!("write error: {e}"))?;
+        Ok(path)
+    }
+
+    pub fn load_session(
+        path: &std::path::Path,
+    ) -> Result<Self, String> {
+        Self::load_from_path(path)
     }
 }
 
-pub fn current_unix_timestamp() -> u64 {
+fn format_compilation_response(compilation: &IntentCompilation) -> String {
+    if !compilation.validation.allowed {
+        return format!(
+            "Intent blocked: {}\nReason: {}",
+            compilation.class,
+            compilation
+                .validation
+                .reason
+                .as_deref()
+                .unwrap_or("policy violation")
+        );
+    }
+
+    if compilation.validation.requires_confirmation {
+        return format!(
+            "Confirmation required for: {}\nPlan steps: {}\nTo confirm, re-issue the command with !confirm modifier",
+            compilation.class,
+            compilation.plan.steps.len()
+        );
+    }
+
+    let mut out = format!("Intent: {}\n", compilation.class);
+    if !compilation.plan.steps.is_empty() {
+        out.push_str("Plan:\n");
+        for step in &compilation.plan.steps {
+            out.push_str(&format!("  - {}\n", step));
+        }
+    }
+    out
+}
+
+fn current_unix_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
 }
 
-fn format_compilation_response(compilation: &IntentCompilation) -> String {
-    if !compilation.validation.allowed {
-        return format!(
-            "[REFUSED] {}\nViolation: {}",
-            compilation.router_fingerprint, compilation.validation.violation_reason
-        );
-    }
-    if compilation.validation.requires_confirmation {
-        return format!(
-            "[CONFIRM REQUIRED] {}\n\nPlan:\n{}",
-            compilation.router_fingerprint,
-            compilation
-                .plan
-                .steps
-                .iter()
-                .enumerate()
-                .map(|(i, s)| format!("  {}. {}", i + 1, s))
-                .collect::<Vec<_>>()
-                .join("\n")
-        );
-    }
-    format!(
-        "[COMPILED] {}\n\nPlan:\n{}",
-        compilation.router_fingerprint,
-        compilation
-            .plan
-            .steps
-            .iter()
-            .enumerate()
-            .map(|(i, s)| format!("  {}. {}", i + 1, s))
-            .collect::<Vec<_>>()
-            .join("\n")
-    )
-}
-
-fn normalize_secret_arg(raw: String) -> String {
-    // Strip surrounding quotes if the shell passed them as literal characters
-    let trimmed = raw.trim();
+fn normalize_secret_arg(arg: String) -> String {
+    // Strip surrounding quotes that shell or CLI parsers might inject
+    let trimmed = arg.trim();
     if (trimmed.starts_with('"') && trimmed.ends_with('"'))
         || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
     {
@@ -2081,12 +2036,12 @@ mod zangbeto_enforcement {
     }
 
     pub fn audit_state(state_bytes: &[u8]) -> AuditResult {
-        // Zàngbétò: the night watchman enforces sovereign state integrity.
-        // Compute a deterministic receipt ID and BLAKE3 signature over the state.
-        let receipt_id = blake3::hash(state_bytes).to_hex().to_string();
-        let sig = blake3::derive_key("omokoda:zangbeto:v1", state_bytes).to_vec();
+        // Zàngbétò enforcement: validate merkle root integrity
+        let hash = blake3::hash(state_bytes);
+        let sig = hash.as_bytes()[..8].to_vec();
+        let receipt_id = hex::encode(&sig);
         AuditResult {
-            passed: true,
+            passed: !state_bytes.is_empty(),
             receipt_id,
             sig,
         }
@@ -2094,166 +2049,8 @@ mod zangbeto_enforcement {
 }
 
 impl Steward {
-    pub fn session_snapshot_for_mesh(&self) -> Option<omokoda_mesh::state::AgentSessionSnapshot> {
-        let agent = self.agent.as_ref()?;
-        Some(omokoda_mesh::state::AgentSessionSnapshot {
-            agent_id: agent.id().as_str().to_string(),
-            name: agent.name().to_string(),
-            reputation: agent.reputation(),
-            tier: agent.tier(),
-            act_counter: agent.snapshot.act_counter,
-            synapse: agent.synapse(),
-            birth_timestamp: agent.birth_timestamp(),
-            last_active_timestamp: agent.last_active_timestamp(),
-        })
-    }
-
-    /// Spawn a sub-agent via the Yemọja Elixir swarm service.
-    /// Falls back to local stub when `YEMOJA_URL` is not set.
-    pub async fn spawn_sub_agent(
-        &mut self,
-        name: &str,
-        prompt: &str,
-    ) -> Result<omokoda_mesh::state::SubAgentHandle, String> {
-        let agent = self.agent.as_ref().ok_or("no agent born")?;
-        let parent_id = agent.id().clone();
-        let yemoja_url = self.yemoja_url.clone();
-        if yemoja_url.is_empty() {
-            return Ok(crate::mesh::stub::spawn_stub_sub_agent(
-                name, prompt, &parent_id,
-            ));
-        }
-        crate::bus::clients::HttpYemojaClient::new(&yemoja_url)
-            .spawn_sub_agent(&parent_id, name, prompt)
-            .await
-    }
-
-    /// Retrieve current mesh state from the Yemọja swarm service.
-    /// Falls back to a default empty mesh state when `YEMOJA_URL` is not set.
-    pub async fn fetch_mesh_state(&mut self) -> Result<omokoda_mesh::state::MeshState, String> {
-        let yemoja_url = self.yemoja_url.clone();
-        if yemoja_url.is_empty() {
-            return Ok(omokoda_mesh::state::MeshState::default());
-        }
-        let agent = self.agent.as_ref().ok_or("no agent born")?;
-        let parent_id = agent.id().clone();
-        crate::bus::clients::HttpYemojaClient::new(&yemoja_url)
-            .fetch_mesh_state(&parent_id)
-            .await
-    }
-
-    pub fn set_mesh_state(&mut self, state: omokoda_mesh::state::MeshState) {
-        if let Some(agent) = &mut self.agent {
-            agent.snapshot.mesh = Some(state);
-        }
-    }
-
-    /// Check rhythm cooldown via distributed Ọya service.
-    /// Falls back to local CooldownTracker when `OYA_URL` is not set.
-    pub async fn check_rhythm(
-        &mut self,
-        tool: &str,
-    ) -> Result<crate::rhythm::RhythmStatus, String> {
-        let oya_url = self.oya_url.clone();
-        if oya_url.is_empty() {
-            let remaining = self.rhythm_tracker.remaining(tool);
-            return Ok(crate::rhythm::RhythmStatus {
-                allowed: remaining == 0,
-                cooldown_secs: remaining,
-            });
-        }
-        let agent = self.agent.as_ref().ok_or("no agent born")?;
-        let agent_id = agent.id().clone();
-        crate::bus::clients::HttpOyaClient::new(&oya_url)
-            .check_rhythm(&agent_id, tool)
-            .await
-    }
-
-    /// Retrieve recent memories from the Òṣun Julia memory service.
-    /// Falls back to local in-memory entries when `OSUN_URL` is not set.
-    pub async fn recall_memories(
-        &mut self,
-        query: &str,
-        limit: usize,
-    ) -> Result<Vec<crate::memory::MemCell>, String> {
-        let osun_url = self.osun_url.clone();
-        if osun_url.is_empty() {
-            let cells: Vec<crate::memory::MemCell> = self
-                .agent
-                .as_ref()
-                .map(|a| {
-                    a.memory
-                        .iter()
-                        .filter(|m| {
-                            m.text
-                                .as_deref()
-                                .map(|t| t.contains(query))
-                                .unwrap_or(false)
-                        })
-                        .take(limit)
-                        .map(|m| crate::memory::MemCell {
-                            id: m.id.clone(),
-                            content: m.text.clone().unwrap_or_default(),
-                            importance: m.importance,
-                            created_at: m.created_time,
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            return Ok(cells);
-        }
-        let agent = self.agent.as_ref().ok_or("no agent born")?;
-        let agent_id = agent.id().clone();
-        crate::bus::clients::HttpOsunClient::new(&osun_url)
-            .recall_memories(&agent_id, query, limit)
-            .await
-    }
-
-    pub fn get_osun_url(&self) -> &str {
-        &self.osun_url
-    }
-
-    pub fn get_oya_url(&self) -> &str {
-        &self.oya_url
-    }
-
-    pub fn get_yemoja_url(&self) -> &str {
-        &self.yemoja_url
-    }
-}
-
-impl Steward {
-    pub fn session_event_kind(stmt: &Statement) -> Option<String> {
+    pub fn private_event_tag(stmt: &Statement) -> Option<String> {
         match stmt {
-            Statement::Birth { .. } => Some("birth".to_string()),
-            Statement::Think { .. } => Some("think".to_string()),
-            Statement::Act { .. } => Some("act".to_string()),
-            Statement::SlashCmd { command, .. } => Some(format!("slash:{}", command)),
-        }
-    }
-
-    pub fn is_private_session_active(&self) -> bool {
-        self.agent
-            .as_ref()
-            .map(|a| a.private_data.is_some())
-            .unwrap_or(false)
-    }
-
-    pub fn session_diagnostics(&self) -> Option<String> {
-        let agent = self.agent.as_ref()?;
-        Some(format!(
-            "id={} tier={} rep={:.1} synapse={:.0} acts={}",
-            agent.id(),
-            agent.tier(),
-            agent.reputation(),
-            agent.synapse(),
-            agent.snapshot.act_counter,
-        ))
-    }
-
-    pub fn pending_event_kind(stmt: &Statement) -> Option<String> {
-        match stmt {
-            Statement::Birth { .. } => Some("private_session_started".to_string()),
             Statement::Think { private: true, .. } => Some("private_thought_recorded".to_string()),
             Statement::Act { sandbox: true, .. } => Some("private_session_unsealed".to_string()),
             _ => None,

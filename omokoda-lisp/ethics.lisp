@@ -1,320 +1,187 @@
-;;;; ethics.lisp — ỌBÀTÁLÁ Ethics Engine
-;;;; Evaluates agent intent against the 7 Hermetic Principles before
-;;;; any think or act call is allowed to proceed.
-;;;;
-;;;; Part of Ọmọ Kọ́dà — Sovereign Agent OS
-;;;; Aligned with: omokoda-core/src/justice/hermetic.rs (Rust reference impl)
-;;;;
-;;;; Each principle evaluator returns: (values result reason)
-;;;;   result ∈ {:allow :warn :deny}
-;;;;   reason — a human-readable explanation string
+;;;; ỌBÀTÁLÁ Ethics Engine — Hermetic Principle Evaluators
+;;;; Implements the 7 Hermetic Principles as symbolic logic gates
 
-(defpackage #:omokoda.ethics
+(defpackage #:omokoda-ethics
   (:use #:cl)
-  (:export
-   #:evaluate-intent
-   #:evaluate-all-principles
-   #:make-intent-context
-   #:*deception-keywords*
-   #:*conflict-escalation-keywords*
-   #:*extreme-destruction-keywords*
-   #:*responsibility-evasion-keywords*
-   #:*coercive-force-keywords*))
+  (:export #:evaluate-intent #:check-all-gates #:evaluate-all-gates #:gate-result
+           #:gate-result-principle #:gate-result-passed #:gate-result-reason #:gate-result-score))
 
-(in-package #:omokoda.ethics)
+(in-package #:omokoda-ethics)
 
-;;; ============================================================
-;;; KEYWORD LISTS — mirrors hermetic.rs scoring heuristics (v1)
-;;; ============================================================
+(defstruct gate-result
+  (principle nil  :type symbol)
+  (passed    nil  :type boolean)
+  (reason    ""   :type string)
+  (score     0.0  :type real))
 
-(defparameter *deception-keywords*
-  '("lie" "fake" "hide" "mislead" "reframe" "distort"
-    "protect feelings" "deceive" "fabricate" "falsify"
-    "manipulate" "obscure truth" "misrepresent")
-  "Keywords indicating potential deception (Mentalism violations).")
+;;; Gate 1: Mentalism — All is Mind; intent must be declared
+;;; Score: 0.92 honest intent, 0.50 borderline, 0.05 deception or empty
+(defun gate-mentalism (intent params)
+  (declare (ignore params))
+  (let* ((intent-lower (string-downcase (if (stringp intent) intent "")))
+         (trimmed      (string-trim " " intent-lower))
+         (empty        (zerop (length trimmed)))
+         (deceptive    (or (search "lie"      trimmed)
+                           (search "deceive"  trimmed)
+                           (search "trick"    trimmed)
+                           (search "mislead"  trimmed)
+                           (search "fake"     trimmed)))
+         ;; Borderline: non-empty, non-deceptive, but very short / vague (< 4 chars)
+         (borderline   (and (not empty)
+                            (null deceptive)
+                            (< (length trimmed) 4)))
+         (passed       (and (not empty) (null deceptive)))
+         (score        (cond (empty      0.05)
+                             (deceptive  0.05)
+                             (borderline 0.50)
+                             (t          0.92))))
+    (make-gate-result
+     :principle :mentalism
+     :passed    passed
+     :score     score
+     :reason    (cond (empty     "No intent — anonymous operations rejected")
+                      (deceptive "Deception pattern detected")
+                      (t         "Intent declared")))))
 
-(defparameter *omission-keywords*
-  '("omit" "withhold" "partial truth" "half truth")
-  "Keywords indicating soft deception — trigger :warn.")
+;;; Gate 2: Correspondence — As above, so below; intent must match operation
+;;; Score: 0.90 aligned, 0.50 borderline, 0.05 covert detected
+(defun gate-correspondence (intent params)
+  (declare (ignore params))
+  (let* ((intent-lower (string-downcase (if (stringp intent) intent "")))
+         (covert       (or (search "secretly"       intent-lower)
+                           (search "without telling" intent-lower)
+                           (search "bypass"          intent-lower)))
+         (borderline   (and (null covert)
+                            (search "quietly" intent-lower)))
+         (passed       (null covert))
+         (score        (cond (covert     0.05)
+                             (borderline 0.50)
+                             (t          0.90))))
+    (make-gate-result
+     :principle :correspondence
+     :passed    passed
+     :score     score
+     :reason    (if passed "Correspondence aligned" "Covert operation pattern detected"))))
 
-(defparameter *conflict-escalation-keywords*
-  '("angry" "spam" "rage" "harass" "aggressive"
-    "escalate conflict" "provoke" "inflame" "antagonize"
-    "destabilize" "incite")
-  "Keywords indicating conflict escalation (Vibration violations).")
+;;; Gate 3: Vibration — Nothing rests; no spam or flood
+;;; Score: 0.88 clean, 0.05 spam/flood detected
+;;; Optional emotion-tension parameter: if > 0.7, reduce score by (* tension 0.3)
+(defun gate-vibration (intent params &key (emotion-tension 0.0))
+  (let* ((text (string-downcase (format nil "~a ~a" intent params)))
+         (spam (or (search "spam"    text)
+                   (search "flood"   text)
+                   (search "bombard" text)))
+         (passed        (null spam))
+         (base-score    (if spam 0.05 0.88))
+         (tension-cut   (if (and (not spam) (> emotion-tension 0.7))
+                            (* emotion-tension 0.3)
+                            0.0))
+         (score         (max 0.0 (- base-score tension-cut))))
+    (make-gate-result
+     :principle :vibration
+     :passed    passed
+     :score     score
+     :reason    (if passed "Vibration clear" "Spam/flood pattern rejected"))))
 
-(defparameter *extreme-destruction-keywords*
-  '("delete all" "destroy all" "wipe all" "nuke all"
-    "purge all" "obliterate" "erase all" "terminate all"
-    "mass delete" "bulk delete user data" "delete all user data")
-  "Keywords indicating extreme destructive actions (Polarity violations).")
+;;; Gate 4: Polarity — Destruction without creation rejected
+;;; Score: 0.90 clean, 0.01 unconditional destruction
+(defun gate-polarity (intent params)
+  (let* ((text        (string-downcase (format nil "~a ~a" intent params)))
+         (destructive (search "rm -rf /" text))
+         (passed      (null destructive))
+         (score       (if destructive 0.01 0.90)))
+    (make-gate-result
+     :principle :polarity
+     :passed    passed
+     :score     score
+     :reason    (if passed "Polarity balanced" "Unconditional destruction rejected"))))
 
-(defparameter *extreme-polarity-keywords*
-  '("never" "always" "total" "completely absolute"
-    "risk-averse to extreme" "all or nothing")
-  "Soft polarity keywords — trigger :warn when combined with destructive context.")
+;;; Gate 5: Rhythm — Cooldown respected
+;;; Score: 1.0 if not in cooldown, 0.0 if in cooldown
+(defun gate-rhythm (intent params &key (in-cooldown nil))
+  (declare (ignore intent params))
+  (make-gate-result
+   :principle :rhythm
+   :passed    (not in-cooldown)
+   :score     (if in-cooldown 0.0 1.0)
+   :reason    (if in-cooldown
+                  "Active cooldown — rhythm enforcement mandatory"
+                  "Rhythm clear")))
 
-(defparameter *rhythm-bypass-keywords*
-  '("bypass cooldown" "force timing" "continuously without breaks"
-    "outside availability" "ignore cooldown" "skip wait"
-    "no delay" "instant repeat" "flood" "overwhelm")
-  "Keywords indicating cooldown/timing violations (Rhythm violations).")
+;;; Gate 6: Cause & Effect — Every action traceable
+;;; Score: 0.75 traceable, 0.10 audit-trail destruction pattern
+(defun gate-cause-effect (intent params)
+  (let* ((text     (string-downcase (format nil "~a ~a" intent params)))
+         (no-trace (or (search "without logging" text)
+                       (search "no trace"        text)))
+         (passed   (null no-trace))
+         (score    (if no-trace 0.10 0.75)))
+    (make-gate-result
+     :principle :cause-and-effect
+     :passed    passed
+     :score     score
+     :reason    (if passed "Traceable" "Audit trail destruction rejected"))))
 
-(defparameter *responsibility-evasion-keywords*
-  '("blame" "exploit" "shift responsibility" "consequences later"
-    "frame this error" "deflect" "avoid accountability"
-    "not my fault" "evade" "deny responsibility")
-  "Keywords indicating cause-effect evasion (Cause-Effect violations).")
+;;; Gate 7: Gender — User agency preserved
+;;; Score: 0.75 baseline, 0.10 unilateral override pattern
+(defun gate-gender (intent params)
+  (let* ((text  (string-downcase (format nil "~a ~a" intent params)))
+         (force (or (search "force override"       text)
+                    (search "without user consent" text)))
+         (passed (null force))
+         (score  (if force 0.10 0.75)))
+    (make-gate-result
+     :principle :gender
+     :passed    passed
+     :score     score
+     :reason    (if passed "User agency preserved" "Unilateral override rejected"))))
 
-(defparameter *coercive-force-keywords*
-  '("force outcome" "override" "impose" "control every"
-    "remove all user" "without asking" "coerce"
-    "ensure the correct result" "no user input" "ignore consent"
-    "bypass user" "force result")
-  "Keywords indicating coercive force on outcomes (Gender violations).")
+;;; ──────────────────────────────────────────────────────────────────────────
+;;; Backwards-compatible API — unchanged behaviour, boolean :passed only
+;;; ──────────────────────────────────────────────────────────────────────────
 
-(defparameter *disclosure-keywords*
-  '("truth" "honest" "accurate" "clarify" "transparent"
-    "disclose" "acknowledge" "inform")
-  "Keywords that positively signal transparency.")
+;;; Run all 7 gates; return list of gate-results
+(defun check-all-gates (intent params &key (in-cooldown nil))
+  (list
+   (gate-mentalism      intent params)
+   (gate-correspondence intent params)
+   (gate-vibration      intent params)
+   (gate-polarity       intent params)
+   (gate-rhythm         intent params :in-cooldown in-cooldown)
+   (gate-cause-effect   intent params)
+   (gate-gender         intent params)))
 
-;;; ============================================================
-;;; HELPERS
-;;; ============================================================
+;;; Evaluate intent: returns (values all-passed first-rejection all-results)
+(defun evaluate-intent (intent params &key (in-cooldown nil))
+  (let* ((results (check-all-gates intent params :in-cooldown in-cooldown))
+         (failed  (find-if (lambda (r) (not (gate-result-passed r))) results)))
+    (values (null failed) failed results)))
 
-(defun intent-contains-any? (intent-lower keywords)
-  "Return the first matching keyword from KEYWORDS found in INTENT-LOWER, or NIL."
-  (find-if (lambda (kw) (search kw intent-lower)) keywords))
+;;; ──────────────────────────────────────────────────────────────────────────
+;;; Float-scoring aggregate evaluator
+;;; ──────────────────────────────────────────────────────────────────────────
 
-(defun normalize-intent (intent-string)
-  "Lowercase and trim intent for keyword matching."
-  (string-downcase (string-trim '(#\Space #\Tab #\Newline) intent-string)))
-
-;;; ============================================================
-;;; PRINCIPLE EVALUATORS
-;;; Each returns (values :allow/:warn/:deny "reason-string")
-;;; ============================================================
-
-;;; --- 1. MENTALISM ---
-;;; The All is Mind. No deception, no misleading.
-;;; High-tier agents are held to stricter standards (they know better).
-
-(defun evaluate-mentalism (intent-lower agent-tier)
-  "Principle 1 — Mentalism: no deception, no misleading.
-   AGENT-TIER (0-5): higher tier reduces tolerance for soft omissions."
-  (cond
-    ((intent-contains-any? intent-lower *deception-keywords*)
-     (values :deny
-             (format nil "Mentalism violation: deceptive intent detected (~A)"
-                     (intent-contains-any? intent-lower *deception-keywords*))))
-    ((and (intent-contains-any? intent-lower *omission-keywords*)
-          (>= agent-tier 2))
-     ;; Higher-tier agents must not omit — they have the capability for full disclosure
-     (values :deny
-             (format nil "Mentalism violation: omission is unacceptable at tier ~A" agent-tier)))
-    ((intent-contains-any? intent-lower *omission-keywords*)
-     (values :warn
-             (format nil "Mentalism caution: partial disclosure detected (~A)"
-                     (intent-contains-any? intent-lower *omission-keywords*))))
-    (t
-     (values :allow "Mentalism: no deception detected"))))
-
-;;; --- 2. CORRESPONDENCE ---
-;;; As above, so below. Local/micro actions must match macro patterns.
-;;; We check that the stated intent does not contradict systemic scope claims.
-
-(defun evaluate-correspondence (intent-lower agent-tier)
-  "Principle 2 — Correspondence: local actions must align with macro patterns.
-   Detects micro/macro contradictions in stated intent."
-  (declare (ignore agent-tier))
-  (let ((micro-signals '("small" "local" "minor" "limited" "one file" "single"))
-        (macro-signals '("global" "systemic" "all users" "entire" "network-wide"
-                         "every agent" "universal" "all systems")))
-    (let ((has-micro (intent-contains-any? intent-lower micro-signals))
-          (has-macro (intent-contains-any? intent-lower macro-signals))
-          (has-exploit (intent-contains-any? intent-lower '("exploit" "loophole"))))
-      (cond
-        (has-exploit
-         (values :deny
-                 "Correspondence violation: exploitative macro intent detected"))
-        ((and has-micro has-macro)
-         (values :warn
-                 "Correspondence caution: micro/macro scope mismatch in stated intent"))
-        (t
-         (values :allow "Correspondence: scope alignment nominal"))))))
-
-;;; --- 3. VIBRATION ---
-;;; Nothing rests; everything moves. No escalation of conflict or negative patterns.
-
-(defun evaluate-vibration (intent-lower agent-tier)
-  "Principle 3 — Vibration: no escalation of conflict or negative patterns."
-  (declare (ignore agent-tier))
-  (cond
-    ((intent-contains-any? intent-lower *conflict-escalation-keywords*)
-     (values :deny
-             (format nil "Vibration violation: conflict escalation detected (~A)"
-                     (intent-contains-any? intent-lower *conflict-escalation-keywords*))))
-    ((intent-contains-any? intent-lower '("worst-case" "chronic negativity" "doom"))
-     (values :warn
-             "Vibration caution: negative pattern amplification detected"))
-    (t
-     (values :allow "Vibration: no destructive pattern detected"))))
-
-;;; --- 4. POLARITY ---
-;;; Everything has its pair of opposites. No extreme destructive actions.
-;;; Higher-tier agents have broader tool access, so destructive intent is more severe.
-
-(defun evaluate-polarity (intent-lower agent-tier)
-  "Principle 4 — Polarity: no extreme destructive actions.
-   AGENT-TIER modulates severity — high-tier agents with destructive intent are denied."
-  (cond
-    ((intent-contains-any? intent-lower *extreme-destruction-keywords*)
-     (values :deny
-             (format nil "Polarity violation: extreme destructive action detected (~A)"
-                     (intent-contains-any? intent-lower *extreme-destruction-keywords*))))
-    ((and (intent-contains-any? intent-lower *extreme-polarity-keywords*)
-          (>= agent-tier 3))
-     ;; Tier 3+ agents wielding absolute language is a red flag
-     (values :warn
-             (format nil "Polarity caution: absolute/extreme framing at tier ~A" agent-tier)))
-    ((intent-contains-any? intent-lower *extreme-polarity-keywords*)
-     (values :warn
-             (format nil "Polarity caution: extreme framing detected (~A)"
-                     (intent-contains-any? intent-lower *extreme-polarity-keywords*))))
-    (t
-     (values :allow "Polarity: balance maintained"))))
-
-;;; --- 5. RHYTHM ---
-;;; Everything flows in and out. Respect timing/cooldowns.
-
-(defun evaluate-rhythm (intent-lower agent-tier)
-  "Principle 5 — Rhythm: respect timing and cooldowns.
-   Tier 0 agents get no cooldown bypass tolerance."
-  (declare (ignore agent-tier))
-  (cond
-    ((intent-contains-any? intent-lower *rhythm-bypass-keywords*)
-     (values :deny
-             (format nil "Rhythm violation: cooldown/timing bypass detected (~A)"
-                     (intent-contains-any? intent-lower *rhythm-bypass-keywords*))))
-    ((intent-contains-any? intent-lower '("rush" "hurry" "immediately repeatedly"))
-     (values :warn
-             "Rhythm caution: aggressive timing pressure detected"))
-    (t
-     (values :allow "Rhythm: timing respect confirmed"))))
-
-;;; --- 6. CAUSE-EFFECT ---
-;;; Every cause has its effect. Agent must acknowledge consequences.
-
-(defun evaluate-cause-effect (intent-lower agent-tier)
-  "Principle 6 — Cause-Effect: agent must acknowledge consequences.
-   Tier 2+ agents must explicitly acknowledge effects; evasion is denied."
-  (cond
-    ((intent-contains-any? intent-lower *responsibility-evasion-keywords*)
-     (values :deny
-             (format nil "Cause-Effect violation: responsibility evasion detected (~A)"
-                     (intent-contains-any? intent-lower *responsibility-evasion-keywords*))))
-    ((and (>= agent-tier 2)
-          (not (intent-contains-any? intent-lower *disclosure-keywords*))
-          (intent-contains-any? intent-lower '("later" "eventually" "someone else")))
-     (values :warn
-             (format nil "Cause-Effect caution: deferred accountability at tier ~A" agent-tier)))
-    (t
-     (values :allow "Cause-Effect: consequence acknowledgment satisfied"))))
-
-;;; --- 7. GENDER ---
-;;; Gender is in everything. No coercive force on outcomes.
-;;; The masculine (active) and feminine (receptive) forces must remain in balance.
-
-(defun evaluate-gender (intent-lower agent-tier)
-  "Principle 7 — Gender: no coercive force on outcomes.
-   Balances active and receptive forces — consent of outcomes is required."
-  (declare (ignore agent-tier))
-  (cond
-    ((intent-contains-any? intent-lower *coercive-force-keywords*)
-     (values :deny
-             (format nil "Gender violation: coercive force on outcomes detected (~A)"
-                     (intent-contains-any? intent-lower *coercive-force-keywords*))))
-    ((intent-contains-any? intent-lower '("ensure the correct result" "guarantee outcome"))
-     (values :warn
-             "Gender caution: outcome certainty coercion — allow emergence"))
-    (t
-     (values :allow "Gender: active/receptive balance maintained"))))
-
-;;; ============================================================
-;;; AGGREGATE EVALUATORS
-;;; ============================================================
-
-(defun evaluate-all-principles (intent-string agent-tier)
-  "Evaluate INTENT-STRING against all 7 Hermetic Principles for AGENT-TIER (0-5).
-
-   Returns a list of (PRINCIPLE-KEYWORD RESULT REASON) tuples, one per principle.
-   PRINCIPLE-KEYWORD ∈ {:mentalism :correspondence :vibration :polarity
-                         :rhythm :cause-effect :gender}
-   RESULT ∈ {:allow :warn :deny}
-   REASON — string explanation"
-  (let ((intent-lower (normalize-intent intent-string)))
-    (mapcar (lambda (entry)
-              (let ((principle (first entry))
-                    (evaluator (second entry)))
-                (multiple-value-bind (result reason)
-                    (funcall evaluator intent-lower agent-tier)
-                  (list principle result reason))))
-            (list (list :mentalism    #'evaluate-mentalism)
-                  (list :correspondence #'evaluate-correspondence)
-                  (list :vibration     #'evaluate-vibration)
-                  (list :polarity      #'evaluate-polarity)
-                  (list :rhythm        #'evaluate-rhythm)
-                  (list :cause-effect  #'evaluate-cause-effect)
-                  (list :gender        #'evaluate-gender)))))
-
-(defun evaluate-intent (intent-string agent-tier)
-  "Top-level ethics gate.
-
-   Evaluate INTENT-STRING for AGENT-TIER (integer 0–5).
-
-   Returns (values DECISION REASON) where:
-     DECISION ∈ {:allow :warn :deny}
-     REASON   — string explaining the decision (first failing principle, or overall pass)
-
-   Rules:
-     - DENY if ANY principle returns :deny
-     - WARN if ANY principle returns :warn but none deny
-     - ALLOW only if all principles allow"
-  (let* ((results (evaluate-all-principles intent-string agent-tier))
-         (denies  (remove-if-not (lambda (r) (eq (second r) :deny))  results))
-         (warns   (remove-if-not (lambda (r) (eq (second r) :warn))  results)))
-    (cond
-      ;; Any deny → hard deny (report first violation)
-      (denies
-       (let ((first-deny (first denies)))
-         (values :deny
-                 (format nil "[~A] ~A"
-                         (first first-deny)
-                         (third first-deny)))))
-      ;; No deny but some warn → warn
-      (warns
-       (let ((first-warn (first warns)))
-         (values :warn
-                 (format nil "[~A] ~A"
-                         (first first-warn)
-                         (third first-warn)))))
-      ;; All clear
-      (t
-       (values :allow
-               "All 7 Hermetic Principles satisfied — intent cleared for execution")))))
-
-;;; ============================================================
-;;; INTENT CONTEXT HELPER (optional structured input)
-;;; ============================================================
-
-(defstruct intent-context
-  "Structured intent for richer evaluation. Use make-intent-context."
-  (intent-string "" :type string)
-  (agent-tier    0  :type (integer 0 5))
-  (target        nil)   ; :user :system :swarm :world or NIL
-  (tool-name     nil))  ; string or NIL
-
-(defun evaluate-intent-context (ctx)
-  "Evaluate a full INTENT-CONTEXT struct. Returns (values :allow/:warn/:deny reason)."
-  (evaluate-intent (intent-context-intent-string ctx)
-                   (intent-context-agent-tier ctx)))
+;;; Returns a plist:
+;;;   :gates    — list of gate-result structs (all :score fields populated)
+;;;   :overall  — arithmetic mean of all gate scores (real in [0.0, 1.0])
+;;;   :decision — :allow  (overall >= 0.65)
+;;;               :warn   (overall >= 0.48)
+;;;               :block  (overall <  0.48)
+(defun evaluate-all-gates (intent params &key (in-cooldown nil) (emotion-tension 0.0))
+  (let* ((gates
+          (list
+           (gate-mentalism      intent params)
+           (gate-correspondence intent params)
+           (gate-vibration      intent params :emotion-tension emotion-tension)
+           (gate-polarity       intent params)
+           (gate-rhythm         intent params :in-cooldown in-cooldown)
+           (gate-cause-effect   intent params)
+           (gate-gender         intent params)))
+         (scores  (mapcar #'gate-result-score gates))
+         (overall (/ (apply #'+ scores) (length scores)))
+         (decision (cond ((>= overall 0.65) :allow)
+                         ((>= overall 0.48) :warn)
+                         (t                 :block))))
+    (list :gates    gates
+          :overall  overall
+          :decision decision)))

@@ -1,5 +1,10 @@
 use crate::bus::events::sovereign_event;
 use crate::interpreter::{ExecutionResult, Steward};
+use crate::memory_vault::handlers::{
+    get_access_log, get_galaxy_data, get_vault_config, get_vault_download, get_vault_file,
+    get_vault_status, post_vault_enable, post_vault_knowledge, post_vault_sync, put_vault_config,
+    search_vault,
+};
 use crate::parser::{MetadataPair, Statement, ThinkModifiers};
 use axum::{
     extract::State,
@@ -7,10 +12,11 @@ use axum::{
         sse::{Event, KeepAlive, Sse},
         IntoResponse, Json,
     },
-    routing::{get, post},
+    routing::{get, post, put},
     Router,
 };
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -20,12 +26,18 @@ use tower_http::cors::CorsLayer;
 #[derive(Clone)]
 pub struct AppState {
     pub steward: Arc<Mutex<Steward>>,
+    /// Base directory for per-agent memory vault files (default: `.omokoda`)
+    pub vault_base: PathBuf,
 }
 
 impl AppState {
     pub fn new() -> Self {
+        let vault_base = std::env::var("VAULT_BASE")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from(".omokoda"));
         Self {
             steward: Arc::new(Mutex::new(Steward::new())),
+            vault_base,
         }
     }
 }
@@ -289,6 +301,18 @@ pub fn create_router(state: AppState) -> Router {
         .route("/v1/events", get(events_handler))
         .route("/v1/status", get(status_handler))
         .route("/v1/health", get(health_handler))
+        // Memory vault endpoints
+        .route("/v1/vault", get(get_vault_status))
+        .route("/v1/vault/config", get(get_vault_config))
+        .route("/v1/vault/config", put(put_vault_config))
+        .route("/v1/vault/sync", post(post_vault_sync))
+        .route("/v1/vault/galaxy", get(get_galaxy_data))
+        .route("/v1/vault/search", get(search_vault))
+        .route("/v1/vault/enable", post(post_vault_enable))
+        .route("/v1/vault/knowledge", post(post_vault_knowledge))
+        .route("/v1/vault/access-log", get(get_access_log))
+        .route("/v1/vault/download", get(get_vault_download))
+        .route("/v1/vault/file/*path", get(get_vault_file))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }

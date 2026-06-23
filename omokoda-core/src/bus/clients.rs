@@ -422,7 +422,11 @@ impl YemojaClient for HttpYemojaClient {
                 .json::<serde_json::Value>()
                 .await
                 .ok()
-                .and_then(|v| v.get("agent_id").and_then(|id| id.as_str()).map(str::to_string))
+                .and_then(|v| {
+                    v.get("agent_id")
+                        .and_then(|id| id.as_str())
+                        .map(str::to_string)
+                })
                 .ok_or_else(|| "malformed spawn response".to_string()),
             Ok(resp) => Err(format!("spawn_agent failed: HTTP {}", resp.status())),
             Err(e) => Err(format!("spawn_agent network error: {e}")),
@@ -441,12 +445,14 @@ impl YemojaClient for HttpYemojaClient {
                 .json::<serde_json::Value>()
                 .await
                 .ok()
-                .and_then(|v| v.get("status").and_then(|s| s.as_str()).map(|s| match s {
-                    "running" => AgentStatus::Running,
-                    "complete" => AgentStatus::Complete,
-                    "failed" => AgentStatus::Failed,
-                    _ => AgentStatus::Idle,
-                }))
+                .and_then(|v| {
+                    v.get("status").and_then(|s| s.as_str()).map(|s| match s {
+                        "running" => AgentStatus::Running,
+                        "complete" => AgentStatus::Complete,
+                        "failed" => AgentStatus::Failed,
+                        _ => AgentStatus::Idle,
+                    })
+                })
                 .unwrap_or(AgentStatus::Idle),
             _ => AgentStatus::Idle,
         }

@@ -37,6 +37,7 @@ pub enum MessageRole {
     User,
     Agent,
     System,
+    #[allow(dead_code)]
     Tool,
 }
 
@@ -214,8 +215,8 @@ impl App {
                 if let KeyCode::Char(c) = key.code {
                     self.input.handle(tui_input::InputRequest::InsertChar(c));
                     let val = self.input.value().to_string();
-                    if val.starts_with('/') {
-                        self.slash_filter = val[1..].to_string();
+                    if let Some(stripped) = val.strip_prefix('/') {
+                        self.slash_filter = stripped.to_string();
                         self.slash_selected = 0;
                     }
                 }

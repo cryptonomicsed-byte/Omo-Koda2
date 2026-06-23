@@ -51,6 +51,7 @@ const GLOBAL_DAG = Ref(MemoryDAG())
 
 include(joinpath(@__DIR__, "src", "mesh_analytics.jl"))
 include(joinpath(@__DIR__, "src", "vantage_bridge.jl"))
+include(joinpath(@__DIR__, "src", "soma_bridge.jl"))
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -368,6 +369,9 @@ HTTP.register!(ROUTER, "POST", "/vantage/ingest",      handle_vantage_ingest)
 HTTP.register!(ROUTER, "POST", "/vantage/similar",     handle_vantage_similar)
 HTTP.register!(ROUTER, "POST", "/vantage/predict",     handle_vantage_predict)
 HTTP.register!(ROUTER, "POST", "/vantage/patterns",    handle_vantage_patterns)
+
+HTTP.register!(ROUTER, "POST", "/soma/store",          handle_soma_store)
+HTTP.register!(ROUTER, "POST", "/soma/reconstruct",    handle_soma_reconstruct)
 
 # ---------------------------------------------------------------------------
 # Entry point

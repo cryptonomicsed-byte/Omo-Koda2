@@ -40,20 +40,22 @@ var tracker = &rhythmTracker{
 	lastUsed: make(map[string]time.Time),
 }
 
-// sabbathFn reports whether it is currently the UTC Sabbath (Saturday).
-// Overridable in tests so cooldown behaviour can be verified on any day.
-var sabbathFn = func() bool {
+// sabbathCheck is a package-level hook so tests can override Sabbath detection
+// without changing production behaviour.
+var sabbathCheck = func() bool {
 	return time.Now().UTC().Weekday() == time.Saturday
 }
 
 // IsSabbath returns true when the current UTC time falls on a Saturday.
-func IsSabbath() bool { return sabbathFn() }
+func IsSabbath() bool {
+	return sabbathCheck()
+}
 
 // CheckRhythm evaluates whether a tool call is permitted at the gateway level.
 // This mirrors the enforcement in the Rust Steward but runs first at the Go
 // boundary so callers get an early rejection without spending a round-trip.
 func CheckRhythm(tool, agentID string) RhythmDecision {
-	if sabbathFn() && irreversibleTools[tool] {
+	if IsSabbath() && irreversibleTools[tool] {
 		return RhythmSabbath
 	}
 

@@ -1,92 +1,186 @@
+"""
+Ògún Executor — Ọmọ Kọ́dà Tool Execution Engine
+
+The Steward (Èṣù) calls this executor to run tools inside the WASM sandbox
+and route LLM requests based on the agent's privacy mode.
+
+Privacy enforcement (non-negotiable):
+- PUBLIC: any provider allowed
+- PRIVATE / INCOGNITO: hard fail if provider is not WebLLM or Ollama
+  Never silently reroute to an external provider.
+
+Three primitives only: birth, think, act — no others.
+"""
+
 from __future__ import annotations
-import enum
+
 import logging
-from typing import Any, Optional
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# --- Constants ---
 
-class PrivacyMode(enum.Enum):
+LOCAL_PROVIDERS = frozenset({"webllm", "ollama"})
+
+TIER_TOOLS: dict[int, frozenset[str]] = {
+    0: frozenset({"web_search", "note_taking", "read_file", "glob", "grep"}),
+    1: frozenset({"web_search", "note_taking", "read_file", "glob", "grep", "image_gen_basic"}),
+    2: frozenset({"web_search", "note_taking", "read_file", "glob", "grep",
+                  "image_gen_basic", "code_runner", "bash"}),
+    3: frozenset({"web_search", "note_taking", "read_file", "glob", "grep",
+                  "image_gen_basic", "code_runner", "bash", "data_analysis", "api_connect"}),
+    4: frozenset({"web_search", "note_taking", "read_file", "glob", "grep",
+                  "image_gen_basic", "code_runner", "bash", "data_analysis", "api_connect",
+                  "agent_orchestration"}),
+    5: frozenset({"web_search", "note_taking", "read_file", "glob", "grep",
+                  "image_gen_basic", "code_runner", "bash", "data_analysis", "api_connect",
+                  "agent_orchestration", "self_modification", "multi_agent_fabric"}),
+}
+
+
+class PrivacyMode(Enum):
     PUBLIC = "public"
     PRIVATE = "private"
     INCOGNITO = "incognito"
 
 
-_LOCAL_PROVIDERS = {"webllm", "ollama", "local"}
+class ExecutionError(Exception):
+    pass
 
 
-class PrivacyViolationError(RuntimeError):
-    """Raised when a private/incognito agent is routed to an external provider."""
+class PrivacyViolation(ExecutionError):
+    """Raised when a /private or INCOGNITO request is routed to an external provider."""
 
 
-class OgunExecutor:
-    """Ògún tool executor with privacy routing, tier gating, and synapse cost tracking."""
+class TierViolation(ExecutionError):
+    """Raised when a tool is not available at the agent's current tier."""
 
-    def __init__(self, agent_id: str, tier: int = 0, privacy_mode: PrivacyMode = PrivacyMode.PUBLIC):
-        self.agent_id = agent_id
+
+# --- Result types ---
+
+@dataclass
+class ToolResult:
+    success: bool
+    output: str
+    synapse_burned: int
+    tee_sealed: bool = False
+    error: Optional[str] = None
+
+
+# --- Executor ---
+
+class ÒgúnExecutor:
+    """
+    Tool execution engine for the Ọmọ Kọ́dà Agent OS.
+
+    Responsibilities:
+    - Enforce tier-based tool access
+    - Route LLM calls through the correct provider
+    - Hard-fail on privacy violations (never silently reroute)
+    - Compute and burn Synapse cost before execution
+    """
+
+    def __init__(
+        self,
+        tier: int,
+        privacy_mode: PrivacyMode = PrivacyMode.PUBLIC,
+        provider: str = "ollama",
+    ) -> None:
+        if tier not in range(6):
+            raise ValueError(f"Invalid tier {tier}: must be 0–5")
         self.tier = tier
         self.privacy_mode = privacy_mode
+        self.provider = provider.lower()
 
-    def execute_tool(self, tool_name: str, params: dict[str, Any], provider: str = "webllm") -> dict[str, Any]:
-        """Execute a tool after tier and privacy checks."""
-        if not self._tier_allowed(tool_name):
-            return {"error": f"tool '{tool_name}' not allowed at tier {self.tier}"}
+    # --- Public API (called by the Steward) ---
 
-        self._check_privacy_routing(provider)
-
-        synapse_cost = self._compute_synapse_cost(tool_name)
-        logger.info(
-            "[OgunExecutor] agent=%s tool=%s tier=%d provider=%s cost=%d",
-            self.agent_id, tool_name, self.tier, provider, synapse_cost,
+    def execute_tool(self, tool: str, params: dict) -> ToolResult:
+        """Execute a tool after enforcing tier and Synapse constraints."""
+        self._check_tier_allowed(tool)
+        synapse_cost = self._compute_synapse_cost(tool)
+        result = self._dispatch(tool, params)
+        return ToolResult(
+            success=result.success,
+            output=result.output,
+            synapse_burned=synapse_cost,
+            tee_sealed=result.tee_sealed,
+            error=result.error,
         )
 
-        if self.privacy_mode == PrivacyMode.INCOGNITO:
-            return self._execute_no_log(tool_name, params, synapse_cost)
-        return self._execute(tool_name, params, synapse_cost)
+    def execute_think(self, prompt: str, private: bool = False) -> ToolResult:
+        """Route a think call to the appropriate provider."""
+        if private or self.privacy_mode in (PrivacyMode.PRIVATE, PrivacyMode.INCOGNITO):
+            self._enforce_local_provider()
 
-    def _check_privacy_routing(self, provider: str) -> None:
-        """Hard-fail if private/incognito is routed to an external provider."""
-        if self.privacy_mode in (PrivacyMode.PRIVATE, PrivacyMode.INCOGNITO):
-            if provider.lower() not in _LOCAL_PROVIDERS:
-                raise PrivacyViolationError(
-                    f"/private mode requires a local provider (webllm/ollama); "
-                    f"'{provider}' is external. Hard fail — no silent reroute."
-                )
+        # In INCOGNITO mode: no logging of prompt or output
+        log_prompt = "[redacted]" if self.privacy_mode == PrivacyMode.INCOGNITO else prompt
 
-    def _tier_allowed(self, tool_name: str) -> bool:
-        tier_tools = {
-            0: {"web_search", "note_taking", "read_file", "glob", "grep"},
-            1: {"web_search", "note_taking", "read_file", "glob", "grep", "image_gen_basic"},
-            2: {"web_search", "note_taking", "read_file", "glob", "grep", "image_gen_basic", "code_runner", "bash"},
-        }
-        allowed = set()
-        for t in range(min(self.tier + 1, 3)):
-            allowed |= tier_tools.get(t, set())
-        if self.tier >= 3:
-            allowed |= {"data_analysis", "api_connect"}
-        if self.tier >= 4:
-            allowed |= {"agent_orchestration"}
-        if self.tier >= 5:
-            allowed |= {"self_modification", "multi_agent_fabric"}
-        return tool_name in allowed
+        logger.info("think: provider=%s prompt=%s", self.provider, log_prompt)
 
-    def _compute_synapse_cost(self, tool_name: str) -> int:
-        base_costs = {
-            "web_search": 10,
-            "bash": 50,
-            "code_runner": 30,
+        # Stub: actual LLM call would go here
+        return ToolResult(
+            success=True,
+            output=f"[think via {self.provider}]",
+            synapse_burned=8,
+        )
+
+    # --- Internal ---
+
+    def _check_tier_allowed(self, tool: str) -> None:
+        allowed = TIER_TOOLS.get(self.tier, frozenset())
+        if tool not in allowed:
+            raise TierViolation(
+                f"Tool '{tool}' is not available at tier {self.tier}. "
+                f"Available tools: {sorted(allowed)}"
+            )
+
+    def _compute_synapse_cost(self, tool: str) -> int:
+        base_costs: dict[str, int] = {
+            "web_search": 40,
+            "note_taking": 10,
+            "read_file": 20,
+            "glob": 15,
+            "grep": 15,
+            "image_gen_basic": 60,
+            "code_runner": 80,
+            "bash": 100,
+            "data_analysis": 120,
+            "api_connect": 80,
             "agent_orchestration": 200,
             "self_modification": 500,
+            "multi_agent_fabric": 400,
         }
-        return base_costs.get(tool_name, 5)
+        return base_costs.get(tool, 50)
 
-    def _execute(self, tool_name: str, params: dict, synapse_cost: int) -> dict:
-        return {"tool": tool_name, "params": params, "synapse_cost": synapse_cost, "status": "ok"}
+    def _enforce_local_provider(self) -> None:
+        """Hard fail if the provider is not a local model runner."""
+        if self.provider not in LOCAL_PROVIDERS:
+            raise PrivacyViolation(
+                f"Privacy violation: /private and INCOGNITO modes require a local provider "
+                f"(webllm or ollama). Requested provider '{self.provider}' is external. "
+                "Refusing to escalate. Use a local model or switch to PUBLIC mode."
+            )
 
-    def _execute_no_log(self, tool_name: str, params: dict, synapse_cost: int) -> dict:
-        # INCOGNITO: execute without logging
-        return {"tool": tool_name, "synapse_cost": synapse_cost, "status": "ok"}
+    def _dispatch(self, tool: str, params: dict) -> ToolResult:
+        """Dispatch tool to the appropriate runtime stub."""
+        # TEE stub for sensitive operations
+        if self.privacy_mode in (PrivacyMode.PRIVATE, PrivacyMode.INCOGNITO):
+            return self._tee_execute_stub(tool, params)
+        return ToolResult(
+            success=True,
+            output=f"[{tool}] executed with params={params}",
+            synapse_burned=0,
+        )
 
-    def _tee_execute_stub(self, tool_name: str, params: dict) -> dict:
-        """Placeholder for TEE integration via nautilus_integration."""
-        return {"tool": tool_name, "tee": True, "status": "stub"}
+    def _tee_execute_stub(self, tool: str, params: dict) -> ToolResult:
+        """Placeholder for Nautilus TEE execution. Seals output inside enclave."""
+        logger.info("tee_execute: tool=%s (TEE stub — replace with Nautilus SDK call)", tool)
+        return ToolResult(
+            success=True,
+            output=f"[TEE:{tool}] sealed output",
+            synapse_burned=0,
+            tee_sealed=True,
+        )

@@ -1,89 +1,168 @@
+/**
+ * RustRpcClient — WebSocket bridge to the Ọmọ Kọ́dà Steward (Rust backend).
+ *
+ * All three primitives (birth / think / act) are routed through this client.
+ * Privacy mode changes are sent before the next think/act call.
+ *
+ * Three primitives only — no other methods on this interface.
+ */
+
+export type PrivacyMode = 'public' | 'private' | 'incognito';
+
+export interface BirthParams {
+  name: string;
+  metadata?: Record<string, string>;
+}
+
+export interface ThinkOptions {
+  private?: boolean;
+  provider?: string;
+}
+
+export interface ActOptions {
+  sandbox?: boolean;
+}
+
 export interface BirthReceipt {
   agent_id: string;
+  name: string;
   birth_timestamp: number;
+  mnemonic: string;
+  dna_fingerprint: string;
+  tier: number;
+  reputation: number;
+  synapse_balance: number;
+  pet: string;
 }
 
 export interface ThoughtReceipt {
-  thought_id: string;
-  hermetic_score: number;
+  thought: string;
+  reputation_delta: number;
+  synapse_burned: number;
+  provider: string;
+  private: boolean;
 }
 
 export interface ActReceipt {
-  act_id: string;
   tool: string;
-  quality: string;
-  synapse_cost: number;
+  output: string;
+  success: boolean;
+  reputation_delta: number;
+  synapse_burned: number;
+  sandboxed: boolean;
 }
 
-type Resolve<T> = (value: T) => void;
-type Reject = (reason: unknown) => void;
-
-interface PendingRequest<T = unknown> {
-  resolve: Resolve<T>;
-  reject: Reject;
+interface PendingRequest {
+  resolve: (value: unknown) => void;
+  reject: (reason: unknown) => void;
   timer: ReturnType<typeof setTimeout>;
 }
 
-let _nextId = 1;
-
 export class RustRpcClient {
-  private ws: WebSocket;
+  private ws: WebSocket | null = null;
   private pending = new Map<string, PendingRequest>();
-  private privacyMode: "public" | "private" | "incognito" = "public";
+  private reqCounter = 0;
+  private privacyMode: PrivacyMode = 'public';
 
-  constructor(url: string) {
-    this.ws = new WebSocket(url);
-    this.ws.addEventListener("message", (ev) => this.handleMessage(ev));
+  constructor(private readonly url: string = 'ws://localhost:8765') {}
+
+  private getSocket(): WebSocket {
+    if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
+      this.ws = new WebSocket(this.url);
+      this.ws.onmessage = (event) => this.handleMessage(event);
+      this.ws.onclose = () => {
+        this.pending.forEach((req, id) => {
+          req.reject(new Error('WebSocket closed'));
+          clearTimeout(req.timer);
+          this.pending.delete(id);
+        });
+      };
+    }
+    return this.ws;
   }
 
-  birth(params: { name: string; metadata?: Record<string, string> }): Promise<BirthReceipt> {
-    return this.sendRequest<BirthReceipt>("birth", params);
+  private handleMessage(event: MessageEvent): void {
+    try {
+      const msg = JSON.parse(event.data as string);
+      const req = this.pending.get(msg.id);
+      if (!req) return;
+      clearTimeout(req.timer);
+      this.pending.delete(msg.id);
+      if (msg.error) {
+        req.reject(new Error(msg.error));
+      } else {
+        req.resolve(msg.result);
+      }
+    } catch {
+      // Malformed message — ignore
+    }
   }
 
-  think(prompt: string, options?: { private?: boolean }): Promise<ThoughtReceipt> {
-    return this.sendRequest<ThoughtReceipt>("think", { prompt, ...options });
-  }
-
-  act(tool: string, args: Record<string, unknown>, options?: { sandbox?: boolean }): Promise<ActReceipt> {
-    return this.sendRequest<ActReceipt>("act", { tool, params: JSON.stringify(args), ...options });
-  }
-
-  setPrivacyMode(mode: "public" | "private" | "incognito"): Promise<void> {
-    this.privacyMode = mode;
-    return this.sendRequest<void>("set_privacy_mode", { mode });
-  }
-
-  forget(): Promise<void> {
-    return this.sendRequest<void>("forget", {});
-  }
-
-  private sendRequest<T>(method: string, params: unknown, timeoutMs = 30_000): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-      const id = String(_nextId++);
+  private sendRequest(method: string, params: unknown, timeoutMs = 30_000): Promise<unknown> {
+    const id = String(++this.reqCounter);
+    return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`RPC timeout: ${method}`));
+        reject(new Error(`Request timed out: ${method}`));
       }, timeoutMs);
-      this.pending.set(id, { resolve: resolve as Resolve<unknown>, reject, timer });
-      this.ws.send(JSON.stringify({ id, method, params }));
+
+      this.pending.set(id, { resolve, reject, timer });
+
+      const socket = this.getSocket();
+      const send = () => socket.send(JSON.stringify({ id, method, params }));
+
+      if (socket.readyState === WebSocket.OPEN) {
+        send();
+      } else {
+        socket.addEventListener('open', send, { once: true });
+      }
     });
   }
 
-  private handleMessage(ev: MessageEvent): void {
-    let msg: { id: string; result?: unknown; error?: string };
-    try {
-      msg = JSON.parse(ev.data as string);
-    } catch {
-      return;
-    }
-    const pending = this.pending.get(msg.id);
-    if (!pending) return;
-    clearTimeout(pending.timer);
-    this.pending.delete(msg.id);
-    if (msg.error) {
-      pending.reject(new Error(msg.error));
-    } else {
-      pending.resolve(msg.result);
-    }
+  // --- The Three Primitives ---
+
+  async birth(params: BirthParams): Promise<BirthReceipt> {
+    return this.sendRequest('birth', params) as Promise<BirthReceipt>;
+  }
+
+  async think(prompt: string, options: ThinkOptions = {}): Promise<ThoughtReceipt> {
+    return this.sendRequest('think', {
+      prompt,
+      private: options.private ?? (this.privacyMode !== 'public'),
+      provider: options.provider,
+    }) as Promise<ThoughtReceipt>;
+  }
+
+  async act(tool: string, args: Record<string, unknown>, options: ActOptions = {}): Promise<ActReceipt> {
+    return this.sendRequest('act', {
+      tool,
+      args,
+      sandbox: options.sandbox ?? true,
+    }) as Promise<ActReceipt>;
+  }
+
+  // --- Privacy control ---
+
+  async setPrivacyMode(mode: PrivacyMode): Promise<void> {
+    this.privacyMode = mode;
+    await this.sendRequest('set_privacy_mode', { mode });
+  }
+
+  getPrivacyMode(): PrivacyMode {
+    return this.privacyMode;
+  }
+
+  // --- Memory ---
+
+  async forget(): Promise<void> {
+    await this.sendRequest('forget', {});
+  }
+
+  // --- Lifecycle ---
+
+  close(): void {
+    this.ws?.close();
   }
 }
+
+export const rpcClient = new RustRpcClient();

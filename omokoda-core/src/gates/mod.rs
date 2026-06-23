@@ -121,8 +121,7 @@ impl HermeticPrinciple {
             3 => Self::Polarity,
             4 => Self::Rhythm,
             5 => Self::CauseAndEffect,
-            6 => Self::Gender,
-            _ => panic!("invalid gate index {}", i),
+            _ => Self::Gender,
         }
     }
 

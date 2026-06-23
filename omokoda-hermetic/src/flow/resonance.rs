@@ -50,7 +50,7 @@ impl ResonanceEngine {
         let now = Utc::now();
         let hour = now.hour() as f64;
         // Peak resonance at noon (hour 12), trough at midnight
-        let hour_factor = 1.0 + 0.2 * ((hour - 12.0) / 12.0 * std::f64::consts::PI).cos() * 0.0;
+        let hour_factor = 1.0 + 0.2 * ((hour - 12.0) / 12.0 * std::f64::consts::PI).cos();
         // Just normalize: 0.8 to 1.2 across the day
         let normalized = 0.8 + 0.4 * (hour / 24.0);
         (hour_factor * normalized).clamp(0.8, 1.2)

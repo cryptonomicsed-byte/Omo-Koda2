@@ -19,6 +19,7 @@ pub trait AgentPlugin: Send + Sync {
     async fn on_settle(&self, result: &ExecutionResult);
 }
 
+#[derive(Default)]
 pub struct HookManager {
     plugins: Vec<Box<dyn AgentPlugin>>,
 }

@@ -144,7 +144,8 @@ pub fn difficulty(reputation: f64) -> f64 {
     if reputation < 80.0 {
         1.0 / (1.0 + (reputation / 25.0))
     } else {
-        let bb_compression = 107.0 / 47_176_870.0_f64.powf((reputation - 80.0) / 20.0);
+        let bb_compression =
+            (107.0 / 47_176_870.0_f64.powf((reputation - 80.0) / 20.0)).max(f64::EPSILON);
         1.0 / (1.0 + (reputation / 25.0)) * bb_compression
     }
 }
@@ -191,14 +192,25 @@ fn tool_slice_for_tier(tier: u8) -> &'static [&'static str] {
     }
 }
 
+// --- Safeguards added to support daily action caps and 7-day tier promotion gates ---
+
 pub const MAX_ACTIONS_PER_DAY: u32 = 50;
 pub const MIN_DAYS_BETWEEN_PROMOTIONS: u64 = 7;
 pub const DIMINISHING_RETURNS_BASE: f64 = 0.995;
 
+/// Returns the multiplier applied to reputation gain based on how many actions
+/// the agent has already taken today. The 50th action gets ~0.778x; beyond the
+/// cap (`MAX_ACTIONS_PER_DAY`) the gain is 0.0.
 pub fn daily_gain_multiplier(actions_today: u32) -> f64 {
+    if actions_today >= MAX_ACTIONS_PER_DAY {
+        return 0.0;
+    }
     DIMINISHING_RETURNS_BASE.powi(actions_today as i32)
 }
 
+/// Returns true if the agent is eligible for tier promotion.
+/// An agent that has never been promoted is always eligible.
+/// After a promotion, the agent must wait at least 7 days before the next one.
 pub fn can_promote_tier(last_promotion: Option<DateTime<Utc>>) -> bool {
     match last_promotion {
         None => true,

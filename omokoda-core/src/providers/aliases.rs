@@ -1,5 +1,6 @@
-/// Model alias resolution — maps friendly shorthand to canonical provider model IDs.
-/// Upgrades happen in one place, not scattered across configs.
+//! Model alias resolution — maps friendly shorthand to canonical provider model IDs.
+//! Upgrades happen in one place, not scattered across configs.
+
 /// Canonical Anthropic model IDs as of the current knowledge cutoff.
 pub const ANTHROPIC_OPUS: &str = "claude-opus-4-7";
 pub const ANTHROPIC_SONNET: &str = "claude-sonnet-4-6";

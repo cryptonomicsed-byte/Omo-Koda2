@@ -8,6 +8,7 @@ use crate::sandbox::WasmSandbox;
 
 pub mod config_tool;
 pub mod file_ops;
+pub mod python_bridge;
 pub mod repl;
 pub mod retry;
 pub mod sovereign;
@@ -160,6 +161,11 @@ impl ToolRegistry {
         registry.register(Box::new(config_tool::ConfigReadTool));
         registry.register(Box::new(config_tool::ConfigWriteTool));
 
+        // Python-backed tools (Ògún / Execution layer on :7779)
+        registry.register(Box::new(python_bridge::web_search_py()));
+        registry.register(Box::new(python_bridge::code_runner()));
+        registry.register(Box::new(python_bridge::data_analysis()));
+        registry.register(Box::new(python_bridge::cosmos()));
         registry
     }
 

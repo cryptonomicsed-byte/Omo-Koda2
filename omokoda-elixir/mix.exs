@@ -5,9 +5,16 @@ defmodule Yemoja.MixProject do
     [
       app: :yemoja,
       version: "0.1.0",
-      elixir: "~> 1.14",
+      elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      test_coverage: [tool: ExCoveralls],
+      preferred_cli_env: [
+        coveralls: :test,
+        "coveralls.detail": :test,
+        "coveralls.post": :test,
+        "coveralls.html": :test
+      ]
     ]
   end
 
@@ -19,6 +26,9 @@ defmodule Yemoja.MixProject do
   end
 
   defp deps do
-    []
+    [
+      {:grpc, "~> 0.8"},
+      {:protobuf, "~> 0.13"}
+    ]
   end
 end

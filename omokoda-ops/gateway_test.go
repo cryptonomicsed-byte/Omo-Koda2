@@ -19,10 +19,12 @@ func TestRhythmAllow(t *testing.T) {
 
 // TestRhythmCooldown verifies repeated bash calls are rate-limited.
 func TestRhythmCooldown(t *testing.T) {
-	// Disable Sabbath gate so cooldown logic is reachable on any day of the week.
-	sabbathFn = func() bool { return false }
-	t.Cleanup(func() { sabbathFn = func() bool { return time.Now().UTC().Weekday() == time.Saturday } })
+	// Override Sabbath so bash is never blocked by day-of-week during tests.
+	orig := sabbathCheck
+	sabbathCheck = func() bool { return false }
+	defer func() { sabbathCheck = orig }()
 
+	// Reset tracker for this test.
 	tracker.mu.Lock()
 	tracker.lastUsed = make(map[string]time.Time)
 	tracker.mu.Unlock()
@@ -39,8 +41,9 @@ func TestRhythmCooldown(t *testing.T) {
 
 // TestRhythmCooldownPerAgent verifies cooldowns are per-agent, not global.
 func TestRhythmCooldownPerAgent(t *testing.T) {
-	sabbathFn = func() bool { return false }
-	t.Cleanup(func() { sabbathFn = func() bool { return time.Now().UTC().Weekday() == time.Saturday } })
+	orig := sabbathCheck
+	sabbathCheck = func() bool { return false }
+	defer func() { sabbathCheck = orig }()
 
 	tracker.mu.Lock()
 	tracker.lastUsed = make(map[string]time.Time)

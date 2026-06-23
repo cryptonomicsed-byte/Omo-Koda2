@@ -1,13 +1,6 @@
-pub mod vm {
-    pub fn eval(_input: &str) -> String { String::new() }
-}
-pub mod odu {
-    pub const ODU_TABLE: &[(&str, u8)] = &[];
-    pub fn lookup(_name: &str) -> Option<u8> { None }
-}
-pub mod entropy {
-    pub fn generate(_seed: &[u8]) -> Vec<u8> { vec![] }
-}
-pub mod ebo {
-    pub fn cast(_odu: u8) -> &'static str { "" }
-}
+/// IfáScript vendored CI stub.
+///
+/// Used in CI when omo-koda/ifascript is not compilable.
+/// API is kept compatible with what omokoda-core and omokoda-hermetic expect.
+
+pub mod odu;

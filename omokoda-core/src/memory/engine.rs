@@ -109,7 +109,6 @@ impl MemoryEngine {
 
         // Distill the overflow (entries beyond capacity) into semantic patterns
         let overflow = episodic.split_off(self.episodic_capacity);
-
         self.distill_to_semantic(&overflow)
     }
 

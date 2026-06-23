@@ -3,9 +3,13 @@ members = [
     "omokoda-core",
     "omokoda-hermetic",
     "omokoda-cli",
-    "bipon39-stub",
-    "ifascript-stub",
     "nautilus_integration",
     "nist_entropy",
 ]
 resolver = "2"
+
+[profile.dev]
+debug = 0
+strip = "debuginfo"
+split-debuginfo = "off"
+incremental = false

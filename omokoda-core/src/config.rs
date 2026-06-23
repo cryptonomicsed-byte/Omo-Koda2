@@ -31,6 +31,8 @@ pub struct FeatureFlags {
     pub auto_receipts: bool,
     /// Maximum agentic loop iterations for think_agentic (default: 25)
     pub max_agentic_turns: u32,
+    /// Sync vault after each think/broadcast (default: false)
+    pub auto_export: bool,
 }
 
 impl Default for FeatureFlags {
@@ -43,6 +45,7 @@ impl Default for FeatureFlags {
             hooks_enabled: true,
             auto_receipts: true,
             max_agentic_turns: 25,
+            auto_export: false,
         }
     }
 }
@@ -168,6 +171,9 @@ fn merge_config(
         }
         if let Some(v) = ff["max_agentic_turns"].as_u64() {
             base.feature_flags.max_agentic_turns = v as u32;
+        }
+        if let Some(v) = ff["auto_export"].as_bool() {
+            base.feature_flags.auto_export = v;
         }
     }
     base

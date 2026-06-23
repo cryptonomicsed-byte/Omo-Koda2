@@ -213,6 +213,8 @@ pub struct AgentSnapshot {
     pub synapse: f64,
     pub last_active_timestamp: u64,
     pub act_counter: u64,
+    #[serde(default)]
+    pub mesh: Option<omokoda_mesh::state::MeshState>,
 }
 
 #[derive(Debug, Clone)]
@@ -566,6 +568,7 @@ impl Steward {
             synapse,
             last_active_timestamp: birth_timestamp,
             act_counter: 0,
+            mesh: None,
         };
         let mut core = AgentCore::from_snapshot(snapshot, k_root);
         core.private_data = Some(private_data);
@@ -755,6 +758,10 @@ impl Steward {
                     return Err(format!("unknown provider '{}' in birth metadata", provider));
                 }
                 self.auto_save();
+
+                // Write broadcast template to vault on birth
+                let agent_id_for_vault = agent.id().as_str().to_string();
+                let _ = crate::vault::write_broadcast_template(&agent_id_for_vault);
 
                 // Publish AgentBorn event
                 let event = SovereignEvent {
@@ -980,6 +987,18 @@ impl Steward {
                 let _ = self.event_bus.publish(event);
 
                 self.auto_save();
+
+                // Auto-export: if vault config has auto_export=true, append thought to traces
+                if let Some(agent) = self.agent_core() {
+                    let agent_id = agent.id().as_str().to_string();
+                    let cfg = crate::vault::load_vault_config(&agent_id);
+                    if cfg.auto_export {
+                        let export_content = response.clone();
+                        tokio::spawn(async move {
+                            let _ = crate::vault::vault_sync(&agent_id, &export_content);
+                        });
+                    }
+                }
 
                 Ok(ExecutionResult {
                     receipt: Some(receipt),
@@ -1263,6 +1282,23 @@ impl Steward {
                     })),
                 };
                 let _ = self.event_bus.publish(event);
+
+                // Zàngbétò enforcement audit
+                {
+                    let state_bytes = hex::decode(&receipt.merkle_root).unwrap_or_default();
+                    let audit = zangbeto_enforcement::audit_state(&state_bytes);
+                    if audit.passed {
+                        let audit_event = SovereignEvent {
+                            event: Some(sovereign_event::Event::AuditPassed(
+                                crate::bus::events::AuditPassed {
+                                    receipt_id: audit.receipt_id,
+                                    zangbeto_sig: audit.sig,
+                                },
+                            )),
+                        };
+                        let _ = self.event_bus.publish(audit_event);
+                    }
+                }
 
                 self.auto_save();
 

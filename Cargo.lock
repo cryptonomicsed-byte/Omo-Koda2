@@ -2833,6 +2833,7 @@ dependencies = [
  "ifascript",
  "jsonschema",
  "omokoda-hermetic",
+ "omokoda-mesh",
  "pbkdf2",
  "prost",
  "prost-build",
@@ -2859,6 +2860,7 @@ dependencies = [
  "wasmtime",
  "wasmtime-wasi",
  "wat",
+ "zangbeto-enforcement",
  "zeroize",
 ]
 
@@ -2871,6 +2873,22 @@ dependencies = [
  "hkdf",
  "serde",
  "sha2",
+]
+
+[[package]]
+name = "omokoda-mesh"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "blake3",
+ "chrono",
+ "ed25519-dalek",
+ "hex",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -4525,6 +4543,7 @@ checksum = "d258b83ceec21034727ecee8c382cfa6c3e133699b0742c64571814fb420c9f7"
 dependencies = [
  "getrandom 0.4.2",
  "js-sys",
+ "serde_core",
  "wasm-bindgen",
 ]
 
@@ -5672,6 +5691,14 @@ dependencies = [
  "quote",
  "syn",
  "synstructure",
+]
+
+[[package]]
+name = "zangbeto-enforcement"
+version = "0.1.0"
+dependencies = [
+ "sha2",
+ "uuid",
 ]
 
 [[package]]

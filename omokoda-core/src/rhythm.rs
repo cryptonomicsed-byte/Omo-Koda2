@@ -1,4 +1,29 @@
 use chrono::{Datelike, Timelike, Utc, Weekday};
+use serde_json::Value;
+
+// ─── Kóòdù Daily Resonance ────────────────────────────────────────────────────
+
+const KOODU_SUNDAY: &str = include_str!("koodu/sunday.json");
+const KOODU_MONDAY: &str = include_str!("koodu/monday.json");
+const KOODU_TUESDAY: &str = include_str!("koodu/tuesday.json");
+const KOODU_WEDNESDAY: &str = include_str!("koodu/wednesday.json");
+const KOODU_THURSDAY: &str = include_str!("koodu/thursday.json");
+const KOODU_FRIDAY: &str = include_str!("koodu/friday.json");
+const KOODU_SATURDAY: &str = include_str!("koodu/saturday.json");
+
+/// Returns today's Kóòdù resonance JSON parsed as a serde_json::Value.
+pub fn today_resonance() -> Value {
+    let raw = match Utc::now().weekday() {
+        Weekday::Sun => KOODU_SUNDAY,
+        Weekday::Mon => KOODU_MONDAY,
+        Weekday::Tue => KOODU_TUESDAY,
+        Weekday::Wed => KOODU_WEDNESDAY,
+        Weekday::Thu => KOODU_THURSDAY,
+        Weekday::Fri => KOODU_FRIDAY,
+        Weekday::Sat => KOODU_SATURDAY,
+    };
+    serde_json::from_str(raw).unwrap_or(serde_json::json!({"error": "parse failed"}))
+}
 
 /// Irreversible action categories that must pause on Sabbath.
 #[derive(Debug, Clone, PartialEq, Eq)]

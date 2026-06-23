@@ -21,7 +21,7 @@ func NewService(limiter *ratelimit.Limiter) *FlowService {
 // Returns nil on allow, or an error message on deny.
 func (s *FlowService) EnforceFlow(agentID string, tier int) error {
 	if isSabbath() {
-		return fmt.Errorf("rhythm_constraint: Sunday 00:00-01:00 UTC — Sabbath gate active, no actions allowed")
+		return fmt.Errorf("rhythm_constraint: Saturday 00:00-01:00 UTC — Sabbath gate active, no actions allowed")
 	}
 	if !s.limiter.Allow(agentID, tier) {
 		return fmt.Errorf("rate_limit_exceeded: tier %d limit reached for agent %s", tier, agentID)
@@ -29,10 +29,10 @@ func (s *FlowService) EnforceFlow(agentID string, tier int) error {
 	return nil
 }
 
-// isSabbath returns true during UTC Sunday 00:00–01:00 (ritual-codex Sabbath enforcement).
+// isSabbath returns true during UTC Saturday 00:00–01:00 (ritual-codex Sabbath enforcement).
 func isSabbath() bool {
 	now := time.Now().UTC()
-	return now.Weekday() == time.Sunday && now.Hour() == 0
+	return now.Weekday() == time.Saturday && now.Hour() == 0
 }
 
 // Serve listens for simple text commands on a TCP socket (proto stub).

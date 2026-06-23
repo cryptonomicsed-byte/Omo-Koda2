@@ -31,6 +31,7 @@ using HTTP
 using JSON3
 push!(LOAD_PATH, joinpath(@__DIR__, "src"))
 using OmokodaMemory
+using Statistics
 
 # ---------------------------------------------------------------------------
 # Config
@@ -47,6 +48,10 @@ const VERSION = "0.1.0"
 
 # Global in-memory DAG (resets on restart; production would persist to Walrus)
 const GLOBAL_DAG = Ref(MemoryDAG())
+
+include(joinpath(@__DIR__, "src", "mesh_analytics.jl"))
+include(joinpath(@__DIR__, "src", "vantage_bridge.jl"))
+include(joinpath(@__DIR__, "src", "soma_bridge.jl"))
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -283,6 +288,55 @@ function handle_garden_feed(req::HTTP.Request)
 end
 
 # ---------------------------------------------------------------------------
+# Mesh analytics handlers
+# ---------------------------------------------------------------------------
+
+function handle_mesh_correlations(req::HTTP.Request)
+    body = parse_body(req)
+    block_id = string(get(body, "block_id", "local"))
+    window = Int(get(body, "window", 7))
+    findings = mesh_correlations(block_id, window, GLOBAL_DAG[])
+    json_ok(Dict(
+        "block_id" => block_id,
+        "window_days" => window,
+        "findings" => [Dict(
+            "agent_a" => f.agent_a,
+            "agent_b" => f.agent_b,
+            "correlation" => f.correlation,
+        ) for f in findings],
+    ))
+end
+
+function handle_mesh_forecast(req::HTTP.Request)
+    body = parse_body(req)
+    resource_id = string(get(body, "resource_id", "unknown"))
+    horizon = Int(get(body, "horizon", 7))
+    history = Float64.(get(body, "history", Float64[]))
+    result = mesh_demand_forecast(resource_id, horizon, history)
+    json_ok(Dict(
+        "resource_id" => result.resource_id,
+        "horizon_days" => result.horizon_days,
+        "predictions" => result.predictions,
+        "confidence" => result.confidence,
+    ))
+end
+
+function handle_mesh_reliability(req::HTTP.Request)
+    body = parse_body(req)
+    agent_id = string(get(body, "agent_id", "unknown"))
+    receipt_log = get(body, "receipt_log", [])
+    parsed = [Dict{String,Any}(string(k) => v for (k, v) in r) for r in receipt_log]
+    report = mesh_agent_reliability(agent_id, parsed)
+    json_ok(Dict(
+        "agent_id" => report.agent_id,
+        "commitments_analyzed" => report.commitments_analyzed,
+        "fulfillment_rate" => report.fulfillment_rate,
+        "mean_latency_secs" => report.mean_latency_secs,
+        "reliability_score" => report.reliability_score,
+    ))
+end
+
+# ---------------------------------------------------------------------------
 # Router
 # ---------------------------------------------------------------------------
 
@@ -306,6 +360,18 @@ HTTP.register!(ROUTER, "POST", "/optimize/reliability",handle_reliability)
 
 HTTP.register!(ROUTER, "POST", "/garden/analyse",      handle_garden_analyse)
 HTTP.register!(ROUTER, "POST", "/garden/feed",         handle_garden_feed)
+
+HTTP.register!(ROUTER, "POST", "/mesh/correlations",   handle_mesh_correlations)
+HTTP.register!(ROUTER, "POST", "/mesh/forecast",       handle_mesh_forecast)
+HTTP.register!(ROUTER, "POST", "/mesh/reliability",    handle_mesh_reliability)
+
+HTTP.register!(ROUTER, "POST", "/vantage/ingest",      handle_vantage_ingest)
+HTTP.register!(ROUTER, "POST", "/vantage/similar",     handle_vantage_similar)
+HTTP.register!(ROUTER, "POST", "/vantage/predict",     handle_vantage_predict)
+HTTP.register!(ROUTER, "POST", "/vantage/patterns",    handle_vantage_patterns)
+
+HTTP.register!(ROUTER, "POST", "/soma/store",          handle_soma_store)
+HTTP.register!(ROUTER, "POST", "/soma/reconstruct",    handle_soma_reconstruct)
 
 # ---------------------------------------------------------------------------
 # Entry point

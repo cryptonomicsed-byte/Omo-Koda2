@@ -232,4 +232,10 @@ defmodule OmokodaSwarm.Coordinator do
 
     %{output: final_output}
   end
+
+  defp execute_strategy(:mesh, _state, task, agents) do
+    Logger.info("[COORDINATOR] Mesh strategy for task: #{task}")
+    block_id = agents |> List.first() |> Map.get(:block_id, "local")
+    OmokodaSwarm.Mesh.DiscoveryCoordinator.coordinate(task, agents, block_id)
+  end
 end

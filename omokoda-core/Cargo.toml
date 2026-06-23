@@ -30,6 +30,8 @@ urlencoding = "2.1"
 ed25519-dalek = "2.0"
 bipon39 = { path = "../bipon39-stub" }
 ifascript = { path = "../ifascript-stub" }
+zangbeto-enforcement = { path = "../zangbeto-stub" }
+omokoda-mesh = { path = "../omokoda-mesh" }
 omokoda-hermetic = { path = "../omokoda-hermetic" }
 glob = "0.3"
 walkdir = "2.3"

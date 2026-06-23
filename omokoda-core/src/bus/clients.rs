@@ -97,6 +97,18 @@ pub trait YemojaClient: Send + Sync {
     async fn spawn_agent(&self, role: &str, budget_synapse: f64) -> Result<String, String>;
     /// Query the live status of a spawned sub-agent by ID.
     async fn agent_status(&self, agent_id: &str) -> AgentStatus;
+    /// List agents currently online on a mesh block.
+    async fn mesh_presence(&self, block_id: &str) -> Vec<AgentPresence>;
+    /// Broadcast a mesh event to all agents on a block.
+    async fn mesh_broadcast(&self, block_id: &str, event: serde_json::Value) -> Result<(), String>;
+    /// Run a consensus proposal across all mesh agents on a block.
+    async fn mesh_consensus(
+        &self,
+        block_id: &str,
+        proposal: serde_json::Value,
+    ) -> Result<serde_json::Value, String>;
+    /// Hand off an agent to a different Elixir node.
+    async fn mesh_handoff(&self, agent_id: &str, target_node: &str) -> Result<(), String>;
 }
 
 /// Ògún (Python) client — tool execution and external integrations.
@@ -114,6 +126,15 @@ pub enum AgentStatus {
     Running,
     Complete,
     Failed,
+}
+
+/// Live presence record for a mesh agent on a block.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentPresence {
+    pub agent_id: String,
+    pub role: String,
+    pub status: String,
+    pub block_id: String,
 }
 
 // ─── Stub implementations (no-ops until real services are deployed) ──────────
@@ -201,6 +222,30 @@ impl YemojaClient for LocalYemojaStub {
     async fn agent_status(&self, _agent_id: &str) -> AgentStatus {
         AgentStatus::Idle
     }
+
+    async fn mesh_presence(&self, _block_id: &str) -> Vec<AgentPresence> {
+        vec![]
+    }
+
+    async fn mesh_broadcast(
+        &self,
+        _block_id: &str,
+        _event: serde_json::Value,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn mesh_consensus(
+        &self,
+        _block_id: &str,
+        _proposal: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        Ok(serde_json::json!({"consensus": "stub", "result": null}))
+    }
+
+    async fn mesh_handoff(&self, _agent_id: &str, _target_node: &str) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -210,6 +255,284 @@ impl OgunClient for LocalOgunStub {
             serde_json::to_string(&serde_json::json!({"stub": true, "tool": tool_name}))
                 .unwrap_or_default(),
         )
+    }
+}
+
+// ─── Shared reqwest client (connection-pooled, one instance for the process) ─
+
+fn http_client() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(reqwest::Client::new)
+}
+
+// ─── HttpOsunClient ── Ọ̀ṣun Julia memory service at OSUN_URL ────────────────
+
+/// HTTP implementation of OsunClient.
+/// Base URL read from `OSUN_URL` env var (e.g. `http://localhost:7778`).
+/// Falls back to empty SomaContext / no-op on network errors so callers are unaffected.
+pub struct HttpOsunClient {
+    base_url: String,
+}
+
+impl HttpOsunClient {
+    pub fn new(base_url: impl Into<String>) -> Self {
+        Self {
+            base_url: base_url.into(),
+        }
+    }
+}
+
+#[async_trait]
+impl OsunClient for HttpOsunClient {
+    async fn reconstruct_soma(
+        &self,
+        agent_id: &AgentId,
+        prompt: &str,
+        _emotion: &EmotionState,
+    ) -> SomaContext {
+        let url = format!("{}/soma/reconstruct", self.base_url);
+        let body = serde_json::json!({
+            "agent_id": agent_id.as_str(),
+            "prompt": prompt,
+        });
+        match http_client()
+            .post(&url)
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(3))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                resp.json::<SomaContext>().await.unwrap_or_default()
+            }
+            _ => SomaContext::new(),
+        }
+    }
+
+    async fn store_memcell(
+        &self,
+        agent_id: &AgentId,
+        text: &str,
+        _emotion: &EmotionState,
+        importance: f32,
+    ) {
+        let url = format!("{}/soma/store", self.base_url);
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let body = serde_json::json!({
+            "agent_id": agent_id.as_str(),
+            "text": text,
+            "importance": importance,
+            "timestamp": ts,
+        });
+        let _ = http_client()
+            .post(&url)
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(3))
+            .send()
+            .await;
+    }
+}
+
+// ─── HttpOyaClient ── Ọya Go rhythm service at OYA_URL ───────────────────────
+
+/// HTTP implementation of OyaClient.
+/// Base URL read from `OYA_URL` env var (e.g. `http://localhost:8080`).
+/// Fails open on network errors: `is_in_cooldown` returns false so execution is
+/// not blocked when the rhythm service is unavailable.
+pub struct HttpOyaClient {
+    base_url: String,
+}
+
+impl HttpOyaClient {
+    pub fn new(base_url: impl Into<String>) -> Self {
+        Self {
+            base_url: base_url.into(),
+        }
+    }
+}
+
+#[async_trait]
+impl OyaClient for HttpOyaClient {
+    async fn is_in_cooldown(&self, agent_id: &AgentId) -> bool {
+        let url = format!("{}/cooldown/{}", self.base_url, agent_id.as_str());
+        match http_client()
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(1))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<serde_json::Value>()
+                .await
+                .ok()
+                .and_then(|v| v.get("in_cooldown").and_then(|b| b.as_bool()))
+                .unwrap_or(false),
+            _ => false,
+        }
+    }
+
+    async fn record_primitive(&self, agent_id: &AgentId, primitive: &str) {
+        let url = format!("{}/record", self.base_url);
+        let body = serde_json::json!({
+            "agent_id": agent_id.as_str(),
+            "primitive": primitive,
+        });
+        let _ = http_client()
+            .post(&url)
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(1))
+            .send()
+            .await;
+    }
+}
+
+// ─── HttpYemojaClient ── Yemọja Elixir swarm at YEMOJA_URL ───────────────────
+
+/// HTTP implementation of YemojaClient.
+/// Base URL read from `YEMOJA_URL` env var (e.g. `http://localhost:4001`).
+/// Mesh methods fail gracefully when the Elixir service is unavailable.
+pub struct HttpYemojaClient {
+    base_url: String,
+}
+
+impl HttpYemojaClient {
+    pub fn new(base_url: impl Into<String>) -> Self {
+        Self {
+            base_url: base_url.into(),
+        }
+    }
+}
+
+#[async_trait]
+impl YemojaClient for HttpYemojaClient {
+    async fn spawn_agent(&self, role: &str, budget_synapse: f64) -> Result<String, String> {
+        let url = format!("{}/spawn_agent", self.base_url);
+        let body = serde_json::json!({ "role": role, "budget_synapse": budget_synapse });
+        match http_client()
+            .post(&url)
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<serde_json::Value>()
+                .await
+                .ok()
+                .and_then(|v| {
+                    v.get("agent_id")
+                        .and_then(|id| id.as_str())
+                        .map(str::to_string)
+                })
+                .ok_or_else(|| "malformed spawn response".to_string()),
+            Ok(resp) => Err(format!("spawn_agent failed: HTTP {}", resp.status())),
+            Err(e) => Err(format!("spawn_agent network error: {e}")),
+        }
+    }
+
+    async fn agent_status(&self, agent_id: &str) -> AgentStatus {
+        let url = format!("{}/agent_status/{}", self.base_url, agent_id);
+        match http_client()
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(2))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<serde_json::Value>()
+                .await
+                .ok()
+                .and_then(|v| {
+                    v.get("status").and_then(|s| s.as_str()).map(|s| match s {
+                        "running" => AgentStatus::Running,
+                        "complete" => AgentStatus::Complete,
+                        "failed" => AgentStatus::Failed,
+                        _ => AgentStatus::Idle,
+                    })
+                })
+                .unwrap_or(AgentStatus::Idle),
+            _ => AgentStatus::Idle,
+        }
+    }
+
+    async fn mesh_presence(&self, block_id: &str) -> Vec<AgentPresence> {
+        let url = format!("{}/mesh/presence/{}", self.base_url, block_id);
+        match http_client()
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(2))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<serde_json::Value>()
+                .await
+                .ok()
+                .and_then(|v| {
+                    v.get("agents").and_then(|a| a.as_array()).map(|arr| {
+                        arr.iter()
+                            .filter_map(|e| serde_json::from_value(e.clone()).ok())
+                            .collect()
+                    })
+                })
+                .unwrap_or_default(),
+            _ => vec![],
+        }
+    }
+
+    async fn mesh_broadcast(&self, block_id: &str, event: serde_json::Value) -> Result<(), String> {
+        let url = format!("{}/mesh/broadcast/{}", self.base_url, block_id);
+        match http_client()
+            .post(&url)
+            .json(&event)
+            .timeout(std::time::Duration::from_secs(2))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => Ok(()),
+            Ok(resp) => Err(format!("mesh_broadcast failed: HTTP {}", resp.status())),
+            Err(e) => Err(format!("mesh_broadcast network error: {e}")),
+        }
+    }
+
+    async fn mesh_consensus(
+        &self,
+        block_id: &str,
+        proposal: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        let url = format!("{}/mesh/consensus/{}", self.base_url, block_id);
+        match http_client()
+            .post(&url)
+            .json(&proposal)
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<serde_json::Value>()
+                .await
+                .map_err(|e| format!("consensus parse error: {e}")),
+            Ok(resp) => Err(format!("mesh_consensus failed: HTTP {}", resp.status())),
+            Err(e) => Err(format!("mesh_consensus network error: {e}")),
+        }
+    }
+
+    async fn mesh_handoff(&self, agent_id: &str, target_node: &str) -> Result<(), String> {
+        let url = format!("{}/mesh/handoff", self.base_url);
+        let body = serde_json::json!({ "agent_id": agent_id, "target_node": target_node });
+        match http_client()
+            .post(&url)
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => Ok(()),
+            Ok(resp) => Err(format!("mesh_handoff failed: HTTP {}", resp.status())),
+            Err(e) => Err(format!("mesh_handoff network error: {e}")),
+        }
     }
 }
 

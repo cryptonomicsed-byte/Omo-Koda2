@@ -1,13 +1,13 @@
 use chrono::{Datelike, Utc, Weekday};
 use serde::{Deserialize, Serialize};
 
-/// Policy for Sabbath gate: which operations require Sunday confirmation.
+/// Policy for Sabbath gate: which operations require Saturday confirmation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SabbathPolicy {
     /// Runs immediately, no day restriction.
     Unrestricted,
-    /// Queued until Sunday (Ọbàtálá's day) — irreversible soul mutations only.
-    SundayOnly,
+    /// Queued until Saturday (Ọbàtálá's day) — irreversible soul mutations only.
+    SaturdayOnly,
     /// Permanently forbidden regardless of day.
     Forbidden,
 }
@@ -22,9 +22,9 @@ impl SabbathGate {
         match policy {
             SabbathPolicy::Unrestricted => true,
             SabbathPolicy::Forbidden => false,
-            SabbathPolicy::SundayOnly => {
+            SabbathPolicy::SaturdayOnly => {
                 let today = Utc::now().weekday();
-                today == Weekday::Sun
+                today == Weekday::Sat
             }
         }
     }
@@ -34,12 +34,12 @@ impl SabbathGate {
         match policy {
             SabbathPolicy::Unrestricted => None,
             SabbathPolicy::Forbidden => Some("operation permanently forbidden"),
-            SabbathPolicy::SundayOnly => {
+            SabbathPolicy::SaturdayOnly => {
                 let today = Utc::now().weekday();
-                if today == Weekday::Sun {
+                if today == Weekday::Sat {
                     None
                 } else {
-                    Some("irreversible soul mutation queued for Ọbàtálá's day (Sunday)")
+                    Some("irreversible soul mutation queued for Ọbàtálá's day (Saturday)")
                 }
             }
         }
@@ -66,9 +66,9 @@ mod tests {
     fn sunday_only_has_reason_on_non_sunday() {
         // We can't control what day the test runs, but we can test the logic
         let today = Utc::now().weekday();
-        let permitted = SabbathGate::is_permitted(&SabbathPolicy::SundayOnly);
-        let has_reason = SabbathGate::block_reason(&SabbathPolicy::SundayOnly).is_some();
-        if today == Weekday::Sun {
+        let permitted = SabbathGate::is_permitted(&SabbathPolicy::SaturdayOnly);
+        let has_reason = SabbathGate::block_reason(&SabbathPolicy::SaturdayOnly).is_some();
+        if today == Weekday::Sat {
             assert!(permitted);
             assert!(!has_reason);
         } else {

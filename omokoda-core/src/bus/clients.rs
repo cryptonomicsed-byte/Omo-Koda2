@@ -37,6 +37,61 @@ impl HermeticResult {
     }
 }
 
+// ─── Mesh-layer shared types ──────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrustSignal {
+    pub kind: String,
+    pub weight: f64,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeerInfo {
+    pub agent_id: String,
+    pub block_id: String,
+    pub trust_score: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResourceOffer {
+    pub resource_id: String,
+    pub kind: String,
+    pub capacity: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeshStatus {
+    pub healthy: bool,
+    pub peer_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HandshakeOffer {
+    pub terms: serde_json::Value,
+    pub ttl_secs: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HandshakeState {
+    pub session_id: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CounterOffer {
+    pub terms: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NegotiationResult {
+    pub status: String,
+    pub session_id: String,
+    pub final_terms: Option<serde_json::Value>,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /// Ọ̀ṣun (Julia) client — SOMA reconstruction and memory operations.
 /// Called during `think` to retrieve contextual memory before the LLM call.
 #[async_trait]
@@ -57,6 +112,16 @@ pub trait OsunClient: Send + Sync {
         emotion: &EmotionState,
         importance: f32,
     );
+
+    /// Compute a weighted trust score for a neighbor from a batch of signals.
+    async fn compute_trust_score(
+        &self,
+        _agent_id: &str,
+        _neighbor_id: &str,
+        _signals: Vec<TrustSignal>,
+    ) -> f64 {
+        0.5
+    }
 }
 
 /// Ọbàtálá (Lisp) client — Hermetic principle evaluation.
@@ -80,6 +145,15 @@ pub trait OyaClient: Send + Sync {
 
     /// Record a completed primitive for rhythm tracking.
     async fn record_primitive(&self, agent_id: &AgentId, primitive: &str);
+
+    /// Return known mesh peers as gossip entries.
+    async fn gossip_peers(&self) -> Vec<PeerInfo> { vec![] }
+
+    /// Advertise a local resource onto the mesh.
+    async fn register_resource(&self, _offer: ResourceOffer) {}
+
+    /// Return current mesh health from the Oya transport layer.
+    async fn mesh_health(&self) -> MeshStatus { MeshStatus { healthy: true, peer_count: 0 } }
 }
 
 /// Ṣàngó (Move) client — on-chain receipt and reputation.
@@ -109,6 +183,24 @@ pub trait YemojaClient: Send + Sync {
     ) -> Result<serde_json::Value, String>;
     /// Hand off an agent to a different Elixir node.
     async fn mesh_handoff(&self, agent_id: &str, target_node: &str) -> Result<(), String>;
+    /// Propose a bilateral handshake with a neighbor agent.
+    async fn propose_handshake(&self, _neighbor: &str, _offer: HandshakeOffer) -> Result<HandshakeState, String> {
+        Ok(HandshakeState {
+            session_id: format!("session-{}", std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()),
+            status: "proposed".to_string(),
+        })
+    }
+    /// Submit a counter-offer in an ongoing negotiation session.
+    async fn negotiate_terms(&self, session_id: &str, _counter: CounterOffer) -> Result<NegotiationResult, String> {
+        Ok(NegotiationResult {
+            status: "accepted".to_string(),
+            session_id: session_id.to_string(),
+            final_terms: None,
+        })
+    }
 }
 
 /// Ògún (Python) client — tool execution and external integrations.

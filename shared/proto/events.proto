@@ -53,6 +53,57 @@ message Audit {
   uint64 timestamp = 3;
 }
 
+// ── Block Mesh events ─────────────────────────────────────────────────────────
+
+message NeighborDiscovered {
+  string agent_id = 1;
+  string block_id = 2;
+  bytes public_key = 3;
+  uint32 membership = 4;  // 0=probation 1=active 2=suspended
+}
+
+message ProposalReceived {
+  string negotiation_id = 1;
+  string proposer = 2;
+  string give_summary = 3;
+  string take_summary = 4;
+  uint64 ttl_ms = 5;
+}
+
+message ProposalResponded {
+  string negotiation_id = 1;
+  string respondent = 2;
+  string decision = 3;  // "accept" | "reject" | "counter"
+}
+
+message ResourceReserved {
+  string resource_id = 1;
+  string reserved_by = 2;
+  uint64 reserved_from = 3;
+  uint64 reserved_until = 4;
+}
+
+message TrustUpdated {
+  string agent_id = 1;
+  float old_score = 2;
+  float new_score = 3;
+  string reason = 4;
+}
+
+message DisputeFiled {
+  string negotiation_id = 1;
+  string filer = 2;
+  string respondent = 3;
+  string reason = 4;
+}
+
+message PatternFinding {
+  string block_id = 1;
+  string finding_type = 2;  // "correlation" | "demand_forecast" | "reliability"
+  string summary = 3;
+  float confidence = 4;
+}
+
 message SovereignEvent {
   oneof event {
     AgentBorn agent_born = 1;
@@ -64,5 +115,12 @@ message SovereignEvent {
     SabbathEntered sabbath_entered = 7;
     Denial denial = 8;
     Audit audit = 9;
+    NeighborDiscovered neighbor_discovered = 10;
+    ProposalReceived proposal_received = 11;
+    ProposalResponded proposal_responded = 12;
+    ResourceReserved resource_reserved = 13;
+    TrustUpdated trust_updated = 14;
+    DisputeFiled dispute_filed = 15;
+    PatternFinding pattern_finding = 16;
   }
 }

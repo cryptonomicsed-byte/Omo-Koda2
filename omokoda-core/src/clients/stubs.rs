@@ -185,21 +185,18 @@ pub struct StubIfascriptClient;
 
 impl IfascriptClient for StubIfascriptClient {
     fn lookup_odu(&self, index: u8) -> Result<OduResult, ClientError> {
-        // Delegate to vendored ifascript-stub
-        let name = ifascript::odu::ODU_TABLE
-            .get(index as usize)
-            .map(|(n, _)| n.to_string())
-            .unwrap_or_else(|| format!("Odu-{}", index));
+        let odu = ifascript::get_odu(index);
+        let prescription = odu.prescriptions.first().copied().unwrap_or("").to_string();
         Ok(OduResult {
             id: index,
-            name,
-            prescription: ifascript::ebo::cast(index).to_string(),
+            name: odu.universal_name.to_string(),
+            prescription,
         })
     }
 
     fn cast_ebo(&self, odu: u8) -> Result<EboResult, ClientError> {
-        let message = ifascript::ebo::cast(odu).to_string();
-        // Heuristic: index range → severity
+        let o = ifascript::get_odu(odu);
+        let message = o.prescriptions.first().copied().unwrap_or("").to_string();
         let level = match odu {
             0..=85 => EboLevel::Advisory,
             86..=170 => EboLevel::Caution,
@@ -209,11 +206,13 @@ impl IfascriptClient for StubIfascriptClient {
     }
 
     fn generate_entropy(&self, seed: &[u8]) -> Result<Vec<u8>, ClientError> {
-        Ok(ifascript::entropy::generate(seed))
+        let intent = hex::encode(seed);
+        let mut oracle = ifascript::entropy::CowrieOracle::new(&intent);
+        let cowrie = oracle.cast_cowries();
+        Ok(cowrie.to_le_bytes().to_vec())
     }
 
     fn larql_query(&self, _query: &str, _tier: u8) -> Result<LarqlResult, ClientError> {
-        // Stub: LARQL lives in ifascript — return empty result until real service available
         Ok(LarqlResult {
             steps: vec!["[stub] LARQL query — connect ifascript service for results".to_string()],
             confidence: 0.0,

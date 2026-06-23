@@ -9,6 +9,7 @@ use crate::sandbox::WasmSandbox;
 pub mod config_tool;
 pub mod file_ops;
 pub mod python_bridge;
+pub mod mesh_tools;
 pub mod repl;
 pub mod retry;
 pub mod sovereign;
@@ -166,6 +167,17 @@ impl ToolRegistry {
         registry.register(Box::new(python_bridge::code_runner()));
         registry.register(Box::new(python_bridge::data_analysis()));
         registry.register(Box::new(python_bridge::cosmos()));
+
+        // Mesh tools (Block Mesh topology layer)
+        registry.register(Box::new(mesh_tools::MeshProposeTool));
+        registry.register(Box::new(mesh_tools::MeshRespondTool));
+        registry.register(Box::new(mesh_tools::MeshQueryResourcesTool));
+        registry.register(Box::new(mesh_tools::MeshReserveResourceTool));
+        registry.register(Box::new(mesh_tools::MeshReleaseResourceTool));
+        registry.register(Box::new(mesh_tools::MeshQueryNeighborsTool));
+        registry.register(Box::new(mesh_tools::MeshQueryTrustTool));
+        registry.register(Box::new(mesh_tools::MeshSignalEventTool));
+        registry.register(Box::new(mesh_tools::MeshDiscoverCapabilitiesTool));
         registry
     }
 

@@ -6,8 +6,12 @@ use crate::memory_vault::handlers::{
     search_vault,
 };
 use crate::parser::{MetadataPair, Statement, ThinkModifiers};
+use crate::vault::{
+    galaxy_data, insert_knowledge, list_files, load_vault_config, read_file, save_vault_config,
+    KnowledgeTriple, VaultConfig,
+};
 use axum::{
-    extract::State,
+    extract::{Path, State},
     response::{
         sse::{Event, KeepAlive, Sse},
         IntoResponse, Json,
@@ -208,6 +212,192 @@ async fn health_handler() -> Json<HealthResponse> {
     Json(HealthResponse { ok: true })
 }
 
+// ---------------------------------------------------------------------------
+// Vault handlers
+// ---------------------------------------------------------------------------
+
+async fn vault_files_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let agent_id = {
+        let s = state.steward.lock().await;
+        s.agent_core().map(|a| a.id().as_str().to_string())
+    };
+    match agent_id {
+        None => (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "no agent born"})),
+        )
+            .into_response(),
+        Some(id) => Json(list_files(&id)).into_response(),
+    }
+}
+
+async fn vault_read_file_handler(
+    State(state): State<AppState>,
+    Path(rel): Path<String>,
+) -> impl IntoResponse {
+    let agent_id = {
+        let s = state.steward.lock().await;
+        s.agent_core().map(|a| a.id().as_str().to_string())
+    };
+    match agent_id {
+        None => (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "no agent born"})),
+        )
+            .into_response(),
+        Some(id) => match read_file(&id, &rel) {
+            Ok(content) => {
+                Json(serde_json::json!({"path": rel, "content": content})).into_response()
+            }
+            Err(e) => (
+                axum::http::StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": e})),
+            )
+                .into_response(),
+        },
+    }
+}
+
+#[derive(Deserialize)]
+pub struct KnowledgeRequest {
+    pub subject: String,
+    pub predicate: String,
+    pub object: String,
+    #[serde(default)]
+    pub confidence: Option<f64>,
+}
+
+async fn vault_knowledge_handler(
+    State(state): State<AppState>,
+    Json(req): Json<KnowledgeRequest>,
+) -> impl IntoResponse {
+    let agent_id = {
+        let s = state.steward.lock().await;
+        s.agent_core().map(|a| a.id().as_str().to_string())
+    };
+    match agent_id {
+        None => (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "no agent born"})),
+        )
+            .into_response(),
+        Some(id) => {
+            let triple = KnowledgeTriple {
+                subject: req.subject,
+                predicate: req.predicate,
+                object: req.object,
+                confidence: req.confidence.unwrap_or(1.0),
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            };
+            match insert_knowledge(&id, triple) {
+                Ok(()) => Json(serde_json::json!({"ok": true})).into_response(),
+                Err(e) => (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": e.to_string()})),
+                )
+                    .into_response(),
+            }
+        }
+    }
+}
+
+async fn vault_galaxy_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let agent_id = {
+        let s = state.steward.lock().await;
+        s.agent_core().map(|a| a.id().as_str().to_string())
+    };
+    match agent_id {
+        None => (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "no agent born"})),
+        )
+            .into_response(),
+        Some(id) => Json(galaxy_data(&id)).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct SyncRequest {
+    #[serde(default)]
+    pub content: String,
+}
+
+async fn vault_sync_handler(
+    State(state): State<AppState>,
+    Json(req): Json<SyncRequest>,
+) -> impl IntoResponse {
+    let agent_id = {
+        let s = state.steward.lock().await;
+        s.agent_core().map(|a| a.id().as_str().to_string())
+    };
+    match agent_id {
+        None => (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "no agent born"})),
+        )
+            .into_response(),
+        Some(id) => match crate::vault::vault_sync(&id, &req.content) {
+            Ok(()) => Json(serde_json::json!({"ok": true})).into_response(),
+            Err(e) => (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+                .into_response(),
+        },
+    }
+}
+
+async fn vault_config_get_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let agent_id = {
+        let s = state.steward.lock().await;
+        s.agent_core().map(|a| a.id().as_str().to_string())
+    };
+    match agent_id {
+        None => (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "no agent born"})),
+        )
+            .into_response(),
+        Some(id) => Json(load_vault_config(&id)).into_response(),
+    }
+}
+
+async fn vault_config_put_handler(
+    State(state): State<AppState>,
+    Json(cfg): Json<VaultConfig>,
+) -> impl IntoResponse {
+    let agent_id = {
+        let s = state.steward.lock().await;
+        s.agent_core().map(|a| a.id().as_str().to_string())
+    };
+    match agent_id {
+        None => (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "no agent born"})),
+        )
+            .into_response(),
+        Some(id) => match save_vault_config(&id, &cfg) {
+            Ok(()) => Json(serde_json::json!({"ok": true})).into_response(),
+            Err(e) => (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+                .into_response(),
+        },
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rhythm / Kóòdù handler
+// ---------------------------------------------------------------------------
+
+async fn rhythm_today_handler() -> Json<serde_json::Value> {
+    Json(crate::rhythm::today_resonance())
+}
+
 async fn events_handler(
     State(state): State<AppState>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Box<dyn std::error::Error + Send + Sync>>>>
@@ -285,6 +475,54 @@ fn sovereign_event_to_json(ev: &crate::bus::SovereignEvent) -> serde_json::Value
             "event_type": e.event_type,
             "details": e.details,
         }),
+        Some(sovereign_event::Event::NeighborDiscovered(e)) => json!({
+            "type": "neighbor_discovered",
+            "agent_id": e.agent_id,
+            "block_id": e.block_id,
+            "membership": e.membership,
+        }),
+        Some(sovereign_event::Event::ProposalReceived(e)) => json!({
+            "type": "proposal_received",
+            "negotiation_id": e.negotiation_id,
+            "proposer": e.proposer,
+            "give_summary": e.give_summary,
+            "take_summary": e.take_summary,
+            "ttl_ms": e.ttl_ms,
+        }),
+        Some(sovereign_event::Event::ProposalResponded(e)) => json!({
+            "type": "proposal_responded",
+            "negotiation_id": e.negotiation_id,
+            "respondent": e.respondent,
+            "decision": e.decision,
+        }),
+        Some(sovereign_event::Event::ResourceReserved(e)) => json!({
+            "type": "resource_reserved",
+            "resource_id": e.resource_id,
+            "reserved_by": e.reserved_by,
+            "reserved_from": e.reserved_from,
+            "reserved_until": e.reserved_until,
+        }),
+        Some(sovereign_event::Event::TrustUpdated(e)) => json!({
+            "type": "trust_updated",
+            "agent_id": e.agent_id,
+            "old_score": e.old_score,
+            "new_score": e.new_score,
+            "reason": e.reason,
+        }),
+        Some(sovereign_event::Event::DisputeFiled(e)) => json!({
+            "type": "dispute_filed",
+            "negotiation_id": e.negotiation_id,
+            "filer": e.filer,
+            "respondent": e.respondent,
+            "reason": e.reason,
+        }),
+        Some(sovereign_event::Event::PatternFinding(e)) => json!({
+            "type": "pattern_finding",
+            "block_id": e.block_id,
+            "finding_type": e.finding_type,
+            "summary": e.summary,
+            "confidence": e.confidence,
+        }),
         None => serde_json::json!({"type": "unknown"}),
     }
 }
@@ -313,6 +551,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/v1/vault/access-log", get(get_access_log))
         .route("/v1/vault/download", get(get_vault_download))
         .route("/v1/vault/file/*path", get(get_vault_file))
+        // Rhythm route
+        .route("/v1/rhythm/today", get(rhythm_today_handler))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }

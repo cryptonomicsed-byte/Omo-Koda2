@@ -97,6 +97,18 @@ pub trait YemojaClient: Send + Sync {
     async fn spawn_agent(&self, role: &str, budget_synapse: f64) -> Result<String, String>;
     /// Query the live status of a spawned sub-agent by ID.
     async fn agent_status(&self, agent_id: &str) -> AgentStatus;
+    /// List agents currently online on a mesh block.
+    async fn mesh_presence(&self, block_id: &str) -> Vec<AgentPresence>;
+    /// Broadcast a mesh event to all agents on a block.
+    async fn mesh_broadcast(&self, block_id: &str, event: serde_json::Value) -> Result<(), String>;
+    /// Run a consensus proposal across all mesh agents on a block.
+    async fn mesh_consensus(
+        &self,
+        block_id: &str,
+        proposal: serde_json::Value,
+    ) -> Result<serde_json::Value, String>;
+    /// Hand off an agent to a different Elixir node.
+    async fn mesh_handoff(&self, agent_id: &str, target_node: &str) -> Result<(), String>;
 }
 
 /// Ògún (Python) client — tool execution and external integrations.
@@ -114,6 +126,15 @@ pub enum AgentStatus {
     Running,
     Complete,
     Failed,
+}
+
+/// Live presence record for a mesh agent on a block.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentPresence {
+    pub agent_id: String,
+    pub role: String,
+    pub status: String,
+    pub block_id: String,
 }
 
 // ─── Stub implementations (no-ops until real services are deployed) ──────────
@@ -200,6 +221,30 @@ impl YemojaClient for LocalYemojaStub {
 
     async fn agent_status(&self, _agent_id: &str) -> AgentStatus {
         AgentStatus::Idle
+    }
+
+    async fn mesh_presence(&self, _block_id: &str) -> Vec<AgentPresence> {
+        vec![]
+    }
+
+    async fn mesh_broadcast(
+        &self,
+        _block_id: &str,
+        _event: serde_json::Value,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn mesh_consensus(
+        &self,
+        _block_id: &str,
+        _proposal: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        Ok(serde_json::json!({"consensus": "stub", "result": null}))
+    }
+
+    async fn mesh_handoff(&self, _agent_id: &str, _target_node: &str) -> Result<(), String> {
+        Ok(())
     }
 }
 

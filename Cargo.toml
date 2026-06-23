@@ -2,6 +2,7 @@
 members = [
     "omokoda-core",
     "omokoda-hermetic",
+    "omokoda-mesh",
     "omokoda-cli",
     "nautilus_integration",
     "nist_entropy",

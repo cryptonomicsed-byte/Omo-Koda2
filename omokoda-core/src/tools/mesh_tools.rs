@@ -60,7 +60,10 @@ impl VantageClient {
         } else {
             req.header("X-Agent-Key", &self.api_key)
         };
-        let resp = req.send().await.map_err(|e| format!("vantage request failed: {e}"))?;
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| format!("vantage request failed: {e}"))?;
         let status = resp.status();
         let val: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
         if !status.is_success() {
@@ -70,12 +73,17 @@ impl VantageClient {
     }
 
     async fn post(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
-        self.send(http().post(format!("{}{}", self.base_url, path)).json(&body))
-            .await
+        self.send(
+            http()
+                .post(format!("{}{}", self.base_url, path))
+                .json(&body),
+        )
+        .await
     }
 
     async fn get(&self, path: &str) -> Result<serde_json::Value, String> {
-        self.send(http().get(format!("{}{}", self.base_url, path))).await
+        self.send(http().get(format!("{}{}", self.base_url, path)))
+            .await
     }
 
     /// Register this agent in its block on the first write. Idempotent on the
@@ -300,10 +308,7 @@ impl Tool for MeshQueryResourcesTool {
         };
 
         if let Some(vc) = VANTAGE.as_ref() {
-            let mut path = format!(
-                "/api/mesh/resources/{}",
-                urlencoding::encode(&vc.block_id)
-            );
+            let mut path = format!("/api/mesh/resources/{}", urlencoding::encode(&vc.block_id));
             if let Some(f) = &filter {
                 path.push_str(&format!("?filter={}", urlencoding::encode(f)));
             }

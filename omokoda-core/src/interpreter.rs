@@ -1998,8 +1998,8 @@ impl Steward {
 
     pub fn load(path: &std::path::Path) -> Result<Self, String> {
         let bytes = std::fs::read(path).map_err(|e| format!("Read error: {}", e))?;
-        let snapshot: AgentSnapshot = serde_json::from_slice(&bytes)
-            .map_err(|e| format!("Deserialization error: {}", e))?;
+        let snapshot: AgentSnapshot =
+            serde_json::from_slice(&bytes).map_err(|e| format!("Deserialization error: {}", e))?;
         let mut steward = Steward::new();
         steward.agent = Some(AgentCore::from_snapshot(snapshot, [0u8; 32]));
         steward.persistence_path = Some(path.to_path_buf());
@@ -2115,14 +2115,13 @@ impl Steward {
         name: &str,
         prompt: &str,
     ) -> Result<omokoda_mesh::state::SubAgentHandle, String> {
-        let agent = self
-            .agent
-            .as_ref()
-            .ok_or("no agent born")?;
+        let agent = self.agent.as_ref().ok_or("no agent born")?;
         let parent_id = agent.id().clone();
         let yemoja_url = self.yemoja_url.clone();
         if yemoja_url.is_empty() {
-            return Ok(crate::mesh::stub::spawn_stub_sub_agent(name, prompt, &parent_id));
+            return Ok(crate::mesh::stub::spawn_stub_sub_agent(
+                name, prompt, &parent_id,
+            ));
         }
         crate::bus::clients::HttpYemojaClient::new(&yemoja_url)
             .spawn_sub_agent(&parent_id, name, prompt)
@@ -2131,17 +2130,12 @@ impl Steward {
 
     /// Retrieve current mesh state from the Yemọja swarm service.
     /// Falls back to a default empty mesh state when `YEMOJA_URL` is not set.
-    pub async fn fetch_mesh_state(
-        &mut self,
-    ) -> Result<omokoda_mesh::state::MeshState, String> {
+    pub async fn fetch_mesh_state(&mut self) -> Result<omokoda_mesh::state::MeshState, String> {
         let yemoja_url = self.yemoja_url.clone();
         if yemoja_url.is_empty() {
             return Ok(omokoda_mesh::state::MeshState::default());
         }
-        let agent = self
-            .agent
-            .as_ref()
-            .ok_or("no agent born")?;
+        let agent = self.agent.as_ref().ok_or("no agent born")?;
         let parent_id = agent.id().clone();
         crate::bus::clients::HttpYemojaClient::new(&yemoja_url)
             .fetch_mesh_state(&parent_id)
@@ -2168,10 +2162,7 @@ impl Steward {
                 cooldown_secs: remaining,
             });
         }
-        let agent = self
-            .agent
-            .as_ref()
-            .ok_or("no agent born")?;
+        let agent = self.agent.as_ref().ok_or("no agent born")?;
         let agent_id = agent.id().clone();
         crate::bus::clients::HttpOyaClient::new(&oya_url)
             .check_rhythm(&agent_id, tool)
@@ -2211,10 +2202,7 @@ impl Steward {
                 .unwrap_or_default();
             return Ok(cells);
         }
-        let agent = self
-            .agent
-            .as_ref()
-            .ok_or("no agent born")?;
+        let agent = self.agent.as_ref().ok_or("no agent born")?;
         let agent_id = agent.id().clone();
         crate::bus::clients::HttpOsunClient::new(&osun_url)
             .recall_memories(&agent_id, query, limit)
@@ -2266,12 +2254,8 @@ impl Steward {
     pub fn pending_event_kind(stmt: &Statement) -> Option<String> {
         match stmt {
             Statement::Birth { .. } => Some("private_session_started".to_string()),
-            Statement::Think { private: true, .. } => {
-                Some("private_thought_recorded".to_string())
-            }
-            Statement::Act { sandbox: true, .. } => {
-                Some("private_session_unsealed".to_string())
-            }
+            Statement::Think { private: true, .. } => Some("private_thought_recorded".to_string()),
+            Statement::Act { sandbox: true, .. } => Some("private_session_unsealed".to_string()),
             _ => None,
         }
     }

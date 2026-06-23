@@ -19,6 +19,9 @@ defmodule Yemoja.MixProject do
   end
 
   defp deps do
-    []
+    [
+      {:plug_cowboy, "~> 2.6"},
+      {:jason, "~> 1.4"},
+    ]
   end
 end

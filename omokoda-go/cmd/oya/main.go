@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,21 +13,35 @@ import (
 )
 
 func main() {
-	port := os.Getenv("OYA_PORT")
-	if port == "" {
-		port = "50052"
+	tcpPort := os.Getenv("OYA_PORT")
+	if tcpPort == "" {
+		tcpPort = "50052"
+	}
+	httpPort := os.Getenv("OYA_HTTP_PORT")
+	if httpPort == "" {
+		httpPort = "8080"
 	}
 
 	limiter := ratelimit.New()
 	svc := flow.NewService(limiter)
+	store := flow.NewPrimitiveStore()
 
-	lis, err := net.Listen("tcp", ":"+port)
+	// TCP server (original protocol)
+	lis, err := net.Listen("tcp", ":"+tcpPort)
 	if err != nil {
-		log.Fatalf("Failed to listen: %v", err)
+		log.Fatalf("Failed to listen on TCP :%s: %v", tcpPort, err)
 	}
-
-	log.Printf("ỌYA flow service listening on :%s", port)
+	log.Printf("ỌYA flow service listening on TCP :%s", tcpPort)
 	go svc.Serve(lis)
+
+	// HTTP REST API for OyaClient (Rust) integration
+	httpHandler := flow.NewHTTPHandler(store)
+	log.Printf("ỌYA HTTP API listening on :%s", httpPort)
+	go func() {
+		if err := http.ListenAndServe(":"+httpPort, httpHandler); err != nil {
+			log.Printf("ỌYA HTTP server error: %v", err)
+		}
+	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

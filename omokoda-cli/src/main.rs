@@ -1,3 +1,5 @@
+mod tui;
+
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
@@ -68,6 +70,8 @@ enum Command {
         #[arg(short, long, default_value_t = 7777)]
         port: u16,
     },
+    /// Launch the full-screen TUI
+    Tui,
 }
 
 #[derive(Subcommand)]
@@ -162,6 +166,9 @@ async fn main() -> Result<()> {
             omokoda_core::server::start_server(port)
                 .await
                 .map_err(|e| anyhow::anyhow!("{}", e))?;
+        }
+        Some(Command::Tui) => {
+            tui::run()?;
         }
 
         Some(Command::Session { action }) => match action {

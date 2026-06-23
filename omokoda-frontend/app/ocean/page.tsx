@@ -1,37 +1,20 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { vaultListFiles, vaultReadFile, type VaultFileEntry } from '@/lib/api'
+const NODES = [
+  { id: 'alpha-7', label: 'Alpha-7', status: 'active', x: 50, y: 40 },
+  { id: 'beta-2', label: 'Beta-2', status: 'idle', x: 20, y: 65 },
+  { id: 'gamma-1', label: 'Gamma-1', status: 'active', x: 75, y: 65 },
+  { id: 'delta-3', label: 'Delta-3', status: 'error', x: 40, y: 80 },
+  { id: 'epsilon-4', label: 'Epsilon-4', status: 'idle', x: 60, y: 20 },
+]
+
+const STATUS_COLOR: Record<string, string> = {
+  active: '#10B981',
+  idle: '#6B7280',
+  error: '#EF4444',
+}
 
 export default function OceanPage() {
-  const [files, setFiles] = useState<VaultFileEntry[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [selected, setSelected] = useState<string | null>(null)
-  const [content, setContent] = useState<string | null>(null)
-  const [contentLoading, setContentLoading] = useState(false)
-
-  useEffect(() => {
-    vaultListFiles()
-      .then(setFiles)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [])
-
-  async function openFile(path: string) {
-    setSelected(path)
-    setContent(null)
-    setContentLoading(true)
-    try {
-      const result = await vaultReadFile(path)
-      setContent(result.content)
-    } catch (e) {
-      setContent(`Error: ${e instanceof Error ? e.message : 'unknown'}`)
-    } finally {
-      setContentLoading(false)
-    }
-  }
-
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <div className="mb-8">
@@ -40,71 +23,103 @@ export default function OceanPage() {
           <h1 className="text-2xl font-bold text-white">The Ocean</h1>
         </div>
         <p className="text-zinc-500 text-sm">
-          Vault file browser — knowledge, traces, and broadcast templates.
+          Swarm &amp; Network — the collective hive in motion.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* File list */}
-        <div className="bg-surface-2 border border-border-DEFAULT rounded-xl p-6">
-          <h2 className="text-sm font-semibold text-zinc-400 mb-4 uppercase tracking-wider">
-            Vault Files
-            {!loading && <span className="ml-2 text-zinc-600 normal-case font-normal">({files.length})</span>}
-          </h2>
-
-          {loading && (
-            <p className="text-xs text-zinc-600">Loading vault…</p>
-          )}
-
-          {error && (
-            <p className="text-xs text-red-400">{error}</p>
-          )}
-
-          {!loading && !error && files.length === 0 && (
-            <p className="text-xs text-zinc-600">
-              No vault files yet. Birth an agent to create the vault.
-            </p>
-          )}
-
-          <div className="space-y-1">
-            {files.map((f) => (
-              <button
-                key={f.path}
-                onClick={() => openFile(f.path)}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-mono transition-colors ${
-                  selected === f.path
-                    ? 'bg-brand-600/20 border border-brand-600/40 text-brand-400'
-                    : 'hover:bg-surface-3 text-zinc-300 border border-transparent'
-                }`}
-              >
-                <div className="truncate">{f.path}</div>
-                <div className="text-xs text-zinc-600 mt-0.5">
-                  {Math.ceil(f.size_bytes / 1024)}KB
-                </div>
-              </button>
-            ))}
+      {/* Stats bar */}
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        {[
+          { label: 'Active Agents', value: '2', color: 'text-green-400' },
+          { label: 'Idle Agents', value: '2', color: 'text-zinc-400' },
+          { label: 'Errors', value: '1', color: 'text-red-400' },
+        ].map(({ label, value, color }) => (
+          <div
+            key={label}
+            className="bg-surface-2 border border-border-DEFAULT rounded-xl p-4 text-center"
+          >
+            <div className={`text-2xl font-mono font-bold ${color}`}>{value}</div>
+            <div className="text-xs text-zinc-600 mt-1">{label}</div>
           </div>
+        ))}
+      </div>
+
+      {/* Network graph (SVG placeholder) */}
+      <div className="bg-surface-2 border border-border-DEFAULT rounded-xl p-6 mb-6">
+        <h2 className="text-sm font-semibold text-zinc-400 mb-4 uppercase tracking-wider">
+          Agent Network
+        </h2>
+        <div className="relative w-full" style={{ paddingBottom: '56%' }}>
+          <svg
+            className="absolute inset-0 w-full h-full"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="xMidYMid meet"
+          >
+            {/* Edges */}
+            {[
+              ['alpha-7', 'beta-2'],
+              ['alpha-7', 'gamma-1'],
+              ['alpha-7', 'delta-3'],
+              ['gamma-1', 'epsilon-4'],
+            ].map(([a, b]) => {
+              const na = NODES.find((n) => n.id === a)!
+              const nb = NODES.find((n) => n.id === b)!
+              return (
+                <line
+                  key={`${a}-${b}`}
+                  x1={na.x}
+                  y1={na.y}
+                  x2={nb.x}
+                  y2={nb.y}
+                  stroke="rgba(6,182,212,0.2)"
+                  strokeWidth="0.5"
+                />
+              )
+            })}
+            {/* Nodes */}
+            {NODES.map(({ id, label, status, x, y }) => (
+              <g key={id}>
+                <circle
+                  cx={x}
+                  cy={y}
+                  r="4"
+                  fill={STATUS_COLOR[status] ?? '#6B7280'}
+                  opacity="0.8"
+                />
+                <text
+                  x={x}
+                  y={y + 7}
+                  textAnchor="middle"
+                  fontSize="3"
+                  fill="#9CA3AF"
+                >
+                  {label}
+                </text>
+              </g>
+            ))}
+          </svg>
         </div>
+      </div>
 
-        {/* File content viewer */}
-        <div className="bg-surface-2 border border-border-DEFAULT rounded-xl p-6">
-          <h2 className="text-sm font-semibold text-zinc-400 mb-4 uppercase tracking-wider">
-            {selected ? selected : 'File Viewer'}
-          </h2>
-
-          {!selected && (
-            <p className="text-xs text-zinc-600">Select a file to view its contents.</p>
-          )}
-
-          {contentLoading && (
-            <p className="text-xs text-zinc-600">Loading…</p>
-          )}
-
-          {content !== null && !contentLoading && (
-            <pre className="text-xs text-zinc-300 whitespace-pre-wrap font-mono overflow-auto max-h-96 leading-relaxed">
-              {content}
-            </pre>
-          )}
+      {/* Agent list */}
+      <div className="bg-surface-2 border border-border-DEFAULT rounded-xl p-6">
+        <h2 className="text-sm font-semibold text-zinc-400 mb-4 uppercase tracking-wider">
+          Agent Roster
+        </h2>
+        <div className="space-y-2">
+          {NODES.map(({ id, label, status }) => (
+            <div
+              key={id}
+              className="flex items-center gap-3 p-3 rounded-lg bg-surface-3"
+            >
+              <span
+                className="w-2 h-2 rounded-full flex-shrink-0"
+                style={{ backgroundColor: STATUS_COLOR[status] }}
+              />
+              <span className="text-sm text-zinc-300 font-mono flex-1">{label}</span>
+              <span className="text-xs text-zinc-500 capitalize">{status}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>

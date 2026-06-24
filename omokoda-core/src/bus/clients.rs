@@ -575,11 +575,16 @@ impl OyaClient for HttpOyaClient {
             .send()
             .await
         {
-            Ok(resp) if resp.status().is_success() => resp
-                .json::<MeshStatus>()
-                .await
-                .unwrap_or(MeshStatus { healthy: true, peer_count: 0 }),
-            _ => MeshStatus { healthy: true, peer_count: 0 },
+            Ok(resp) if resp.status().is_success() => {
+                resp.json::<MeshStatus>().await.unwrap_or(MeshStatus {
+                    healthy: true,
+                    peer_count: 0,
+                })
+            }
+            _ => MeshStatus {
+                healthy: true,
+                peer_count: 0,
+            },
         }
     }
 }
@@ -853,7 +858,10 @@ mod tests {
     #[tokio::test]
     async fn yemoja_stub_propose_handshake_returns_stub_session() {
         let stub = LocalYemojaStub;
-        let offer = HandshakeOffer { terms: serde_json::json!({}), ttl_secs: 60 };
+        let offer = HandshakeOffer {
+            terms: serde_json::json!({}),
+            ttl_secs: 60,
+        };
         let result = stub.propose_handshake("neighbor-a", offer).await;
         assert!(result.is_ok());
         assert!(result.unwrap().session_id.starts_with("session-"));

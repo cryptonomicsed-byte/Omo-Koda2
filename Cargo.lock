@@ -2283,6 +2283,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ifascript"
+version = "0.1.0"
+dependencies = [
+ "once_cell",
+]
+
+[[package]]
 name = "indexmap"
 version = "2.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2987,6 +2994,7 @@ dependencies = [
  "hkdf",
  "hmac",
  "httpmock",
+ "ifascript",
  "jsonschema",
  "omokoda-hermetic",
  "omokoda-mesh",
@@ -3016,6 +3024,7 @@ dependencies = [
  "wasmtime",
  "wasmtime-wasi",
  "wat",
+ "zangbeto-enforcement",
  "zeroize",
  "zip",
 ]
@@ -5905,6 +5914,14 @@ dependencies = [
  "quote",
  "syn",
  "synstructure",
+]
+
+[[package]]
+name = "zangbeto-enforcement"
+version = "0.1.0"
+dependencies = [
+ "sha2",
+ "uuid",
 ]
 
 [[package]]

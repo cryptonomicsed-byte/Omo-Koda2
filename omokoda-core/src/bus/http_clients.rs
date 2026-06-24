@@ -2,8 +2,8 @@
 /// Drop-in replacements for the Local*Stub types once services are deployed.
 /// Each client is constructed with a base URL; all I/O uses reqwest + JSON.
 use crate::bus::clients::{
-    AgentStatus, HermeticResult, ObatalaClient, OgunClient, OsunClient, OyaClient, SangoClient,
-    YemojaClient,
+    AgentPresence, AgentStatus, HermeticResult, ObatalaClient, OgunClient, OsunClient, OyaClient,
+    SangoClient, YemojaClient,
 };
 use crate::emotion::EmotionState;
 use crate::identity::AgentId;
@@ -11,6 +11,7 @@ use crate::steward::soul::SomaContext;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use serde_json; 
 
 // ---------------------------------------------------------------------------
 // Shared transport helper
@@ -385,6 +386,30 @@ impl YemojaClient for HttpYemojaClient {
                 .unwrap_or(AgentStatus::Idle),
             _ => AgentStatus::Idle,
         }
+    }
+
+    async fn mesh_presence(&self, _block_id: &str) -> Vec<AgentPresence> {
+        vec![]
+    }
+
+    async fn mesh_broadcast(
+        &self,
+        _block_id: &str,
+        _event: serde_json::Value,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn mesh_consensus(
+        &self,
+        _block_id: &str,
+        _proposal: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        Ok(serde_json::json!({"consensus": "stub", "result": null}))
+    }
+
+    async fn mesh_handoff(&self, _agent_id: &str, _target_node: &str) -> Result<(), String> {
+        Ok(())
     }
 }
 

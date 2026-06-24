@@ -96,3 +96,71 @@ export async function rhythmToday(): Promise<Record<string, unknown>> {
   if (!r.ok) throw new Error(`rhythm/today: ${r.status}`)
   return r.json()
 }
+
+// ── Block Mesh ──────────────────────────────────────────────────────────
+
+const VANTAGE = process.env.NEXT_PUBLIC_VANTAGE_URL || ''
+
+export interface MeshAgent {
+  agent_id: string
+  role: string
+  trust_score: number
+  capabilities: Record<string, unknown>
+  commitments_kept: number
+  commitments_broken: number
+}
+
+export interface MeshEvent {
+  id: number
+  block_id: string
+  actor_id: string
+  event_type: string
+  payload: Record<string, unknown>
+  created_at: string
+}
+
+export interface MeshBlock {
+  block_id: string
+  agents: MeshAgent[]
+  events: MeshEvent[]
+}
+
+export async function meshGetBlock(blockId: string): Promise<MeshBlock | null> {
+  if (!VANTAGE) return null
+  const r = await fetch(`${VANTAGE}/api/mesh/blocks/${encodeURIComponent(blockId)}`)
+  if (!r.ok) return null
+  return r.json()
+}
+
+export async function meshGetAgents(blockId: string): Promise<MeshAgent[]> {
+  if (!VANTAGE) return []
+  const r = await fetch(`${VANTAGE}/api/mesh/blocks/${encodeURIComponent(blockId)}/agents`)
+  if (!r.ok) return []
+  return r.json()
+}
+
+export async function meshGetEvents(blockId: string, limit = 20): Promise<MeshEvent[]> {
+  if (!VANTAGE) return []
+  const r = await fetch(`${VANTAGE}/api/mesh/blocks/${encodeURIComponent(blockId)}/events?limit=${limit}`)
+  if (!r.ok) return []
+  return r.json()
+}
+
+export async function meshGetTrust(agentId: string, blockId = 'default'): Promise<{trust_score: number} | null> {
+  if (!VANTAGE) return null
+  const r = await fetch(`${VANTAGE}/api/mesh/trust/${encodeURIComponent(agentId)}?block_id=${encodeURIComponent(blockId)}`)
+  if (!r.ok) return null
+  return r.json()
+}
+
+export async function meshSignalEvent(params: {
+  block_id: string
+  event_type: string
+  details: Record<string, unknown>
+}): Promise<void> {
+  await fetch(`${BASE}/v1/act`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tool: 'mesh_signal_event', params }),
+  })
+}

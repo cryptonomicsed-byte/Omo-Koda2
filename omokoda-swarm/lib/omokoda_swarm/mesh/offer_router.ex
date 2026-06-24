@@ -26,7 +26,7 @@ defmodule OmokodaSwarm.Mesh.OfferRouter do
 
   ## Public API
 
-  def start_link(_opts \ []) do
+  def start_link(_opts \\ []) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
@@ -36,7 +36,7 @@ defmodule OmokodaSwarm.Mesh.OfferRouter do
   `min_trust` (default 0.3) is the minimum `:trust_score` an offer must carry
   for this handler to be invoked. Use `""` as capability to match all offers.
   """
-  def register_handler(agent_id, capability, min_trust \ 0.3, callback) do
+  def register_handler(agent_id, capability, min_trust \\ 0.3, callback) do
     GenServer.call(__MODULE__, {:register, agent_id, capability, min_trust, callback})
   end
 

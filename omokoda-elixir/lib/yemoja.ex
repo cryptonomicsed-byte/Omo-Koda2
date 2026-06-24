@@ -36,7 +36,7 @@ defmodule Yemoja.Application do
 
   @impl true
   def start(_type, _args) do
-    port = Yemoja.grpc_port()
+    http_port = System.get_env("YEMOJA_HTTP_PORT", "4001") |> String.to_integer()
 
     children = [
       # Erlang :pg scope for gRPC stream fan-out (built-in OTP ≥ 23, no extra dep).
@@ -54,9 +54,7 @@ defmodule Yemoja.Application do
 
       # Singleton aggregator for the public memory garden.
       Yemoja.HiveAggregator,
-
-      # gRPC endpoint — last so that infra is ready before we accept traffic.
-      {GRPC.Server.Supervisor, {Yemoja.GRPC.SwarmServer, port}}
+      {Plug.Cowboy, scheme: :http, plug: Yemoja.Router, port: http_port},
     ]
 
     opts = [strategy: :one_for_one, name: Yemoja.Supervisor]

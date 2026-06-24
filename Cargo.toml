@@ -4,6 +4,9 @@ members = [
     "omokoda-hermetic",
     "omokoda-mesh",
     "omokoda-cli",
+    "bipon39-stub",
+    "ifascript-stub",
+    "zangbeto-stub",
     "nautilus_integration",
     "nist_entropy",
 ]

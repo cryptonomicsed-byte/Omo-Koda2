@@ -523,6 +523,85 @@ fn sovereign_event_to_json(ev: &crate::bus::SovereignEvent) -> serde_json::Value
             "summary": e.summary,
             "confidence": e.confidence,
         }),
+        Some(sovereign_event::Event::NeighborDiscovered(e)) => json!({
+            "type": "neighbor_discovered",
+            "agent_id": e.agent_id,
+            "block_id": e.block_id,
+            "membership": e.membership,
+        }),
+        Some(sovereign_event::Event::ProposalReceived(e)) => json!({
+            "type": "proposal_received",
+            "negotiation_id": e.negotiation_id,
+            "proposer": e.proposer,
+            "give_summary": e.give_summary,
+            "take_summary": e.take_summary,
+            "ttl_ms": e.ttl_ms,
+        }),
+        Some(sovereign_event::Event::ProposalResponded(e)) => json!({
+            "type": "proposal_responded",
+            "negotiation_id": e.negotiation_id,
+            "respondent": e.respondent,
+            "decision": e.decision,
+        }),
+        Some(sovereign_event::Event::ResourceReserved(e)) => json!({
+            "type": "resource_reserved",
+            "resource_id": e.resource_id,
+            "reserved_by": e.reserved_by,
+            "reserved_from": e.reserved_from,
+            "reserved_until": e.reserved_until,
+        }),
+        Some(sovereign_event::Event::TrustUpdated(e)) => json!({
+            "type": "trust_updated",
+            "agent_id": e.agent_id,
+            "old_score": e.old_score,
+            "new_score": e.new_score,
+            "reason": e.reason,
+        }),
+        Some(sovereign_event::Event::DisputeFiled(e)) => json!({
+            "type": "dispute_filed",
+            "negotiation_id": e.negotiation_id,
+            "filer": e.filer,
+            "respondent": e.respondent,
+            "reason": e.reason,
+        }),
+        Some(sovereign_event::Event::PatternFinding(e)) => json!({
+            "type": "pattern_finding",
+            "block_id": e.block_id,
+            "finding_type": e.finding_type,
+            "summary": e.summary,
+            "confidence": e.confidence,
+        }),
+        Some(sovereign_event::Event::TrustSignalPublished(e)) => json!({
+            "type": "trust_signal_published",
+            "agent_id": e.agent_id,
+            "neighbor_id": e.neighbor_id,
+            "kind": e.kind,
+            "weight": e.weight,
+        }),
+        Some(sovereign_event::Event::NeighborProposed(e)) => json!({
+            "type": "neighbor_proposed",
+            "proposer": e.proposer,
+            "candidate": e.candidate,
+            "block_id": e.block_id,
+        }),
+        Some(sovereign_event::Event::CapabilityVerified(e)) => json!({
+            "type": "capability_verified",
+            "agent_id": e.agent_id,
+            "capability": e.capability,
+            "passed": e.passed,
+        }),
+        Some(sovereign_event::Event::ProbationEscalated(e)) => json!({
+            "type": "probation_escalated",
+            "subject": e.subject,
+            "level": e.level,
+            "reason": e.reason,
+        }),
+        Some(sovereign_event::Event::ResourceOffered(e)) => json!({
+            "type": "resource_offered",
+            "agent_id": e.agent_id,
+            "resource_id": e.resource_id,
+            "kind": e.kind,
+        }),
         None => serde_json::json!({"type": "unknown"}),
     }
 }
@@ -539,18 +618,14 @@ pub fn create_router(state: AppState) -> Router {
         .route("/v1/events", get(events_handler))
         .route("/v1/status", get(status_handler))
         .route("/v1/health", get(health_handler))
-        // Memory vault endpoints
-        .route("/v1/vault", get(get_vault_status))
-        .route("/v1/vault/config", get(get_vault_config))
-        .route("/v1/vault/config", put(put_vault_config))
-        .route("/v1/vault/sync", post(post_vault_sync))
-        .route("/v1/vault/galaxy", get(get_galaxy_data))
-        .route("/v1/vault/search", get(search_vault))
-        .route("/v1/vault/enable", post(post_vault_enable))
-        .route("/v1/vault/knowledge", post(post_vault_knowledge))
-        .route("/v1/vault/access-log", get(get_access_log))
-        .route("/v1/vault/download", get(get_vault_download))
-        .route("/v1/vault/file/*path", get(get_vault_file))
+        // Vault routes
+        .route("/v1/vault/files", get(vault_files_handler))
+        .route("/v1/vault/file/*rel", get(vault_read_file_handler))
+        .route("/v1/vault/knowledge", post(vault_knowledge_handler))
+        .route("/v1/vault/galaxy", get(vault_galaxy_handler))
+        .route("/v1/vault/sync", post(vault_sync_handler))
+        .route("/v1/vault/config", get(vault_config_get_handler))
+        .route("/v1/vault/config", put(vault_config_put_handler))
         // Rhythm route
         .route("/v1/rhythm/today", get(rhythm_today_handler))
         .layer(CorsLayer::permissive())

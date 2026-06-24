@@ -27,8 +27,8 @@ defmodule Yemoja.MixProject do
 
   defp deps do
     [
-      {:grpc, "~> 0.8"},
-      {:protobuf, "~> 0.13"}
+      {:plug_cowboy, "~> 2.6"},
+      {:jason, "~> 1.4"},
     ]
   end
 end

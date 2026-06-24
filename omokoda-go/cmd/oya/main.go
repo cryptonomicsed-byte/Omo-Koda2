@@ -41,96 +41,38 @@ var (
 )
 
 func main() {
-	log.SetPrefix("[oya] ")
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	tcpPort := os.Getenv("OYA_PORT")
+	if tcpPort == "" {
+		tcpPort = "50052"
+	}
+	httpPort := os.Getenv("OYA_HTTP_PORT")
+	if httpPort == "" {
+		httpPort = "8080"
+	}
 
-	svc := flow.New()
-	defer svc.Stop()
+	limiter := ratelimit.New()
+	svc := flow.NewService(limiter)
+	store := flow.NewPrimitiveStore()
 
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
-
-	// --- gRPC listener ---
-	grpcLn, err := net.Listen("tcp", grpcAddr)
+	// TCP server (original protocol)
+	lis, err := net.Listen("tcp", ":"+tcpPort)
 	if err != nil {
-		log.Fatalf("failed to listen on %s: %v", grpcAddr, err)
+		log.Fatalf("Failed to listen on TCP :%s: %v", tcpPort, err)
 	}
-	log.Printf("gRPC listener ready on %s", grpcAddr)
+	log.Printf("ỌYA flow service listening on TCP :%s", tcpPort)
+	go svc.Serve(lis)
 
-	// Serve a minimal placeholder until protoc-generated stubs are available.
-	// Replace this block with grpc.NewServer() + RegisterFlowServiceServer once
-	// google.golang.org/grpc is added to go.mod and protos are compiled.
-	var grpcConnCount atomic.Int64
+	// HTTP REST API for OyaClient (Rust) integration
+	httpHandler := flow.NewHTTPHandler(store)
+	log.Printf("ỌYA HTTP API listening on :%s", httpPort)
 	go func() {
-		for {
-			conn, err := grpcLn.Accept()
-			if err != nil {
-				// Listener closed — server is shutting down.
-				return
-			}
-			grpcConnCount.Add(1)
-			go func(c net.Conn) {
-				defer c.Close()
-				defer grpcConnCount.Add(-1)
-				// In production this goroutine is replaced by grpc.Server's
-				// connection handler.  For now, close immediately so health
-				// probes that open a TCP connection still succeed.
-			}(conn)
+		if err := http.ListenAndServe(":"+httpPort, httpHandler); err != nil {
+			log.Printf("ỌYA HTTP server error: %v", err)
 		}
 	}()
 
-	// --- Metrics / health HTTP server ---
-	mux := http.NewServeMux()
-
-	// /metrics — expvar JSON (drop-in for Prometheus text format adapters).
-	mux.Handle("/metrics", expvar.Handler())
-
-	// /healthz — simple liveness probe.
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "ok")
-	})
-
-	// /readyz — readiness probe (delegates to a sample EnforceFlow dry-run).
-	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
-		// We use a synthetic internal agent with T5 (never rate-limited during
-		// normal operation) to verify that the service stack is healthy.
-		if err := svc.EnforceFlow("__health__", 5); err != nil {
-			http.Error(w, "not ready: "+err.Error(), http.StatusServiceUnavailable)
-			return
-		}
-		fmt.Fprintln(w, "ok")
-	})
-
-	httpSrv := &http.Server{
-		Addr:         metricsAddr,
-		Handler:      mux,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 5 * time.Second,
-	}
-
-	go func() {
-		log.Printf("metrics server listening on %s/metrics", metricsAddr)
-		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("metrics server error: %v", err)
-		}
-	}()
-
-	// --- Wait for shutdown signal ---
-	<-ctx.Done()
-	log.Println("shutdown signal received — stopping ỌYA")
-
-	// Graceful HTTP shutdown (5 s deadline).
-	shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer shutCancel()
-	if err := httpSrv.Shutdown(shutCtx); err != nil {
-		log.Printf("metrics server shutdown error: %v", err)
-	}
-
-	// Close the gRPC listener; running connections drain naturally.
-	if err := grpcLn.Close(); err != nil {
-		log.Printf("gRPC listener close error: %v", err)
-	}
-
-	log.Printf("ỌYA stopped cleanly (gRPC connections served: %d)", grpcConnCount.Load())
-	os.Exit(0)
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("ỌYA shutting down")
 }

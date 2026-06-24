@@ -36,14 +36,11 @@ func New() *Service {
 	}
 }
 
-// EnforceFlow checks both the Sabbath gate and the agent's rate-limit bucket.
-// Returns nil if the action is permitted; otherwise returns a descriptive error.
-func (s *Service) EnforceFlow(agentID string, tier uint8) error {
-	now := time.Now().UTC()
-
-	// 1. Sabbath gate — time-based rhythm constraint.
-	if err := s.gate.Check(now); err != nil {
-		return fmt.Errorf("flow denied for agent %s: %w", agentID, err)
+// EnforceFlow checks rate limit and Sabbath gate for an agent+tier combination.
+// Returns nil on allow, or an error message on deny.
+func (s *FlowService) EnforceFlow(agentID string, tier int) error {
+	if isSabbath() {
+		return fmt.Errorf("rhythm_constraint: Saturday 00:00-01:00 UTC — Sabbath gate active, no actions allowed")
 	}
 
 	// 2. Rate limiting — token-bucket per agent per tier.
@@ -54,40 +51,10 @@ func (s *Service) EnforceFlow(agentID string, tier uint8) error {
 	return nil
 }
 
-// StreamUpdates subscribes agentID to flow updates, writing into ch.
-// It sends a heartbeat FlowUpdate every 30 seconds until ch is closed or the
-// caller removes the subscription by closing ch externally.
-//
-// The goroutine terminates when the channel send would block on a closed
-// channel, which the caller signals by not reading further and closing ch.
-// For cleaner lifecycle management, call UnsubscribeAll when tearing down.
-func (s *Service) StreamUpdates(agentID string, ch chan<- FlowUpdate) {
-	s.mu.Lock()
-	s.subscribers[agentID] = append(s.subscribers[agentID], ch)
-	s.mu.Unlock()
-
-	go func() {
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ticker.C:
-				update := FlowUpdate{
-					Event:     "heartbeat",
-					Timestamp: time.Now().Unix(),
-				}
-				// Non-blocking send: if the channel is full or closed, stop.
-				select {
-				case ch <- update:
-				default:
-					// Channel is full or closed — stop the goroutine.
-					s.removeSubscriber(agentID, ch)
-					return
-				}
-			}
-		}
-	}()
+// isSabbath returns true during UTC Saturday 00:00–01:00 (ritual-codex Sabbath enforcement).
+func isSabbath() bool {
+	now := time.Now().UTC()
+	return now.Weekday() == time.Saturday && now.Hour() == 0
 }
 
 // BroadcastUpdate fans out update to every channel subscribed across all agents.

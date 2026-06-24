@@ -19,7 +19,7 @@ pub mod justice;
 pub mod lsp;
 pub mod main_loop;
 pub mod memory;
-pub mod memory_vault;
+pub mod mesh;
 pub mod parser;
 pub mod permissions;
 pub mod plugins;

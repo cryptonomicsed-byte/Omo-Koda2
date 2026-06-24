@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// The 7 Hermetic principles, each with a name and minimum alignment score.
 /// These ARE the constitutional axioms in the Rust (Èṣù) layer.
-/// The Lisp/Ọbàtálá service evaluates these in depth; this guard enforces them locally.
+/// The Lisp/ọbàtálá service evaluates these in depth; this guard enforces them locally.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConstitutionalPrinciple {
     pub name: &'static str,
@@ -137,7 +137,7 @@ impl Constitution {
 /// Called FROM WITHIN the primitives — not a new primitive itself.
 ///
 /// This is the Rust (Èṣù) layer of the constitutional stack. The deeper evaluation
-/// (with full Hermetic principle reasoning) happens in the Lisp/Ọbàtálá service.
+/// (with full Hermetic principle reasoning) happens in the Lisp/ọbàtálá service.
 /// This guard provides fast, synchronous local evaluation before any LLM or tool call.
 #[derive(Debug, Clone)]
 pub struct ConstitutionalGuard {
@@ -157,7 +157,7 @@ impl ConstitutionalGuard {
 
     /// Evaluate an intent (from `think`) or action (from `act`) against the constitution.
     ///
-    /// `hermetic` is the result from the Ọbàtálá service (or its stub). If None,
+    /// `hermetic` is the result from the ọbàtálá service (or its stub). If None,
     /// the ethics service is unavailable — fail closed (deny all) rather than
     /// allowing actions without ethical evaluation.
     #[must_use]
@@ -464,13 +464,19 @@ mod tests {
             &neutral_emotion(),
             None,
         );
-        assert!(verdict.is_blocked(), "expected blocked when ethics service unavailable (fail-closed)");
+        assert!(
+            verdict.is_blocked(),
+            "expected blocked when ethics service unavailable (fail-closed)"
+        );
         assert!(!verdict.is_allowed());
         let reason = match &verdict.verdict {
             Verdict::Block(r) => r.clone(),
             _ => panic!("expected Block verdict"),
         };
-        assert!(reason.contains("Ethics service unavailable"), "block reason should mention ethics service unavailability");
+        assert!(
+            reason.contains("Ethics service unavailable"),
+            "block reason should mention ethics service unavailability"
+        );
     }
 
     #[test]

@@ -14,12 +14,13 @@ Rust's `act` dispatch POSTs to POST /execute for Python-backed tools.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import re
 import time
 from collections import OrderedDict
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
@@ -217,6 +218,24 @@ async def list_tools() -> dict:
         }
         for name, entry in TOOL_REGISTRY.items()
     }
+
+
+# ---------------------------------------------------------------------------
+# /tools/execute — HttpOgunClient contract bridge
+# Maps OgunToolReq {tool, input: Value} → execute() → OgunToolResp {output: str}
+# ---------------------------------------------------------------------------
+
+class OgunToolRequest(BaseModel):
+    tool: str
+    input: Any = {}
+
+
+@app.post("/tools/execute")
+async def tools_execute(req: OgunToolRequest) -> dict:
+    params_str = json.dumps(req.input) if not isinstance(req.input, str) else req.input
+    inner = ExecuteRequest(tool=req.tool, params=params_str, tier=0)
+    result = await execute(inner)
+    return {"output": result.output}
 
 
 # ---------------------------------------------------------------------------

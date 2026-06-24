@@ -73,6 +73,10 @@ func main() {
 	// --- BlockMesh: gossip, peers, resource registry, health ---
 	meshHandler.RegisterRoutes(mux)
 
+	// --- Rhythm gate endpoints (for HttpOyaClient) ---
+	mux.HandleFunc("/rhythm/cooldown", rhythmCooldownHandler)
+	mux.HandleFunc("/rhythm/record", rhythmRecordHandler)
+
 	server := &http.Server{
 		Addr:         ":8080",
 		Handler:      mux,

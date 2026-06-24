@@ -1,10 +1,5 @@
 use crate::bus::events::sovereign_event;
 use crate::interpreter::{ExecutionResult, Steward};
-use crate::memory_vault::handlers::{
-    get_access_log, get_galaxy_data, get_vault_config, get_vault_download, get_vault_file,
-    get_vault_status, post_vault_enable, post_vault_knowledge, post_vault_sync, put_vault_config,
-    search_vault,
-};
 use crate::parser::{MetadataPair, Statement, ThinkModifiers};
 use crate::vault::{
     galaxy_data, insert_knowledge, list_files, load_vault_config, read_file, save_vault_config,
@@ -474,54 +469,6 @@ fn sovereign_event_to_json(ev: &crate::bus::SovereignEvent) -> serde_json::Value
             "type": "audit",
             "event_type": e.event_type,
             "details": e.details,
-        }),
-        Some(sovereign_event::Event::NeighborDiscovered(e)) => json!({
-            "type": "neighbor_discovered",
-            "agent_id": e.agent_id,
-            "block_id": e.block_id,
-            "membership": e.membership,
-        }),
-        Some(sovereign_event::Event::ProposalReceived(e)) => json!({
-            "type": "proposal_received",
-            "negotiation_id": e.negotiation_id,
-            "proposer": e.proposer,
-            "give_summary": e.give_summary,
-            "take_summary": e.take_summary,
-            "ttl_ms": e.ttl_ms,
-        }),
-        Some(sovereign_event::Event::ProposalResponded(e)) => json!({
-            "type": "proposal_responded",
-            "negotiation_id": e.negotiation_id,
-            "respondent": e.respondent,
-            "decision": e.decision,
-        }),
-        Some(sovereign_event::Event::ResourceReserved(e)) => json!({
-            "type": "resource_reserved",
-            "resource_id": e.resource_id,
-            "reserved_by": e.reserved_by,
-            "reserved_from": e.reserved_from,
-            "reserved_until": e.reserved_until,
-        }),
-        Some(sovereign_event::Event::TrustUpdated(e)) => json!({
-            "type": "trust_updated",
-            "agent_id": e.agent_id,
-            "old_score": e.old_score,
-            "new_score": e.new_score,
-            "reason": e.reason,
-        }),
-        Some(sovereign_event::Event::DisputeFiled(e)) => json!({
-            "type": "dispute_filed",
-            "negotiation_id": e.negotiation_id,
-            "filer": e.filer,
-            "respondent": e.respondent,
-            "reason": e.reason,
-        }),
-        Some(sovereign_event::Event::PatternFinding(e)) => json!({
-            "type": "pattern_finding",
-            "block_id": e.block_id,
-            "finding_type": e.finding_type,
-            "summary": e.summary,
-            "confidence": e.confidence,
         }),
         Some(sovereign_event::Event::NeighborDiscovered(e)) => json!({
             "type": "neighbor_discovered",

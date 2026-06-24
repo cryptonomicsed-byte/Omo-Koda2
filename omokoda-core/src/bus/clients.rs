@@ -147,13 +147,20 @@ pub trait OyaClient: Send + Sync {
     async fn record_primitive(&self, agent_id: &AgentId, primitive: &str);
 
     /// Return known mesh peers as gossip entries.
-    async fn gossip_peers(&self) -> Vec<PeerInfo> { vec![] }
+    async fn gossip_peers(&self) -> Vec<PeerInfo> {
+        vec![]
+    }
 
     /// Advertise a local resource onto the mesh.
     async fn register_resource(&self, _offer: ResourceOffer) {}
 
     /// Return current mesh health from the Oya transport layer.
-    async fn mesh_health(&self) -> MeshStatus { MeshStatus { healthy: true, peer_count: 0 } }
+    async fn mesh_health(&self) -> MeshStatus {
+        MeshStatus {
+            healthy: true,
+            peer_count: 0,
+        }
+    }
 }
 
 /// Ṣàngó (Move) client — on-chain receipt and reputation.
@@ -184,17 +191,28 @@ pub trait YemojaClient: Send + Sync {
     /// Hand off an agent to a different Elixir node.
     async fn mesh_handoff(&self, agent_id: &str, target_node: &str) -> Result<(), String>;
     /// Propose a bilateral handshake with a neighbor agent.
-    async fn propose_handshake(&self, _neighbor: &str, _offer: HandshakeOffer) -> Result<HandshakeState, String> {
+    async fn propose_handshake(
+        &self,
+        _neighbor: &str,
+        _offer: HandshakeOffer,
+    ) -> Result<HandshakeState, String> {
         Ok(HandshakeState {
-            session_id: format!("session-{}", std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis()),
+            session_id: format!(
+                "session-{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis()
+            ),
             status: "proposed".to_string(),
         })
     }
     /// Submit a counter-offer in an ongoing negotiation session.
-    async fn negotiate_terms(&self, session_id: &str, _counter: CounterOffer) -> Result<NegotiationResult, String> {
+    async fn negotiate_terms(
+        &self,
+        session_id: &str,
+        _counter: CounterOffer,
+    ) -> Result<NegotiationResult, String> {
         Ok(NegotiationResult {
             status: "accepted".to_string(),
             session_id: session_id.to_string(),

@@ -31,12 +31,16 @@ pub struct TrustGraph {
 
 impl TrustGraph {
     pub fn new() -> Self {
-        Self { edges: HashMap::new() }
+        Self {
+            edges: HashMap::new(),
+        }
     }
 
     pub fn update(&mut self, from: &str, to: &str, delta: f64) {
         let neighbor_map = self.edges.entry(from.to_string()).or_default();
-        let entry = neighbor_map.entry(to.to_string()).or_insert_with(|| TrustEdge::new(0.5));
+        let entry = neighbor_map
+            .entry(to.to_string())
+            .or_insert_with(|| TrustEdge::new(0.5));
         entry.score = (entry.score + delta).clamp(0.0, 1.0);
         entry.last_updated = now_secs();
         entry.interaction_count += 1;
@@ -71,5 +75,7 @@ impl TrustGraph {
 }
 
 impl Default for TrustGraph {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

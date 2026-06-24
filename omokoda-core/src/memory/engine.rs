@@ -134,9 +134,7 @@ impl MemoryEngine {
                             *output = format!("{}... [TRUNCATED]", &output[..2000]);
                         }
                     }
-                    crate::session::ContentBlock::Text { text }
-                        if text.len() > 5000 =>
-                    {
+                    crate::session::ContentBlock::Text { text } if text.len() > 5000 => {
                         *text = format!("{}... [TRUNCATED]", &text[..5000]);
                     }
                     _ => {}

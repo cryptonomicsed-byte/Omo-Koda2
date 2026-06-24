@@ -104,6 +104,39 @@ message PatternFinding {
   float confidence = 4;
 }
 
+// ── Sovereign trust-graph events (Phase 2a) ───────────────────────────────────
+
+message TrustSignalPublished {
+  string agent_id = 1;
+  string neighbor_id = 2;
+  string kind = 3;
+  float weight = 4;
+}
+
+message NeighborProposed {
+  string proposer = 1;
+  string candidate = 2;
+  string block_id = 3;
+}
+
+message CapabilityVerified {
+  string agent_id = 1;
+  string capability = 2;
+  bool passed = 3;
+}
+
+message ProbationEscalated {
+  string subject = 1;
+  string level = 2;
+  string reason = 3;
+}
+
+message ResourceOffered {
+  string agent_id = 1;
+  string resource_id = 2;
+  string kind = 3;
+}
+
 message SovereignEvent {
   oneof event {
     AgentBorn agent_born = 1;
@@ -122,5 +155,10 @@ message SovereignEvent {
     TrustUpdated trust_updated = 14;
     DisputeFiled dispute_filed = 15;
     PatternFinding pattern_finding = 16;
+    TrustSignalPublished trust_signal_published = 17;
+    NeighborProposed neighbor_proposed = 18;
+    CapabilityVerified capability_verified = 19;
+    ProbationEscalated probation_escalated = 20;
+    ResourceOffered resource_offered = 21;
   }
 }

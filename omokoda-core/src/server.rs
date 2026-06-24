@@ -512,6 +512,37 @@ fn sovereign_event_to_json(ev: &crate::bus::SovereignEvent) -> serde_json::Value
             "summary": e.summary,
             "confidence": e.confidence,
         }),
+        Some(sovereign_event::Event::TrustSignalPublished(e)) => json!({
+            "type": "trust_signal_published",
+            "agent_id": e.agent_id,
+            "neighbor_id": e.neighbor_id,
+            "kind": e.kind,
+            "weight": e.weight,
+        }),
+        Some(sovereign_event::Event::NeighborProposed(e)) => json!({
+            "type": "neighbor_proposed",
+            "proposer": e.proposer,
+            "candidate": e.candidate,
+            "block_id": e.block_id,
+        }),
+        Some(sovereign_event::Event::CapabilityVerified(e)) => json!({
+            "type": "capability_verified",
+            "agent_id": e.agent_id,
+            "capability": e.capability,
+            "passed": e.passed,
+        }),
+        Some(sovereign_event::Event::ProbationEscalated(e)) => json!({
+            "type": "probation_escalated",
+            "subject": e.subject,
+            "level": e.level,
+            "reason": e.reason,
+        }),
+        Some(sovereign_event::Event::ResourceOffered(e)) => json!({
+            "type": "resource_offered",
+            "agent_id": e.agent_id,
+            "resource_id": e.resource_id,
+            "kind": e.kind,
+        }),
         None => serde_json::json!({"type": "unknown"}),
     }
 }

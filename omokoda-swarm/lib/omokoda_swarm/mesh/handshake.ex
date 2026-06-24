@@ -17,7 +17,7 @@ defmodule OmokodaSwarm.Mesh.Handshake do
 
   ## Public API
 
-  def start_link(_opts \ []) do
+  def start_link(_opts \\ []) do
     GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
   end
 

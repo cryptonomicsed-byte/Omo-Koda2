@@ -158,7 +158,8 @@ impl ConstitutionalGuard {
     /// Evaluate an intent (from `think`) or action (from `act`) against the constitution.
     ///
     /// `hermetic` is the result from the Ọbàtálá service (or its stub). If None,
-    /// a neutral stub result is used — the guard still runs local heuristic checks.
+    /// the ethics service is unavailable — fail closed (deny all) rather than
+    /// allowing actions without ethical evaluation.
     #[must_use]
     pub fn evaluate(
         &self,
@@ -167,12 +168,18 @@ impl ConstitutionalGuard {
         emotion: &EmotionState,
         hermetic: Option<&HermeticResult>,
     ) -> ConstitutionalVerdict {
-        let stub;
+        let deny_stub;
         let hermetic = match hermetic {
             Some(h) => h,
             None => {
-                stub = HermeticResult::allow_stub();
-                &stub
+                // SECURITY: fail closed — if the ethics service is unavailable,
+                // deny all actions rather than allowing them through unguarded.
+                deny_stub = HermeticResult {
+                    overall: 0.0,
+                    scores: [0.0; 7],
+                    decision: "Block: Ethics service unavailable — failing closed".to_string(),
+                };
+                &deny_stub
             }
         };
 
@@ -447,7 +454,9 @@ mod tests {
     }
 
     #[test]
-    fn none_hermetic_uses_stub() {
+    fn none_hermetic_fails_closed() {
+        // SECURITY: when the ethics service is unavailable (hermetic = None),
+        // the guard must BLOCK rather than allow — fail closed, not fail open.
         let guard = ConstitutionalGuard::standard();
         let verdict = guard.evaluate(
             "summarize the document",
@@ -455,8 +464,13 @@ mod tests {
             &neutral_emotion(),
             None,
         );
-        // Stub gives 0.85 scores → should allow
-        assert!(verdict.is_allowed());
+        assert!(verdict.is_blocked(), "expected blocked when ethics service unavailable (fail-closed)");
+        assert!(!verdict.is_allowed());
+        let reason = match &verdict.verdict {
+            Verdict::Block(r) => r.clone(),
+            _ => panic!("expected Block verdict"),
+        };
+        assert!(reason.contains("Ethics service unavailable"), "block reason should mention ethics service unavailability");
     }
 
     #[test]

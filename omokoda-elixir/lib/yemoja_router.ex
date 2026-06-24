@@ -21,8 +21,6 @@ defmodule Yemoja.Router do
   plug :match
   plug :dispatch
 
-  # ── spawn_agent ──────────────────────────────────────────────────────────────
-
   post "/spawn_agent" do
     role   = Map.get(conn.body_params, "role", "worker")
     _budget = Map.get(conn.body_params, "budget_synapse", 1000.0)
@@ -40,8 +38,6 @@ defmodule Yemoja.Router do
     end
   end
 
-  # ── agent_status ─────────────────────────────────────────────────────────────
-
   get "/agent_status/:agent_id" do
     status =
       case Registry.lookup(Yemoja.Registry, {Yemoja.AgentWorker, agent_id}) do
@@ -51,8 +47,6 @@ defmodule Yemoja.Router do
 
     json(conn, 200, %{agent_id: agent_id, status: status})
   end
-
-  # ── mesh presence ────────────────────────────────────────────────────────────
 
   get "/mesh/presence/:block_id" do
     agents =
@@ -65,26 +59,19 @@ defmodule Yemoja.Router do
     json(conn, 200, %{agents: agents})
   end
 
-  # ── mesh broadcast ───────────────────────────────────────────────────────────
-
   post "/mesh/broadcast/:block_id" do
-    # Broadcast is logged; real pub/sub would use Phoenix.PubSub or Registry sends.
     require Logger
     Logger.debug("mesh_broadcast block=#{block_id} event=#{inspect(conn.body_params)}")
     json(conn, 200, %{broadcast: true, block_id: block_id})
   end
 
-  # ── mesh consensus ───────────────────────────────────────────────────────────
-
   post "/mesh/consensus/:block_id" do
     proposal = conn.body_params
-    # Simple majority vote: collect votes from all alive agents.
     agents =
       Registry.select(Yemoja.Registry, [{{:"$1", :"$2", :"$3"}, [], [{{:"$1", :"$2"}}]}])
 
     votes =
       Enum.map(agents, fn {{Yemoja.AgentWorker, _id}, _pid} ->
-        # Stub vote — real impl would send GenServer calls and await replies.
         :accept
       end)
 
@@ -94,8 +81,6 @@ defmodule Yemoja.Router do
 
     json(conn, 200, %{block_id: block_id, proposal: proposal, result: result, votes: length(votes)})
   end
-
-  # ── mesh handoff ─────────────────────────────────────────────────────────────
 
   post "/mesh/handoff" do
     agent_id    = Map.get(conn.body_params, "agent_id", "")
@@ -112,8 +97,6 @@ defmodule Yemoja.Router do
     end
   end
 
-  # ── health ───────────────────────────────────────────────────────────────────
-
   get "/health" do
     json(conn, 200, %{ok: true, service: "yemoja"})
   end
@@ -121,8 +104,6 @@ defmodule Yemoja.Router do
   match _ do
     json(conn, 404, %{error: "not found", path: conn.request_path})
   end
-
-  # ── helpers ──────────────────────────────────────────────────────────────────
 
   defp json(conn, status, body) do
     conn

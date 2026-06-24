@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// The 7 Hermetic principles, each with a name and minimum alignment score.
 /// These ARE the constitutional axioms in the Rust (Èṣù) layer.
-/// The Lisp/Ọbàtálá service evaluates these in depth; this guard enforces them locally.
+/// The Lisp/ọbàtálá service evaluates these in depth; this guard enforces them locally.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConstitutionalPrinciple {
     pub name: &'static str,
@@ -59,8 +59,6 @@ impl Verdict {
 }
 
 /// The full evaluation result from the ConstitutionalGuard.
-/// Wraps the Hermetic scores with a self-critique chain — an RLAIF-inspired reasoning trace
-/// that the `think` primitive can surface as an internal monologue (not exposed to humans directly).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConstitutionalVerdict {
     pub verdict: Verdict,
@@ -83,8 +81,6 @@ impl ConstitutionalVerdict {
         self.verdict.is_blocked()
     }
 
-    /// Render the critique chain as a single structured string for injection into
-    /// the `think` primitive's system prompt context.
     #[must_use]
     pub fn render_critique(&self) -> String {
         if self.critique_chain.is_empty() {
@@ -102,16 +98,12 @@ impl ConstitutionalVerdict {
 /// The Constitution: a set of principles and an overall block threshold.
 #[derive(Debug, Clone)]
 pub struct Constitution {
-    /// The active constitutional principles (defaults to all 7 Hermetic principles).
     pub principles: &'static [ConstitutionalPrinciple],
-    /// If the composite alignment score falls below this, block the action.
     pub block_threshold: f32,
-    /// If the composite alignment score falls below this (but above block), warn.
     pub warn_threshold: f32,
 }
 
 impl Constitution {
-    /// Standard Omo-Koda2 constitution — all 7 Hermetic principles, strict governance.
     #[must_use]
     pub fn standard() -> Self {
         Self {
@@ -121,8 +113,6 @@ impl Constitution {
         }
     }
 
-    /// Permissive constitution — used during `birth` initialization where full
-    /// context isn't yet available.
     #[must_use]
     pub fn permissive() -> Self {
         Self {
@@ -133,12 +123,6 @@ impl Constitution {
     }
 }
 
-/// Evaluates `think` intents and `act` actions through the constitutional principles.
-/// Called FROM WITHIN the primitives — not a new primitive itself.
-///
-/// This is the Rust (Èṣù) layer of the constitutional stack. The deeper evaluation
-/// (with full Hermetic principle reasoning) happens in the Lisp/Ọbàtálá service.
-/// This guard provides fast, synchronous local evaluation before any LLM or tool call.
 #[derive(Debug, Clone)]
 pub struct ConstitutionalGuard {
     pub constitution: Constitution,
@@ -155,10 +139,6 @@ impl ConstitutionalGuard {
         Self::new(Constitution::standard())
     }
 
-    /// Evaluate an intent (from `think`) or action (from `act`) against the constitution.
-    ///
-    /// `hermetic` is the result from the Ọbàtálá service (or its stub). If None,
-    /// a neutral stub result is used — the guard still runs local heuristic checks.
     #[must_use]
     pub fn evaluate(
         &self,
@@ -167,12 +147,18 @@ impl ConstitutionalGuard {
         emotion: &EmotionState,
         hermetic: Option<&HermeticResult>,
     ) -> ConstitutionalVerdict {
-        let stub;
+        let deny_stub;
         let hermetic = match hermetic {
             Some(h) => h,
             None => {
-                stub = HermeticResult::allow_stub();
-                &stub
+                // SECURITY: fail closed — if the ethics service is unavailable,
+                // deny all actions rather than allowing them through unguarded.
+                deny_stub = HermeticResult {
+                    overall: 0.0,
+                    scores: [0.0; 7],
+                    decision: "Block: Ethics service unavailable — failing closed".to_string(),
+                };
+                &deny_stub
             }
         };
 
@@ -193,11 +179,9 @@ impl ConstitutionalGuard {
             }
         }
 
-        // Heuristic local checks (fast, no LLM call)
         let combined = format!("{} {}", intent, action_description).to_lowercase();
         self.apply_local_heuristics(&combined, emotion, &mut violations, &mut critique_chain);
 
-        // Self-critique: reflect on the overall alignment
         if violations.is_empty() {
             critique_chain.push(format!(
                 "Intent '{}' passes all {} constitutional principles",
@@ -212,8 +196,6 @@ impl ConstitutionalGuard {
             ));
         }
 
-        // Emotion-aware adjustment: a tense agent under stress gets a small alignment boost
-        // (the system should be more forgiving, not harsher, when an agent is struggling)
         let emotion_factor = if emotion.tension > 0.7 { 0.05 } else { 0.0 };
         let final_score = (weighted_score + emotion_factor).min(1.0);
 
@@ -265,7 +247,6 @@ impl ConstitutionalGuard {
         violations: &mut Vec<String>,
         critique: &mut Vec<String>,
     ) {
-        // Cause & Effect: deception patterns undermine the principle of honest causation
         if combined.contains("deceive")
             || combined.contains("manipulate")
             || combined.contains("lie to")
@@ -278,7 +259,6 @@ impl ConstitutionalGuard {
                 .push("Deception pattern detected — violates CauseAndEffect principle".to_string());
         }
 
-        // Polarity: destructive-only patterns with no constructive complement
         if (combined.contains("destroy") || combined.contains("erase all"))
             && !combined.contains("rebuild")
             && !combined.contains("restore")
@@ -291,7 +271,6 @@ impl ConstitutionalGuard {
             );
         }
 
-        // Rhythm: erratic intent when agent is fatigued
         if emotion.energy < 0.3 && combined.len() > 200 {
             critique.push(
                 "Agent is fatigued — complex intent may disrupt natural rhythm; consider simplifying".to_string(),
@@ -387,7 +366,6 @@ mod tests {
             &neutral_emotion(),
             Some(&hermetic_weak()),
         );
-        // Weak scores — should warn or block depending on weighted total
         assert!(!verdict.critique_chain.is_empty());
     }
 
@@ -442,12 +420,11 @@ mod tests {
             &neutral_emotion(),
             Some(&hermetic_allow()),
         );
-        // Tense agent gets small boost — alignment should be >= calm
         assert!(tense.alignment_score >= calm.alignment_score);
     }
 
     #[test]
-    fn none_hermetic_uses_stub() {
+    fn none_hermetic_fails_closed() {
         let guard = ConstitutionalGuard::standard();
         let verdict = guard.evaluate(
             "summarize the document",
@@ -455,8 +432,19 @@ mod tests {
             &neutral_emotion(),
             None,
         );
-        // Stub gives 0.85 scores → should allow
-        assert!(verdict.is_allowed());
+        assert!(
+            verdict.is_blocked(),
+            "expected blocked when ethics service unavailable (fail-closed)"
+        );
+        assert!(!verdict.is_allowed());
+        let reason = match &verdict.verdict {
+            Verdict::Block(r) => r.clone(),
+            _ => panic!("expected Block verdict"),
+        };
+        assert!(
+            reason.contains("Ethics service unavailable"),
+            "block reason should mention ethics service unavailability"
+        );
     }
 
     #[test]
@@ -469,7 +457,6 @@ mod tests {
             Some(&hermetic_allow()),
         );
         assert!(!verdict.critique_chain.is_empty());
-        // Final decision step should be present
         let has_decision = verdict
             .critique_chain
             .iter()

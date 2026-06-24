@@ -21,6 +21,8 @@ Endpoints:
 
   POST /garden/analyse             → Receipt log analytics
   POST /garden/feed                → Augury feature vector from receipts
+
+  POST /mesh/score                 → Trust score computation (belief propagation + time decay)
 """
 
 # -- bootstrap ---------------------------------------------------------------
@@ -52,6 +54,7 @@ const GLOBAL_DAG = Ref(MemoryDAG())
 include(joinpath(@__DIR__, "src", "mesh_analytics.jl"))
 include(joinpath(@__DIR__, "src", "vantage_bridge.jl"))
 include(joinpath(@__DIR__, "src", "soma_bridge.jl"))
+include(joinpath(@__DIR__, "src", "trust_score.jl"))
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -364,6 +367,7 @@ HTTP.register!(ROUTER, "POST", "/garden/feed",         handle_garden_feed)
 HTTP.register!(ROUTER, "POST", "/mesh/correlations",   handle_mesh_correlations)
 HTTP.register!(ROUTER, "POST", "/mesh/forecast",       handle_mesh_forecast)
 HTTP.register!(ROUTER, "POST", "/mesh/reliability",    handle_mesh_reliability)
+HTTP.register!(ROUTER, "POST", "/mesh/score",          handle_mesh_score)
 
 HTTP.register!(ROUTER, "POST", "/vantage/ingest",      handle_vantage_ingest)
 HTTP.register!(ROUTER, "POST", "/vantage/similar",     handle_vantage_similar)

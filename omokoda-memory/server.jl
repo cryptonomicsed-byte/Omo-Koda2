@@ -1,5 +1,5 @@
 """
-Ọmọ Kọ́dà Memory HTTP server — Ọ̀ṣun / Memory layer.
+Ọọ̀ Kọ́dà Memory HTTP server — Ọ̀ṣun / Memory layer.
 Listens on :7778 (override with --port N or MEMORY_PORT env var).
 
 Endpoints:
@@ -10,7 +10,7 @@ Endpoints:
   POST /bb_simulate                → Run a custom TM and return result
 
   POST /nist/test                  → Single NIST SP 800-22 test
-  POST /nist/validate              → Full 15-test battery (IfáScript pre-mainnet gate)
+  POST /nist/validate              → Full 15-test battery (ÌfáScript pre-mainnet gate)
 
   POST /predict                    → Augury time-series prediction
   POST /augury/dag/snapshot        → Add snapshot to in-memory DAG
@@ -22,7 +22,10 @@ Endpoints:
   POST /garden/analyse             → Receipt log analytics
   POST /garden/feed                → Augury feature vector from receipts
 
-  POST /mesh/score                 → Trust score computation (belief propagation + time decay)
+  POST /mesh/score                 → Julia trust score computation
+  POST /mesh/correlations          → Cross-agent trust correlations
+  POST /mesh/forecast              → Resource demand forecast
+  POST /mesh/reliability           → Agent commitment reliability report
 """
 
 # -- bootstrap ---------------------------------------------------------------
@@ -40,7 +43,6 @@ using Statistics
 # ---------------------------------------------------------------------------
 
 function get_port()::Int
-    # --port N flag takes precedence, then env var, then default
     idx = findfirst(==("--port"), ARGS)
     idx !== nothing && return parse(Int, ARGS[idx+1])
     parse(Int, get(ENV, "MEMORY_PORT", "7778"))
@@ -48,13 +50,11 @@ end
 
 const VERSION = "0.1.0"
 
-# Global in-memory DAG (resets on restart; production would persist to Walrus)
 const GLOBAL_DAG = Ref(MemoryDAG())
 
 include(joinpath(@__DIR__, "src", "mesh_analytics.jl"))
 include(joinpath(@__DIR__, "src", "vantage_bridge.jl"))
 include(joinpath(@__DIR__, "src", "soma_bridge.jl"))
-include(joinpath(@__DIR__, "src", "trust_score.jl"))
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -91,10 +91,9 @@ function handle_capabilities(req::HTTP.Request)
         "augury"   => ["/predict", "/augury/dag/snapshot", "/augury/dag/summary"],
         "optimize" => ["/optimize", "/optimize/reliability"],
         "garden"   => ["/garden/analyse", "/garden/feed"],
+        "mesh"     => ["/mesh/score", "/mesh/correlations", "/mesh/forecast", "/mesh/reliability"],
     ))
 end
-
-# --- Busy Beaver ------------------------------------------------------------
 
 function handle_bb_verify(req::HTTP.Request)
     body = parse_body(req)
@@ -110,7 +109,6 @@ function handle_bb_simulate(req::HTTP.Request)
     max_steps = Int(get(body, "max_steps", 200_000))
 
     if haskey(body, "rules")
-        # Custom TM
         rules_vec     = [collect(r) for r in body["rules"]]
         claimed_steps = Int(get(body, "claimed_steps", 0))
         claimed_sigma = Int(get(body, "claimed_sigma", 0))
@@ -118,7 +116,6 @@ function handle_bb_simulate(req::HTTP.Request)
                                    max_steps=max_steps)
         json_ok(result)
     else
-        # Known champion
         result = run_known_bb(n_states; max_steps=max_steps)
         json_ok(Dict(
             "halted"    => result.halted,
@@ -129,8 +126,6 @@ function handle_bb_simulate(req::HTTP.Request)
         ))
     end
 end
-
-# --- NIST -------------------------------------------------------------------
 
 const NIST_TEST_MAP = Dict(
     "frequency"       => test_frequency,
@@ -155,7 +150,6 @@ function handle_nist_test(req::HTTP.Request)
     test_name = string(get(body, "test", "frequency"))
     fn = get(NIST_TEST_MAP, test_name, nothing)
     fn === nothing && return json_err("unknown test '$test_name'")
-
     data = get(body, "data", Int[])
     bits = parse_bits(data)
     r    = fn(bits)
@@ -184,8 +178,6 @@ function handle_nist_validate(req::HTTP.Request)
     ))
 end
 
-# --- Augury -----------------------------------------------------------------
-
 function handle_predict(req::HTTP.Request)
     body    = parse_body(req)
     series  = Float64.(get(body, "series",  Float64[]))
@@ -193,7 +185,6 @@ function handle_predict(req::HTTP.Request)
     method  = Symbol(get(body, "method", "holt"))
     α       = Float64(get(body, "alpha", 0.3))
     β       = Float64(get(body, "beta",  0.1))
-
     isempty(series) && return json_err("series must be a non-empty array of numbers")
     result = predict(series, horizon; method=method, α=α, β=β)
     json_ok(Dict(
@@ -212,7 +203,6 @@ function handle_dag_snapshot(req::HTTP.Request)
     timestamp = Float64(get(body, "timestamp", time()))
     parent    = get(body, "parent_id", nothing)
     parent_id = parent === nothing ? nothing : string(parent)
-
     add_snapshot!(GLOBAL_DAG[], id, values, timestamp, parent_id)
     json_ok(Dict("added" => id, "dag" => summarise_dag(GLOBAL_DAG[])))
 end
@@ -221,17 +211,13 @@ function handle_dag_summary(req::HTTP.Request)
     json_ok(summarise_dag(GLOBAL_DAG[]))
 end
 
-# --- DePIN Optimizer --------------------------------------------------------
-
 function handle_optimize(req::HTTP.Request)
     body     = parse_body(req)
     nodes    = [parse_node(d) for d in get(body, "nodes", [])]
     tasks    = [parse_task(d) for d in get(body, "tasks", [])]
     strategy = string(get(body, "strategy", "greedy"))
     max_util = Float64(get(body, "max_utilisation", 0.9))
-
     isempty(nodes) && return json_err("nodes must be a non-empty array")
-
     result = if strategy == "round_robin"
         allocate_round_robin(nodes, tasks)
     elseif strategy == "least_connections"
@@ -239,7 +225,6 @@ function handle_optimize(req::HTTP.Request)
     else
         allocate_greedy(nodes, tasks; max_utilisation=max_util)
     end
-
     json_ok(Dict(
         "strategy"   => result.strategy,
         "score"      => result.score,
@@ -258,13 +243,10 @@ function handle_reliability(req::HTTP.Request)
     nodes    = [parse_node(d) for d in get(body, "nodes", [])]
     tasks    = [parse_task(d) for d in get(body, "tasks", [])]
     n_trials = Int(get(body, "n_trials", 10_000))
-
     isempty(nodes) && return json_err("nodes must be a non-empty array")
     result = monte_carlo_reliability(nodes, tasks, n_trials)
     json_ok(result)
 end
-
-# --- Garden Analytics -------------------------------------------------------
 
 function handle_garden_analyse(req::HTTP.Request)
     body     = parse_body(req)
@@ -287,6 +269,32 @@ function handle_garden_feed(req::HTTP.Request)
             "tier_mean", "tier_std", "receipts_per_min",
             "agent_diversity", "failure_spike", "trend_slope",
         ],
+    ))
+end
+
+# ---------------------------------------------------------------------------
+# Mesh score handler (Julia trust computation for Rust OsunClient)
+# ---------------------------------------------------------------------------
+
+function handle_mesh_score(req::HTTP.Request)
+    body = parse_body(req)
+    agent_id    = string(get(body, "agent_id", "unknown"))
+    neighbor_id = string(get(body, "neighbor_id", "unknown"))
+    signals     = get(body, "signals", [])
+    prior       = Float64(get(body, "prior", 0.5))
+
+    weights = Float64[Float64(get(s, "weight", 0.0)) for s in signals]
+    score = if isempty(weights)
+        prior
+    else
+        clamp(prior + sum(weights) / max(length(weights), 1), 0.0, 1.0)
+    end
+
+    json_ok(Dict(
+        "agent_id"    => agent_id,
+        "neighbor_id" => neighbor_id,
+        "trust_score" => score,
+        "signal_count" => length(weights),
     ))
 end
 
@@ -364,10 +372,10 @@ HTTP.register!(ROUTER, "POST", "/optimize/reliability",handle_reliability)
 HTTP.register!(ROUTER, "POST", "/garden/analyse",      handle_garden_analyse)
 HTTP.register!(ROUTER, "POST", "/garden/feed",         handle_garden_feed)
 
+HTTP.register!(ROUTER, "POST", "/mesh/score",          handle_mesh_score)
 HTTP.register!(ROUTER, "POST", "/mesh/correlations",   handle_mesh_correlations)
 HTTP.register!(ROUTER, "POST", "/mesh/forecast",       handle_mesh_forecast)
 HTTP.register!(ROUTER, "POST", "/mesh/reliability",    handle_mesh_reliability)
-HTTP.register!(ROUTER, "POST", "/mesh/score",          handle_mesh_score)
 
 HTTP.register!(ROUTER, "POST", "/vantage/ingest",      handle_vantage_ingest)
 HTTP.register!(ROUTER, "POST", "/vantage/similar",     handle_vantage_similar)
@@ -382,5 +390,5 @@ HTTP.register!(ROUTER, "POST", "/soma/reconstruct",    handle_soma_reconstruct)
 # ---------------------------------------------------------------------------
 
 port = get_port()
-@info "Ọmọ Kọ́dà Memory server starting" port=port version=VERSION
+@info "Ọọ̀ Kọ́dà Memory server starting" port=port version=VERSION
 HTTP.serve(ROUTER, "0.0.0.0", port)

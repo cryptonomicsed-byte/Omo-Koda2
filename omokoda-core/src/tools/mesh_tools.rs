@@ -53,8 +53,6 @@ impl VantageClient {
     }
 
     async fn send(&self, req: reqwest::RequestBuilder) -> Result<serde_json::Value, String> {
-        // Vantage authenticates Ọ̀mọ̀ Kọ́dà agents via the X-Agent-Key header
-        // (see Vantage backend/deps.py::get_agent).
         let req = if self.api_key.is_empty() {
             req
         } else {

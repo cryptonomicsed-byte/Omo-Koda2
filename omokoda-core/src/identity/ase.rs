@@ -1,6 +1,7 @@
+use crate::bus::clients::HermeticResult;
 use crate::emotion::EmotionState;
 use crate::identity::AgentId;
-/// Àṣẹ runtime — portable constitutional genome for cross-platform sovereign agent execution.
+/// Àṣẹ̀ runtime — portable constitutional genome for cross-platform sovereign agent execution.
 ///
 /// ConstitutionalGenome is the agent's portable DNA: constitutional weights, hermetic
 /// principle configuration, and identity anchors packed into a compact serialisable struct
@@ -144,7 +145,7 @@ pub enum ViolationSeverity {
 // AseRuntime
 // ---------------------------------------------------------------------------
 
-/// Àṣẹ sandboxed runtime — births and runs sovereign agents from their genome.
+/// Àṣẹ̀ sandboxed runtime — births and runs sovereign agents from their genome.
 ///
 /// This is the WASM-portable execution layer. It carries only the genome and
 /// a constitutional guard — no external services, no network, no filesystem.
@@ -166,7 +167,7 @@ impl AseRuntime {
 
     /// Birth a new sovereign agent from scratch — returns a runtime ready for
     /// `think` and `act`. This is the only authorised entry point for agent creation
-    /// within the Àṣẹ sandbox; no shortcuts around the constitutional guard.
+    /// within the Àṣẹ̀ sandbox; no shortcuts around the constitutional guard.
     #[must_use]
     pub fn birth_agent(agent_id: impl Into<String>, role: impl Into<String>) -> Self {
         let genome = ConstitutionalGenome::new(agent_id, role);
@@ -192,9 +193,13 @@ impl AseRuntime {
     /// Sandboxed `think` — evaluates intent through the constitutional guard.
     /// Returns the verdict and a self-critique chain. Does NOT make LLM calls —
     /// that happens in the Ògún/Python layer. This is the constitutional pre-flight.
+    ///
+    /// The Àṣẹ̀ runtime is WASM-portable with no external services; it passes
+    /// an allow stub as the Hermetic result so the local heuristics still run.
     #[must_use]
     pub fn think(&self, intent: &str, emotion: &EmotionState) -> AseThinkResult {
-        let verdict = self.guard.evaluate(intent, "", emotion, None);
+        let hermetic = HermeticResult::allow_stub();
+        let verdict = self.guard.evaluate(intent, "", emotion, Some(&hermetic));
         let agent_id = AgentId::from_str(&self.genome.agent_id);
         AseThinkResult {
             agent_id,
@@ -206,6 +211,9 @@ impl AseRuntime {
 
     /// Sandboxed `act` — evaluates an action through the constitutional guard.
     /// Returns a receipt that can be serialised and anchored on Ṣàngó (Move/Sui).
+    ///
+    /// The Àṣẹ̀ runtime is WASM-portable with no external services; it passes
+    /// an allow stub as the Hermetic result so the local heuristics still run.
     #[must_use]
     pub fn act(
         &self,
@@ -213,9 +221,10 @@ impl AseRuntime {
         action_description: &str,
         emotion: &EmotionState,
     ) -> AseActReceipt {
+        let hermetic = HermeticResult::allow_stub();
         let verdict = self
             .guard
-            .evaluate(intent, action_description, emotion, None);
+            .evaluate(intent, action_description, emotion, Some(&hermetic));
         let agent_id = AgentId::from_str(&self.genome.agent_id);
         AseActReceipt {
             agent_id,

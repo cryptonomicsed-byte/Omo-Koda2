@@ -37,6 +37,61 @@ impl HermeticResult {
     }
 }
 
+// ─── Mesh-layer shared types ──────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrustSignal {
+    pub kind: String,
+    pub weight: f64,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeerInfo {
+    pub agent_id: String,
+    pub block_id: String,
+    pub trust_score: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResourceOffer {
+    pub resource_id: String,
+    pub kind: String,
+    pub capacity: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeshStatus {
+    pub healthy: bool,
+    pub peer_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HandshakeOffer {
+    pub terms: serde_json::Value,
+    pub ttl_secs: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HandshakeState {
+    pub session_id: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CounterOffer {
+    pub terms: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NegotiationResult {
+    pub status: String,
+    pub session_id: String,
+    pub final_terms: Option<serde_json::Value>,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /// Ọ̀ṣun (Julia) client — SOMA reconstruction and memory operations.
 /// Called during `think` to retrieve contextual memory before the LLM call.
 #[async_trait]
@@ -57,6 +112,16 @@ pub trait OsunClient: Send + Sync {
         emotion: &EmotionState,
         importance: f32,
     );
+
+    /// Compute a weighted trust score for a neighbor from a batch of signals.
+    async fn compute_trust_score(
+        &self,
+        _agent_id: &str,
+        _neighbor_id: &str,
+        _signals: Vec<TrustSignal>,
+    ) -> f64 {
+        0.5
+    }
 }
 
 /// Ọbàtálá (Lisp) client — Hermetic principle evaluation.
@@ -80,6 +145,22 @@ pub trait OyaClient: Send + Sync {
 
     /// Record a completed primitive for rhythm tracking.
     async fn record_primitive(&self, agent_id: &AgentId, primitive: &str);
+
+    /// Return known mesh peers as gossip entries.
+    async fn gossip_peers(&self) -> Vec<PeerInfo> {
+        vec![]
+    }
+
+    /// Advertise a local resource onto the mesh.
+    async fn register_resource(&self, _offer: ResourceOffer) {}
+
+    /// Return current mesh health from the Oya transport layer.
+    async fn mesh_health(&self) -> MeshStatus {
+        MeshStatus {
+            healthy: true,
+            peer_count: 0,
+        }
+    }
 }
 
 /// Ṣàngó (Move) client — on-chain receipt and reputation.
@@ -109,6 +190,35 @@ pub trait YemojaClient: Send + Sync {
     ) -> Result<serde_json::Value, String>;
     /// Hand off an agent to a different Elixir node.
     async fn mesh_handoff(&self, agent_id: &str, target_node: &str) -> Result<(), String>;
+    /// Propose a bilateral handshake with a neighbor agent.
+    async fn propose_handshake(
+        &self,
+        _neighbor: &str,
+        _offer: HandshakeOffer,
+    ) -> Result<HandshakeState, String> {
+        Ok(HandshakeState {
+            session_id: format!(
+                "session-{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis()
+            ),
+            status: "proposed".to_string(),
+        })
+    }
+    /// Submit a counter-offer in an ongoing negotiation session.
+    async fn negotiate_terms(
+        &self,
+        session_id: &str,
+        _counter: CounterOffer,
+    ) -> Result<NegotiationResult, String> {
+        Ok(NegotiationResult {
+            status: "accepted".to_string(),
+            session_id: session_id.to_string(),
+            final_terms: None,
+        })
+    }
 }
 
 /// Ògún (Python) client — tool execution and external integrations.
@@ -334,6 +444,41 @@ impl OsunClient for HttpOsunClient {
             .send()
             .await;
     }
+
+    async fn compute_trust_score(
+        &self,
+        agent_id: &str,
+        neighbor_id: &str,
+        signals: Vec<TrustSignal>,
+    ) -> f64 {
+        let url = format!("{}/mesh/score", self.base_url);
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let body = serde_json::json!({
+            "agent_id": agent_id,
+            "neighbor_id": neighbor_id,
+            "signals": signals,
+            "prior": 0.5_f64,
+            "timestamp": ts,
+        });
+        match http_client()
+            .post(&url)
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<serde_json::Value>()
+                .await
+                .ok()
+                .and_then(|v| v.get("trust_score").and_then(|s| s.as_f64()))
+                .unwrap_or(0.5),
+            _ => 0.5,
+        }
+    }
 }
 
 // ─── HttpOyaClient ── Ọya Go rhythm service at OYA_URL ───────────────────────
@@ -386,6 +531,56 @@ impl OyaClient for HttpOyaClient {
             .timeout(std::time::Duration::from_secs(1))
             .send()
             .await;
+    }
+
+    async fn gossip_peers(&self) -> Vec<PeerInfo> {
+        let url = format!("{}/mesh/peers", self.base_url);
+        match http_client()
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(2))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<serde_json::Value>()
+                .await
+                .ok()
+                .and_then(|v| {
+                    v.get("peers").and_then(|a| a.as_array()).map(|arr| {
+                        arr.iter()
+                            .filter_map(|e| serde_json::from_value(e.clone()).ok())
+                            .collect()
+                    })
+                })
+                .unwrap_or_default(),
+            _ => vec![],
+        }
+    }
+
+    async fn register_resource(&self, offer: ResourceOffer) {
+        let url = format!("{}/mesh/resource", self.base_url);
+        let _ = http_client()
+            .post(&url)
+            .json(&offer)
+            .timeout(std::time::Duration::from_secs(2))
+            .send()
+            .await;
+    }
+
+    async fn mesh_health(&self) -> MeshStatus {
+        let url = format!("{}/mesh/health", self.base_url);
+        match http_client()
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(1))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<MeshStatus>()
+                .await
+                .unwrap_or(MeshStatus { healthy: true, peer_count: 0 }),
+            _ => MeshStatus { healthy: true, peer_count: 0 },
+        }
     }
 }
 
@@ -534,6 +729,51 @@ impl YemojaClient for HttpYemojaClient {
             Err(e) => Err(format!("mesh_handoff network error: {e}")),
         }
     }
+
+    async fn propose_handshake(
+        &self,
+        neighbor: &str,
+        offer: HandshakeOffer,
+    ) -> Result<HandshakeState, String> {
+        let url = format!("{}/mesh/handshake/propose", self.base_url);
+        let body = serde_json::json!({ "neighbor": neighbor, "offer": offer });
+        match http_client()
+            .post(&url)
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<HandshakeState>()
+                .await
+                .map_err(|e| format!("propose_handshake parse error: {e}")),
+            Ok(resp) => Err(format!("propose_handshake failed: HTTP {}", resp.status())),
+            Err(e) => Err(format!("propose_handshake network error: {e}")),
+        }
+    }
+
+    async fn negotiate_terms(
+        &self,
+        session_id: &str,
+        counter: CounterOffer,
+    ) -> Result<NegotiationResult, String> {
+        let url = format!("{}/mesh/handshake/{}/counter", self.base_url, session_id);
+        match http_client()
+            .post(&url)
+            .json(&counter)
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<NegotiationResult>()
+                .await
+                .map_err(|e| format!("negotiate_terms parse error: {e}")),
+            Ok(resp) => Err(format!("negotiate_terms failed: HTTP {}", resp.status())),
+            Err(e) => Err(format!("negotiate_terms network error: {e}")),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -601,5 +841,21 @@ mod tests {
         let json = result.unwrap();
         assert!(json.contains("stub"));
         assert!(json.contains("data_transform"));
+    }
+
+    #[tokio::test]
+    async fn oya_stub_mesh_health_is_healthy() {
+        let stub = LocalOyaStub;
+        let health = stub.mesh_health().await;
+        assert!(health.healthy);
+    }
+
+    #[tokio::test]
+    async fn yemoja_stub_propose_handshake_returns_stub_session() {
+        let stub = LocalYemojaStub;
+        let offer = HandshakeOffer { terms: serde_json::json!({}), ttl_secs: 60 };
+        let result = stub.propose_handshake("neighbor-a", offer).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().session_id.starts_with("session-"));
     }
 }

@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/omo-koda/omokoda-ops/mesh"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -23,6 +24,25 @@ func main() {
 	// Start SSE relay: connects to Rust Steward and fans out to downstream clients.
 	hub = NewSSEHub(getStewardURL() + "/v1/events")
 	go hub.Run()
+
+	// Mesh layer: peer gossip + resource registry + health probes.
+	agentID := os.Getenv("AGENT_ID")
+	if agentID == "" {
+		agentID = "omokoda-ops"
+	}
+	blockID := os.Getenv("MESH_BLOCK_ID")
+	if blockID == "" {
+		blockID = "default"
+	}
+	selfAddr := os.Getenv("SELF_ADDR") // e.g. http://my-host:8080
+
+	meshStore := mesh.NewPeerStore()
+	gossiper := mesh.NewGossiper(agentID, blockID, selfAddr, meshStore)
+	meshHandler := mesh.NewHandler(meshStore, gossiper)
+
+	meshCtx, meshCancel := context.WithCancel(context.Background())
+	defer meshCancel()
+	go gossiper.Run(meshCtx)
 
 	mux := http.NewServeMux()
 
@@ -49,6 +69,9 @@ func main() {
 	// --- DePIN device registry ---
 	mux.HandleFunc("/v1/devices", handleDevices)
 	mux.HandleFunc("/v1/devices/", handleDevices)
+
+	// --- BlockMesh: gossip, peers, resource registry, health ---
+	meshHandler.RegisterRoutes(mux)
 
 	server := &http.Server{
 		Addr:         ":8080",

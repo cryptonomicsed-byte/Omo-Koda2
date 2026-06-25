@@ -13,11 +13,9 @@ pub enum SabbathPolicy {
 }
 
 /// Sabbath Gate — guards irreversible operations.
-/// Governance constraint, not a UX feature. Pre-mainnet requirement.
 pub struct SabbathGate;
 
 impl SabbathGate {
-    /// Returns true if the operation is permitted to execute right now.
     pub fn is_permitted(policy: &SabbathPolicy) -> bool {
         match policy {
             SabbathPolicy::Unrestricted => true,
@@ -29,7 +27,6 @@ impl SabbathGate {
         }
     }
 
-    /// Returns the reason for blocking, if blocked.
     pub fn block_reason(policy: &SabbathPolicy) -> Option<&'static str> {
         match policy {
             SabbathPolicy::Unrestricted => None,
@@ -64,7 +61,6 @@ mod tests {
 
     #[test]
     fn sunday_only_has_reason_on_non_sunday() {
-        // We can't control what day the test runs, but we can test the logic
         let today = Utc::now().weekday();
         let permitted = SabbathGate::is_permitted(&SabbathPolicy::SaturdayOnly);
         let has_reason = SabbathGate::block_reason(&SabbathPolicy::SaturdayOnly).is_some();

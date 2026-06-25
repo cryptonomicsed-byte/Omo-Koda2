@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/omo-koda/omokoda-ops/mesh"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -20,41 +21,57 @@ func main() {
 
 	InitializeMetrics()
 
-	// Start SSE relay: connects to Rust Steward and fans out to downstream clients.
 	hub = NewSSEHub(getStewardURL() + "/v1/events")
 	go hub.Run()
 
+	agentID := os.Getenv("AGENT_ID")
+	if agentID == "" {
+		agentID = "omokoda-ops"
+	}
+	blockID := os.Getenv("MESH_BLOCK_ID")
+	if blockID == "" {
+		blockID = "default"
+	}
+	selfAddr := os.Getenv("SELF_ADDR")
+
+	meshStore := mesh.NewPeerStore()
+	gossiper := mesh.NewGossiper(agentID, blockID, selfAddr, meshStore)
+	meshHandler := mesh.NewHandler(meshStore, gossiper)
+
+	meshCtx, meshCancel := context.WithCancel(context.Background())
+	defer meshCancel()
+	go gossiper.Run(meshCtx)
+
 	mux := http.NewServeMux()
 
-	// --- Operations endpoints (health, metrics) ---
 	mux.HandleFunc("/health", healthHandler)
 	mux.HandleFunc("/ready", readyHandler)
 	mux.HandleFunc("/status", statusHandler)
 	mux.Handle("/metrics", promhttp.Handler())
 
-	// --- Steward gateway: birth + think (direct proxy) ---
 	mux.HandleFunc("/v1/birth", proxyToSteward)
 	mux.HandleFunc("/v1/think", proxyToSteward)
 
-	// --- Steward gateway: act (rhythm-gated proxy) ---
 	mux.HandleFunc("/v1/act", actHandler)
 
-	// --- Steward gateway: read-only pass-throughs ---
 	mux.HandleFunc("/v1/status", proxyToSteward)
 	mux.HandleFunc("/v1/health", proxyToSteward)
 
-	// --- SSE fan-out (hub proxies from Rust, fans out to N clients) ---
 	mux.Handle("/v1/events", hub)
 
-	// --- DePIN device registry ---
 	mux.HandleFunc("/v1/devices", handleDevices)
 	mux.HandleFunc("/v1/devices/", handleDevices)
+
+	meshHandler.RegisterRoutes(mux)
+
+	mux.HandleFunc("/rhythm/cooldown", rhythmCooldownHandler)
+	mux.HandleFunc("/rhythm/record", rhythmRecordHandler)
 
 	server := &http.Server{
 		Addr:         ":8080",
 		Handler:      mux,
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 0, // 0 = no timeout; required for SSE long-lived connections
+		WriteTimeout: 0,
 		IdleTimeout:  120 * time.Second,
 	}
 

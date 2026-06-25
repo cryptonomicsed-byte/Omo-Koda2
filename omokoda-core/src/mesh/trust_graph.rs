@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use super::probation::ProbationManager;
+
 #[derive(Debug, Clone)]
 pub struct TrustEdge {
     pub score: f64,
@@ -44,6 +46,25 @@ impl TrustGraph {
         entry.score = (entry.score + delta).clamp(0.0, 1.0);
         entry.last_updated = now_secs();
         entry.interaction_count += 1;
+    }
+
+    /// Apply a delta and automatically escalate or de-escalate probation
+    /// for `to` when the resulting edge score crosses `threshold`.
+    pub fn update_with_probation(
+        &mut self,
+        from: &str,
+        to: &str,
+        delta: f64,
+        probation: &mut ProbationManager,
+        threshold: f64,
+        reason: &str,
+    ) {
+        self.update(from, to, delta);
+        if self.score(from, to) < threshold {
+            probation.escalate(to, reason);
+        } else {
+            probation.de_escalate(to);
+        }
     }
 
     pub fn score(&self, from: &str, to: &str) -> f64 {

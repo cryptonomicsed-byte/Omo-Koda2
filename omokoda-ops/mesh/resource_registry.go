@@ -8,7 +8,7 @@ import (
 // ResourceOffer is a resource this agent makes available to the mesh.
 type ResourceOffer struct {
 	ResourceID string
-	Kind       string // "compute", "storage", "bandwidth", "data"
+	Kind       string
 	Capacity   float64
 	ExpiresAt  time.Time
 	OwnerID    string
@@ -16,8 +16,8 @@ type ResourceOffer struct {
 
 // ResourceRegistry is a thread-safe in-memory board of resource offers.
 type ResourceRegistry struct {
-	mu      sync.RWMutex
-	offers  map[string]*ResourceOffer
+	mu     sync.RWMutex
+	offers map[string]*ResourceOffer
 }
 
 func NewResourceRegistry() *ResourceRegistry {

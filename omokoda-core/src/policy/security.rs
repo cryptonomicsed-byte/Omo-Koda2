@@ -1,4 +1,5 @@
 use regex::Regex;
+use std::cmp::Reverse;
 use std::sync::OnceLock;
 
 /// Severity level for a detected security pattern.
@@ -118,7 +119,7 @@ impl SecurityScanner {
             .collect();
 
         // Most severe first
-        violations.sort_by(|a, b| b.severity.cmp(&a.severity));
+        violations.sort_by_key(|b| Reverse(b.severity));
         violations
     }
 

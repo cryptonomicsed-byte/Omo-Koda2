@@ -42,7 +42,7 @@ defmodule OmokodaSwarm.RalphLoopTest do
       )
 
       result = OmokodaSwarm.RalphLoop.await(pid, 15_000)
-      assert match?({:ok, _} | {:error, _}, result)
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
 
     test "stop_loop terminates early" do

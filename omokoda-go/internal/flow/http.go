@@ -9,25 +9,21 @@ import (
 )
 
 // PrimitiveStore tracks per-agent cooldowns for distributed rhythm enforcement.
-// After a primitive is recorded, a brief cooldown is set to prevent
-// same-agent bursts across distributed Rust instances.
 type PrimitiveStore struct {
 	mu        sync.Mutex
-	cooldowns map[string]time.Time // agent_id -> cooldown expiry
+	cooldowns map[string]time.Time
 }
 
 func NewPrimitiveStore() *PrimitiveStore {
 	return &PrimitiveStore{cooldowns: make(map[string]time.Time)}
 }
 
-// SetCooldown sets a cooldown for agentID lasting d from now.
 func (ps *PrimitiveStore) SetCooldown(agentID string, d time.Duration) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	ps.cooldowns[agentID] = time.Now().Add(d)
 }
 
-// IsInCooldown returns true if agentID has an active cooldown.
 func (ps *PrimitiveStore) IsInCooldown(agentID string) bool {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
@@ -35,8 +31,6 @@ func (ps *PrimitiveStore) IsInCooldown(agentID string) bool {
 	return ok && time.Now().Before(exp)
 }
 
-// cooldownDuration returns the rhythm cooldown for a primitive name.
-// Irreversible primitives (act) get a longer cooldown than think.
 func cooldownDuration(primitive string) time.Duration {
 	switch strings.ToLower(primitive) {
 	case "act":
@@ -48,14 +42,10 @@ func cooldownDuration(primitive string) time.Duration {
 	}
 }
 
-// NewHTTPHandler returns an http.Handler for the ỌYA REST API:
-//
-//	GET  /cooldown/{agent_id}  → {"in_cooldown": bool}
-//	POST /record               ← {"agent_id": "…", "primitive": "…"}
+// NewHTTPHandler returns an http.Handler for the ỌYA REST API.
 func NewHTTPHandler(store *PrimitiveStore) http.Handler {
 	mux := http.NewServeMux()
 
-	// GET /cooldown/{agent_id}
 	mux.HandleFunc("/cooldown/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -70,7 +60,6 @@ func NewHTTPHandler(store *PrimitiveStore) http.Handler {
 		json.NewEncoder(w).Encode(map[string]bool{"in_cooldown": store.IsInCooldown(agentID)})
 	})
 
-	// POST /record
 	mux.HandleFunc("/record", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -93,7 +82,6 @@ func NewHTTPHandler(store *PrimitiveStore) http.Handler {
 		json.NewEncoder(w).Encode(map[string]bool{"recorded": true})
 	})
 
-	// GET /health
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]bool{"ok": true})

@@ -1,5 +1,4 @@
 pub mod clients;
-pub mod http_clients;
 pub mod events {
     include!(concat!(env!("OUT_DIR"), "/omokoda.v1.rs"));
 }
@@ -9,10 +8,6 @@ pub use clients::{
     AgentPresence, AgentStatus, HermeticResult, HttpOsunClient, HttpOyaClient, HttpYemojaClient,
     LocalObatalaStub, LocalOsunStub, LocalOyaStub, LocalSangoStub, LocalYemojaStub, ObatalaClient,
     OsunClient, OyaClient, SangoClient, YemojaClient,
-};
-pub use http_clients::{
-    HttpObatalaClient, HttpOgunClient, HttpOsunClient, HttpOyaClient, HttpSangoClient,
-    HttpYemojaClient, ServiceRegistry,
 };
 use tokio::sync::broadcast;
 

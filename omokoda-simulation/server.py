@@ -1,25 +1,18 @@
 """
-Ọmọ Kọ́dà Python Tool Runner — Ògún / Execution layer.
+Ọọ̀ Kọ́dà Python Tool Runner — Ògún / Execution layer.
 FastAPI service on :7779.
-
-Architecture:
-  - Capability-gated tool registry (Osovm pattern)
-  - PII redaction + output sanitisation before every response (Claw-code safety stack)
-  - MemCell LRU cache for idempotent tool results (Droidclaw SOMA pattern)
-  - Each tool is a pure function: (params: str) → str | raises
-
-Rust's `act` dispatch POSTs to POST /execute for Python-backed tools.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import re
 import time
 from collections import OrderedDict
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
@@ -29,10 +22,6 @@ from tools import code_runner, cosmos_generate, data_analysis, web_search
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
 log = logging.getLogger("omokoda.tool_runner")
-
-# ---------------------------------------------------------------------------
-# Tool registry — name → {fn, required_tier, write, cacheable, description}
-# ---------------------------------------------------------------------------
 
 TOOL_REGISTRY: dict[str, dict] = {
     "web_search": {
@@ -65,9 +54,6 @@ TOOL_REGISTRY: dict[str, dict] = {
     },
 }
 
-# ---------------------------------------------------------------------------
-# MemCell — simple LRU cache keyed by (tool, params) hash (SOMA pattern)
-# ---------------------------------------------------------------------------
 
 class MemCell:
     def __init__(self, max_size: int = 256) -> None:
@@ -93,10 +79,6 @@ class MemCell:
 
 
 _cache = MemCell()
-
-# ---------------------------------------------------------------------------
-# PII redaction + output sanitisation (Claw-code safety stack)
-# ---------------------------------------------------------------------------
 
 _PII_RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b"), "[EMAIL]"),
@@ -124,12 +106,9 @@ def sanitize_output(text: str) -> str:
 def safe_output(raw: str) -> str:
     return sanitize_output(redact_pii(raw))
 
-# ---------------------------------------------------------------------------
-# FastAPI app
-# ---------------------------------------------------------------------------
 
 app = FastAPI(
-    title="Ọmọ Kọ́dà Tool Runner",
+    title="Ọọ̀ Kọ́dà Tool Runner",
     description="Ògún / Execution layer — Python-backed tools for the sovereign agent swarm",
     version="0.1.0",
 )
@@ -170,7 +149,6 @@ async def execute(req: ExecuteRequest) -> ExecuteResponse:
             },
         )
 
-    # MemCell lookup for cacheable, read-only tools
     cached = False
     if entry["cacheable"] and not entry["write"]:
         hit = _cache.get(req.tool, req.params)
@@ -183,7 +161,6 @@ async def execute(req: ExecuteRequest) -> ExecuteResponse:
                 execution_time_ms=0,
             )
 
-    # Execute
     t0 = time.monotonic()
     try:
         raw = entry["fn"](req.params)
@@ -219,9 +196,18 @@ async def list_tools() -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
+class OgunToolRequest(BaseModel):
+    tool: str
+    input: Any = {}
+
+
+@app.post("/tools/execute")
+async def tools_execute(req: OgunToolRequest) -> dict:
+    params_str = json.dumps(req.input) if not isinstance(req.input, str) else req.input
+    inner = ExecuteRequest(tool=req.tool, params=params_str, tier=0)
+    result = await execute(inner)
+    return {"output": result.output}
+
 
 if __name__ == "__main__":
     import uvicorn

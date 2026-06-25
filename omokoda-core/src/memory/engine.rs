@@ -1,5 +1,6 @@
 use crate::interpreter::MemoryEntry;
 use crate::session::ConversationMessage;
+use std::cmp::Reverse;
 
 /// The three memory tiers, each with different churn, capacity, and distillation rules.
 ///
@@ -115,7 +116,7 @@ impl MemoryEngine {
     /// Cap semantic memory to its capacity, keeping the highest-frequency patterns.
     pub fn process_semantic_memory(&self, patterns: &mut Vec<SemanticPattern>) {
         if patterns.len() > self.semantic_capacity {
-            patterns.sort_by(|a, b| b.frequency.cmp(&a.frequency));
+            patterns.sort_by_key(|b| Reverse(b.frequency));
             patterns.truncate(self.semantic_capacity);
         }
     }
@@ -133,10 +134,8 @@ impl MemoryEngine {
                             *output = format!("{}... [TRUNCATED]", &output[..2000]);
                         }
                     }
-                    crate::session::ContentBlock::Text { text } => {
-                        if text.len() > 5000 {
-                            *text = format!("{}... [TRUNCATED]", &text[..5000]);
-                        }
+                    crate::session::ContentBlock::Text { text } if text.len() > 5000 => {
+                        *text = format!("{}... [TRUNCATED]", &text[..5000]);
                     }
                     _ => {}
                 }
@@ -162,7 +161,7 @@ impl MemoryEngine {
         }
 
         let mut sorted: Vec<&SemanticPattern> = patterns.iter().collect();
-        sorted.sort_by(|a, b| b.frequency.cmp(&a.frequency));
+        sorted.sort_by_key(|b| Reverse(b.frequency));
         sorted.truncate(max_patterns);
 
         let mut out = String::from("[Memory: Semantic Patterns]\n");

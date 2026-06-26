@@ -782,6 +782,37 @@ impl Steward {
                 };
                 let _ = self.event_bus.publish(event);
 
+                // Auto-register the newborn on Vantage (fail-open when VANTAGE_URL
+                // is unset). Extract owned identity first so no borrow of `self`
+                // or `agent` is held across the await.
+                let reg_agent_id = agent.id().as_str().to_string();
+                let reg_name = agent.name().to_string();
+                let reg_pubkey = hex::encode(agent.public_key());
+                let reg_dna = agent.dna_fingerprint().to_string();
+                let reg_odu = agent.odu_identity().primary_index;
+                let p = agent.personality();
+                let reg_personality = serde_json::json!({
+                    "dominant_orisha": p.dominant_orisha.name(),
+                    "summary": p.personality_summary,
+                    "ritual_suggestions": p.ritual_suggestions,
+                    "elements": {
+                        "fire": p.elemental_signature.fire,
+                        "water": p.elemental_signature.water,
+                        "earth": p.elemental_signature.earth,
+                        "air": p.elemental_signature.air,
+                        "ether": p.elemental_signature.ether,
+                    },
+                });
+                crate::tools::mesh_tools::register_newborn(
+                    &reg_agent_id,
+                    &reg_name,
+                    &reg_pubkey,
+                    &reg_dna,
+                    reg_odu,
+                    reg_personality,
+                )
+                .await;
+
                 Ok(ExecutionResult {
                     receipt: None,
                     private_mode: false,

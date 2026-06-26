@@ -1,4 +1,5 @@
 pub mod clients;
+pub mod zangbeto;
 pub mod events {
     include!(concat!(env!("OUT_DIR"), "/omokoda.v1.rs"));
 }

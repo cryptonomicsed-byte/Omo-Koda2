@@ -1073,6 +1073,15 @@ impl Steward {
                 // 1. Permission Authorization (Strictly Pre-Act)
                 let auth_result = self.permission_policy.authorize(&tool, &params, None);
                 if let crate::permissions::PermissionOutcome::Deny { reason } = auth_result {
+                    // A denied capability is an anomaly — report it to ZÀNGBÉTÒ
+                    // for enforcement (fail-open when ZANGBETO_URL is unset).
+                    crate::bus::zangbeto::report_anomaly(
+                        agent_id.as_str(),
+                        "warning",
+                        "capability_escape",
+                        &reason,
+                    )
+                    .await;
                     return Err(format!("Permission denied: {}", reason));
                 }
 

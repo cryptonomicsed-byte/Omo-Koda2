@@ -33,6 +33,10 @@ fn http() -> &'static Client {
 /// Set on the first write call so the agent is lazily registered in its block.
 static VANTAGE_JOINED: AtomicBool = AtomicBool::new(false);
 
+/// Vantage API key minted at birth when `VANTAGE_KEY` is not pre-provisioned.
+/// Lets a self-registered agent authenticate subsequent mesh calls in-process.
+static MINTED_KEY: OnceLock<String> = OnceLock::new();
+
 pub struct VantageClient {
     base_url: String,
     api_key: String,
@@ -52,11 +56,20 @@ impl VantageClient {
         })
     }
 
-    async fn send(&self, req: reqwest::RequestBuilder) -> Result<serde_json::Value, String> {
-        let req = if self.api_key.is_empty() {
-            req
+    /// The API key to authenticate with: the env-provisioned key if present,
+    /// otherwise a key minted during birth-time self-registration.
+    fn effective_key(&self) -> Option<String> {
+        if !self.api_key.is_empty() {
+            Some(self.api_key.clone())
         } else {
-            req.header("X-Agent-Key", &self.api_key)
+            MINTED_KEY.get().cloned()
+        }
+    }
+
+    async fn send(&self, req: reqwest::RequestBuilder) -> Result<serde_json::Value, String> {
+        let req = match self.effective_key() {
+            Some(key) => req.header("X-Agent-Key", key),
+            None => req,
         };
         let resp = req
             .send()
@@ -105,6 +118,68 @@ impl VantageClient {
 }
 
 static VANTAGE: LazyLock<Option<VantageClient>> = LazyLock::new(VantageClient::from_env);
+
+/// Auto-register a newborn agent on Vantage at birth: create its account when no
+/// `VANTAGE_KEY` is provisioned, then join its home block carrying verifiable
+/// sovereign identity (Ed25519 public key, DNA fingerprint, primary Odù, and
+/// personality profile). Fail-open: a no-op when `VANTAGE_URL` is unset, so
+/// runtimes without Vantage are unaffected. Best-effort — transport/Vantage
+/// errors are swallowed rather than failing the birth.
+pub async fn register_newborn(
+    agent_id: &str,
+    human_name: &str,
+    public_key_hex: &str,
+    dna_fingerprint: &str,
+    odu_index: u8,
+    personality: serde_json::Value,
+) {
+    let Some(vc) = VANTAGE.as_ref() else {
+        return;
+    };
+
+    // 1. Ensure this runtime has a Vantage identity. If no key was provisioned
+    //    via VANTAGE_KEY, self-register to mint one and cache it for later calls.
+    if vc.effective_key().is_none() {
+        let short_pubkey = public_key_hex.get(..16).unwrap_or(public_key_hex);
+        let bio = format!("Ọmọ Kọ́dà sovereign agent · Odù #{odu_index} · key {short_pubkey}");
+        if let Ok(val) = vc
+            .post(
+                "/api/agents/register",
+                json!({ "name": agent_id, "bio": bio }),
+            )
+            .await
+        {
+            if let Some(key) = val["api_key"].as_str() {
+                let _ = MINTED_KEY.set(key.to_string());
+            }
+        }
+    }
+
+    // 2. Join the home block, publishing full identity into the agent's
+    //    capabilities so neighbors can verify lineage and temperament.
+    let _ = vc
+        .post(
+            "/api/mesh/agents/join",
+            json!({
+                "agent_id": agent_id,
+                "block_id": &vc.block_id,
+                "role": "home",
+                "capabilities": {
+                    "kind": "omo-koda-sovereign",
+                    "human_name": human_name,
+                    "public_key": public_key_hex,
+                    "dna_fingerprint": dna_fingerprint,
+                    "odu_index": odu_index,
+                    "personality": personality,
+                },
+            }),
+        )
+        .await;
+
+    // Mark joined so the lazy write-path ensure_joined() does not re-join with
+    // empty capabilities and clobber the identity we just published.
+    VANTAGE_JOINED.store(true, Ordering::Relaxed);
+}
 
 fn active_mesh_state(agent_id: &str) -> MeshState {
     let mut state = MeshState::new("local".to_string(), MeshRole::Home, agent_id.to_string());

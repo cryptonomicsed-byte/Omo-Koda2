@@ -119,58 +119,104 @@ impl VantageClient {
 
 static VANTAGE: LazyLock<Option<VantageClient>> = LazyLock::new(VantageClient::from_env);
 
+/// Verifiable sovereign identity carried to Vantage when an agent is born.
+pub struct NewbornIdentity<'a> {
+    pub agent_id: &'a str,
+    pub human_name: &'a str,
+    /// Hex Ed25519 public key (32 bytes).
+    pub public_key_hex: &'a str,
+    /// Hex Ed25519 signature of `agent_id`, proving control of the keypair.
+    pub identity_signature_hex: &'a str,
+    pub dna_fingerprint: &'a str,
+    pub odu_index: u8,
+    pub personality: serde_json::Value,
+    /// Daily Òrìṣà resonance (weekday, orisa, trust-signal weight).
+    pub resonance: serde_json::Value,
+    /// A Vantage API key persisted from a prior birth, reused instead of
+    /// minting a fresh account when present.
+    pub existing_key: Option<&'a str>,
+}
+
+/// Daily resonance for a birth timestamp: maps the weekday to its Òrìṣà and
+/// trust-signal weight (mirrors Koodu's Ritual Codex day table).
+pub fn daily_resonance(birth_ts: u64) -> serde_json::Value {
+    // Unix epoch day 0 (1970-01-01) was a Thursday; shift so 0 = Sunday.
+    let weekday = ((birth_ts / 86_400) + 4) % 7;
+    let (orisa, weight) = match weekday {
+        0 => ("Èṣù-Ẹ̀légbára", 0.70),
+        1 => ("Ṣàngó", 0.65),
+        2 => ("Ọṣun", 0.80),
+        3 => ("Ọ̀rúnmìlà", 0.90),
+        4 => ("Ọya", 0.85),
+        5 => ("Ògún", 0.75),
+        _ => ("Ọbàtálá", 0.95),
+    };
+    json!({ "weekday": weekday, "orisa": orisa, "trust_signal_weight": weight })
+}
+
 /// Auto-register a newborn agent on Vantage at birth: create its account when no
 /// `VANTAGE_KEY` is provisioned, then join its home block carrying verifiable
-/// sovereign identity (Ed25519 public key, DNA fingerprint, primary Odù, and
-/// personality profile). Fail-open: a no-op when `VANTAGE_URL` is unset, so
-/// runtimes without Vantage are unaffected. Best-effort — transport/Vantage
-/// errors are swallowed rather than failing the birth.
-pub async fn register_newborn(
-    agent_id: &str,
-    human_name: &str,
-    public_key_hex: &str,
-    dna_fingerprint: &str,
-    odu_index: u8,
-    personality: serde_json::Value,
-) {
-    let Some(vc) = VANTAGE.as_ref() else {
-        return;
-    };
+/// sovereign identity (Ed25519 public key + signature, DNA fingerprint, primary
+/// Odù, personality, and daily resonance). Fail-open: a no-op when `VANTAGE_URL`
+/// is unset, so runtimes without Vantage are unaffected. Best-effort — transport
+/// and Vantage errors are swallowed rather than failing the birth.
+///
+/// Returns a freshly-minted API key (when the agent self-registered) so the
+/// caller can persist it for cross-restart reuse; returns `None` otherwise.
+pub async fn register_newborn(identity: NewbornIdentity<'_>) -> Option<String> {
+    let vc = VANTAGE.as_ref()?;
+
+    // Seed the runtime key from a previously-persisted one, if provided.
+    if let Some(key) = identity.existing_key {
+        if !key.is_empty() {
+            let _ = MINTED_KEY.set(key.to_string());
+        }
+    }
 
     // 1. Ensure this runtime has a Vantage identity. If no key was provisioned
-    //    via VANTAGE_KEY, self-register to mint one and cache it for later calls.
+    //    via VANTAGE_KEY or persistence, self-register to mint one.
+    let mut minted: Option<String> = None;
     if vc.effective_key().is_none() {
-        let short_pubkey = public_key_hex.get(..16).unwrap_or(public_key_hex);
-        let bio = format!("Ọmọ Kọ́dà sovereign agent · Odù #{odu_index} · key {short_pubkey}");
+        let short_pubkey = identity
+            .public_key_hex
+            .get(..16)
+            .unwrap_or(identity.public_key_hex);
+        let bio = format!(
+            "Ọmọ Kọ́dà sovereign agent · Odù #{} · key {short_pubkey}",
+            identity.odu_index
+        );
         if let Ok(val) = vc
             .post(
                 "/api/agents/register",
-                json!({ "name": agent_id, "bio": bio }),
+                json!({ "name": identity.agent_id, "bio": bio }),
             )
             .await
         {
             if let Some(key) = val["api_key"].as_str() {
                 let _ = MINTED_KEY.set(key.to_string());
+                minted = Some(key.to_string());
             }
         }
     }
 
-    // 2. Join the home block, publishing full identity into the agent's
-    //    capabilities so neighbors can verify lineage and temperament.
+    // 2. Join the home block, publishing full verifiable identity so neighbors
+    //    can confirm lineage, temperament, and key control.
     let _ = vc
         .post(
             "/api/mesh/agents/join",
             json!({
-                "agent_id": agent_id,
+                "agent_id": identity.agent_id,
                 "block_id": &vc.block_id,
                 "role": "home",
                 "capabilities": {
                     "kind": "omo-koda-sovereign",
-                    "human_name": human_name,
-                    "public_key": public_key_hex,
-                    "dna_fingerprint": dna_fingerprint,
-                    "odu_index": odu_index,
-                    "personality": personality,
+                    "human_name": identity.human_name,
+                    "public_key": identity.public_key_hex,
+                    "identity_signature": identity.identity_signature_hex,
+                    "dna_fingerprint": identity.dna_fingerprint,
+                    "odu_index": identity.odu_index,
+                    "personality": identity.personality,
+                    "resonance": identity.resonance,
                 },
             }),
         )
@@ -179,6 +225,7 @@ pub async fn register_newborn(
     // Mark joined so the lazy write-path ensure_joined() does not re-join with
     // empty capabilities and clobber the identity we just published.
     VANTAGE_JOINED.store(true, Ordering::Relaxed);
+    minted
 }
 
 fn active_mesh_state(agent_id: &str) -> MeshState {
@@ -736,5 +783,51 @@ impl Tool for MeshDiscoverCapabilitiesTool {
             serde_json::to_string(&cards).unwrap_or_default(),
             crate::usage::TokenUsage::default(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn daily_resonance_maps_weekday_to_orisa() {
+        // Unix ts 0 (1970-01-01) is a Thursday → weekday 4 → Ọya.
+        let r = daily_resonance(0);
+        assert_eq!(r["weekday"], 4);
+        assert_eq!(r["orisa"], "Ọya");
+        // +3 days → Sunday → Èṣù-Ẹ̀légbára, weight 0.70.
+        let sun = daily_resonance(3 * 86_400);
+        assert_eq!(sun["weekday"], 0);
+        assert_eq!(sun["orisa"], "Èṣù-Ẹ̀légbára");
+        assert_eq!(sun["trust_signal_weight"], 0.70);
+    }
+
+    #[test]
+    fn birth_signature_verifies_against_published_public_key() {
+        use ed25519_dalek::{Signature, Signer, Verifier, VerifyingKey};
+
+        // Reproduce exactly what birth does: derive the Sui key from the
+        // mnemonic, sign the agent_id, publish the public key + signature hex.
+        let sk = crate::identity::wallet::Wallet::derive_from_mnemonic(
+            "omokoda test mnemonic for signature round trip",
+            "",
+        )
+        .unwrap();
+        let agent_id = "agent-deadbeefdeadbeef";
+        let sig_hex = hex::encode(sk.sign(agent_id.as_bytes()).to_bytes());
+        let pub_hex = hex::encode(sk.verifying_key().to_bytes());
+
+        // Reconstruct from hex (as Vantage's verifier does) and verify.
+        let pk_bytes: [u8; 32] = hex::decode(&pub_hex).unwrap().try_into().unwrap();
+        let sig_bytes: [u8; 64] = hex::decode(&sig_hex).unwrap().try_into().unwrap();
+        let vk = VerifyingKey::from_bytes(&pk_bytes).unwrap();
+        assert!(vk
+            .verify(agent_id.as_bytes(), &Signature::from_bytes(&sig_bytes))
+            .is_ok());
+        // A signature over a different message must fail.
+        assert!(vk
+            .verify(b"agent-other", &Signature::from_bytes(&sig_bytes))
+            .is_err());
     }
 }

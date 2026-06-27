@@ -1685,8 +1685,26 @@ impl Steward {
             return Ok((response, total_usage));
         }
 
+        // OODA Observe: optionally fold the agent's current mesh situation
+        // (neighbors, trust, resources) into the reasoning context. Opt-in via
+        // OMOKODA_THINK_OBSERVE and fail-open. Ephemeral — this context is not
+        // written to history or the receipt, which key on `prompt` alone.
+        let observe_ctx: Vec<ConversationMessage> =
+            if crate::tools::mesh_tools::think_observe_enabled() {
+                let agent_id = self
+                    .ensure_born()
+                    .map(|a| a.id().as_str().to_string())
+                    .unwrap_or_default();
+                match crate::tools::mesh_tools::observe_mesh_context(&agent_id).await {
+                    Some(summary) => vec![ConversationMessage::new_user(summary, private)],
+                    None => vec![],
+                }
+            } else {
+                vec![]
+            };
+
         self.providers
-            .think(provider, prompt, &[], private)
+            .think(provider, prompt, &observe_ctx, private)
             .await
             .map_err(|e| format!("Provider error: {}", e))
     }

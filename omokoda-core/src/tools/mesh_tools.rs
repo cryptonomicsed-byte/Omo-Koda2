@@ -181,6 +181,93 @@ pub async fn register_newborn(
     VANTAGE_JOINED.store(true, Ordering::Relaxed);
 }
 
+fn is_truthy(v: &str) -> bool {
+    matches!(
+        v.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
+/// Whether the Think phase should Observe the mesh before reasoning. Opt-in via
+/// `OMOKODA_THINK_OBSERVE` so the network observe isn't paid on every Think.
+pub fn think_observe_enabled() -> bool {
+    std::env::var("OMOKODA_THINK_OBSERVE")
+        .map(|v| is_truthy(&v))
+        .unwrap_or(false)
+}
+
+/// Observe the agent's current mesh situation from Vantage — neighbors with
+/// their trust scores and the resources available on the block — as a compact
+/// context summary for the Think phase's Observe step. Fail-open: returns `None`
+/// when `VANTAGE_URL` is unset or the queries return nothing.
+pub async fn observe_mesh_context(agent_id: &str) -> Option<String> {
+    let vc = VANTAGE.as_ref()?;
+    let mut lines = Vec::new();
+
+    if let Ok(agents) = vc
+        .get(&format!(
+            "/api/mesh/blocks/{}/agents",
+            urlencoding::encode(&vc.block_id)
+        ))
+        .await
+    {
+        if let Some(arr) = agents.as_array() {
+            let neighbors: Vec<String> = arr
+                .iter()
+                .filter_map(|a| {
+                    let id = a.get("agent_id").and_then(|v| v.as_str())?;
+                    if id == agent_id {
+                        return None;
+                    }
+                    let trust = a
+                        .get("trust_score")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(50.0);
+                    Some(format!("{id} (trust {trust:.0})"))
+                })
+                .take(8)
+                .collect();
+            if !neighbors.is_empty() {
+                lines.push(format!(
+                    "Neighbors on block '{}': {}",
+                    vc.block_id,
+                    neighbors.join(", ")
+                ));
+            }
+        }
+    }
+
+    if let Ok(resources) = vc
+        .get(&format!(
+            "/api/mesh/resources/{}",
+            urlencoding::encode(&vc.block_id)
+        ))
+        .await
+    {
+        if let Some(arr) = resources.as_array() {
+            let res: Vec<String> = arr
+                .iter()
+                .filter_map(|r| {
+                    r.get("resource_type")
+                        .or_else(|| r.get("name"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                })
+                .take(8)
+                .collect();
+            if !res.is_empty() {
+                lines.push(format!("Available resources: {}", res.join(", ")));
+            }
+        }
+    }
+
+    if lines.is_empty() {
+        None
+    } else {
+        Some(format!("[Mesh observation]\n{}", lines.join("\n")))
+    }
+}
+
 fn active_mesh_state(agent_id: &str) -> MeshState {
     let mut state = MeshState::new("local".to_string(), MeshRole::Home, agent_id.to_string());
     state.membership = MeshMembership::Active;
@@ -736,5 +823,26 @@ impl Tool for MeshDiscoverCapabilitiesTool {
             serde_json::to_string(&cards).unwrap_or_default(),
             crate::usage::TokenUsage::default(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truthy_values_parse() {
+        for v in ["1", "true", "TRUE", " yes ", "on", "On"] {
+            assert!(is_truthy(v), "{v:?} should be truthy");
+        }
+        for v in ["", "0", "false", "no", "off", "maybe"] {
+            assert!(!is_truthy(v), "{v:?} should be falsy");
+        }
+    }
+
+    #[tokio::test]
+    async fn observe_is_noop_without_vantage() {
+        // VANTAGE is unset in tests → observation is a fail-open no-op.
+        assert!(observe_mesh_context("agent-1").await.is_none());
     }
 }

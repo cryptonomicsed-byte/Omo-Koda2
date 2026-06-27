@@ -215,6 +215,9 @@ pub struct AgentSnapshot {
     pub act_counter: u64,
     #[serde(default)]
     pub mesh: Option<omokoda_mesh::state::MeshState>,
+    /// Vantage API key minted at birth, persisted for cross-restart reuse.
+    #[serde(default)]
+    pub vantage_key: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -305,6 +308,14 @@ impl AgentCore {
 
     pub fn public_key(&self) -> &[u8; 32] {
         &self.snapshot.public_key
+    }
+
+    pub fn vantage_key(&self) -> Option<&str> {
+        self.snapshot.vantage_key.as_deref()
+    }
+
+    pub fn set_vantage_key(&mut self, key: String) {
+        self.snapshot.vantage_key = Some(key);
     }
 
     pub fn private_data(&self) -> Option<&PrivateSessionData> {
@@ -572,6 +583,7 @@ impl Steward {
             last_active_timestamp: birth_timestamp,
             act_counter: 0,
             mesh: None,
+            vantage_key: None,
         };
         let mut core = AgentCore::from_snapshot(snapshot, k_root);
         core.private_data = Some(private_data);
@@ -790,6 +802,20 @@ impl Steward {
                 let reg_pubkey = hex::encode(agent.public_key());
                 let reg_dna = agent.dna_fingerprint().to_string();
                 let reg_odu = agent.odu_identity().primary_index;
+                // Prove control of the keypair: sign the agent_id with the same
+                // Sui-derived Ed25519 key whose public half is published above.
+                let reg_signature = crate::identity::wallet::Wallet::derive_from_mnemonic(
+                    &agent.odu_identity().mnemonic,
+                    "",
+                )
+                .map(|sk| {
+                    use ed25519_dalek::Signer;
+                    hex::encode(sk.sign(reg_agent_id.as_bytes()).to_bytes())
+                })
+                .unwrap_or_default();
+                let reg_resonance =
+                    crate::tools::mesh_tools::daily_resonance(agent.birth_timestamp());
+                let reg_existing_key: Option<String> = agent.vantage_key().map(|s| s.to_string());
                 let p = agent.personality();
                 let reg_personality = serde_json::json!({
                     "dominant_orisha": p.dominant_orisha.name(),
@@ -803,15 +829,29 @@ impl Steward {
                         "ether": p.elemental_signature.ether,
                     },
                 });
-                crate::tools::mesh_tools::register_newborn(
-                    &reg_agent_id,
-                    &reg_name,
-                    &reg_pubkey,
-                    &reg_dna,
-                    reg_odu,
-                    reg_personality,
+                let minted_key = crate::tools::mesh_tools::register_newborn(
+                    crate::tools::mesh_tools::NewbornIdentity {
+                        agent_id: &reg_agent_id,
+                        human_name: &reg_name,
+                        public_key_hex: &reg_pubkey,
+                        identity_signature_hex: &reg_signature,
+                        dna_fingerprint: &reg_dna,
+                        odu_index: reg_odu,
+                        personality: reg_personality,
+                        resonance: reg_resonance,
+                        existing_key: reg_existing_key.as_deref(),
+                    },
                 )
                 .await;
+
+                // Persist a freshly-minted Vantage key so a future restart of
+                // this agent re-authenticates instead of re-registering.
+                if let Some(key) = minted_key {
+                    if let Ok(core) = self.ensure_born_mut() {
+                        core.set_vantage_key(key);
+                    }
+                    self.auto_save();
+                }
 
                 Ok(ExecutionResult {
                     receipt: None,
@@ -1073,6 +1113,15 @@ impl Steward {
                 // 1. Permission Authorization (Strictly Pre-Act)
                 let auth_result = self.permission_policy.authorize(&tool, &params, None);
                 if let crate::permissions::PermissionOutcome::Deny { reason } = auth_result {
+                    // A denied capability is an anomaly — report it to ZÀNGBÉTÒ
+                    // for enforcement (fail-open when ZANGBETO_URL is unset).
+                    crate::bus::zangbeto::report_anomaly(
+                        agent_id.as_str(),
+                        "warning",
+                        "capability_escape",
+                        &reason,
+                    )
+                    .await;
                     return Err(format!("Permission denied: {}", reason));
                 }
 

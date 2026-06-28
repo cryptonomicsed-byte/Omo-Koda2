@@ -49,6 +49,11 @@ pub struct SkillManifestEntry {
     /// Env var holding the auth token (e.g. `VANTAGE_KEY`).
     #[serde(default)]
     pub auth_env: Option<String>,
+    /// Templated header value with `${ENV}` refs, e.g. `"token ${GITEA_TOKEN}"`.
+    /// Takes precedence over `auth_env` when set — lets a skill use any auth
+    /// scheme (`Bearer`, `token`, `ApiKey …`), not just a raw token value.
+    #[serde(default)]
+    pub auth_value: Option<String>,
     #[serde(default = "default_tier")]
     pub required_tier: u8,
     #[serde(default)]
@@ -64,32 +69,66 @@ pub struct SkillManifest {
     pub skills: Vec<SkillManifestEntry>,
 }
 
-/// The built-in manifest. Ships with **Vantage** as a worked example so the
-/// adapter has a live API to exercise out of the box.
-pub fn default_manifest() -> SkillManifest {
-    let routes = [
-        ("block_snapshot", "GET /api/mesh/blocks/{block_id}"),
-        ("block_agents", "GET /api/mesh/blocks/{block_id}/agents"),
-        ("resources", "GET /api/mesh/resources/{block_id}"),
-        ("trust", "GET /api/mesh/trust/{agent_id}"),
-        ("signal", "POST /api/mesh/signal"),
-    ]
-    .iter()
-    .map(|(k, v)| (k.to_string(), v.to_string()))
-    .collect();
+fn routes_of(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+    pairs
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
+}
 
+/// The built-in manifest. Ships with **Vantage** (always live in the ecosystem)
+/// and **Gitea** (fail-open until `GITEA_URL`/`GITEA_TOKEN` point at an instance)
+/// as worked examples.
+pub fn default_manifest() -> SkillManifest {
     SkillManifest {
-        skills: vec![SkillManifestEntry {
-            name: "vantage".to_string(),
-            description: "Vantage mesh API — block snapshots, agents, resources, trust, signals"
-                .to_string(),
-            base_url: "${VANTAGE_URL}".to_string(),
-            auth_header: Some("X-Agent-Key".to_string()),
-            auth_env: Some("VANTAGE_KEY".to_string()),
-            required_tier: 1,
-            write: false,
-            routes,
-        }],
+        skills: vec![
+            SkillManifestEntry {
+                name: "vantage".to_string(),
+                description:
+                    "Vantage mesh API — block snapshots, agents, resources, trust, signals"
+                        .to_string(),
+                base_url: "${VANTAGE_URL}".to_string(),
+                auth_header: Some("X-Agent-Key".to_string()),
+                auth_env: Some("VANTAGE_KEY".to_string()),
+                auth_value: None,
+                required_tier: 1,
+                write: false,
+                routes: routes_of(&[
+                    ("block_snapshot", "GET /api/mesh/blocks/{block_id}"),
+                    ("block_agents", "GET /api/mesh/blocks/{block_id}/agents"),
+                    ("resources", "GET /api/mesh/resources/{block_id}"),
+                    ("trust", "GET /api/mesh/trust/{agent_id}"),
+                    ("signal", "POST /api/mesh/signal"),
+                ]),
+            },
+            SkillManifestEntry {
+                name: "gitea".to_string(),
+                description: "Gitea forge API (v1) — repos, issues, pull requests, comments. \
+                     Set GITEA_URL and GITEA_TOKEN to enable."
+                    .to_string(),
+                base_url: "${GITEA_URL}/api/v1".to_string(),
+                auth_header: Some("Authorization".to_string()),
+                auth_env: None,
+                auth_value: Some("token ${GITEA_TOKEN}".to_string()),
+                required_tier: 1,
+                write: true,
+                routes: routes_of(&[
+                    ("whoami", "GET /user"),
+                    ("list_repos", "GET /user/repos"),
+                    ("search_repos", "GET /repos/search"),
+                    ("get_repo", "GET /repos/{owner}/{repo}"),
+                    ("list_issues", "GET /repos/{owner}/{repo}/issues"),
+                    ("get_issue", "GET /repos/{owner}/{repo}/issues/{index}"),
+                    ("create_issue", "POST /repos/{owner}/{repo}/issues"),
+                    (
+                        "comment_issue",
+                        "POST /repos/{owner}/{repo}/issues/{index}/comments",
+                    ),
+                    ("list_pulls", "GET /repos/{owner}/{repo}/pulls"),
+                    ("create_pull", "POST /repos/{owner}/{repo}/pulls"),
+                ]),
+            },
+        ],
     }
 }
 
@@ -226,11 +265,20 @@ impl Tool for ExternalServiceTool {
             "DELETE" => client.delete(&url),
             other => return Err(format!("unsupported method '{other}'")),
         };
-        if let (Some(header), Some(env_var)) = (&self.entry.auth_header, &self.entry.auth_env) {
-            if let Ok(key) = std::env::var(env_var) {
-                if !key.is_empty() {
-                    req = req.header(header.as_str(), key);
-                }
+        if let Some(header) = &self.entry.auth_header {
+            // Prefer a templated header value (e.g. "token ${GITEA_TOKEN}"),
+            // else fall back to a raw env token value.
+            let value = match &self.entry.auth_value {
+                Some(tmpl) => resolve_env(tmpl),
+                None => self
+                    .entry
+                    .auth_env
+                    .as_ref()
+                    .and_then(|env_var| std::env::var(env_var).ok())
+                    .filter(|k| !k.is_empty()),
+            };
+            if let Some(value) = value {
+                req = req.header(header.as_str(), value);
             }
         }
         if let Some(body) = v.get("body") {
@@ -362,7 +410,34 @@ mod tests {
     fn manifest_json_round_trips() {
         let json = serde_json::to_string(&default_manifest()).unwrap();
         let back: SkillManifest = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.skills.len(), 1);
-        assert_eq!(back.skills[0].name, "vantage");
+        assert_eq!(back.skills.len(), 2);
+        assert!(back.skills.iter().any(|s| s.name == "vantage"));
+        assert!(back.skills.iter().any(|s| s.name == "gitea"));
+    }
+
+    #[test]
+    fn gitea_skill_is_wired() {
+        let m = default_manifest();
+        let g = m.skills.iter().find(|s| s.name == "gitea").unwrap();
+        assert_eq!(g.base_url, "${GITEA_URL}/api/v1");
+        assert_eq!(g.auth_header.as_deref(), Some("Authorization"));
+        assert_eq!(g.auth_value.as_deref(), Some("token ${GITEA_TOKEN}"));
+        assert!(g.write);
+        assert_eq!(
+            g.routes.get("create_issue").map(String::as_str),
+            Some("POST /repos/{owner}/{repo}/issues")
+        );
+    }
+
+    #[test]
+    fn auth_value_template_resolves_when_env_set() {
+        // SAFETY: single-threaded within this test; unique var name avoids races.
+        std::env::set_var("OMOKODA_TEST_GITEA_TOKEN", "abc123");
+        assert_eq!(
+            resolve_env("token ${OMOKODA_TEST_GITEA_TOKEN}"),
+            Some("token abc123".to_string())
+        );
+        std::env::remove_var("OMOKODA_TEST_GITEA_TOKEN");
+        assert_eq!(resolve_env("token ${OMOKODA_TEST_GITEA_TOKEN}"), None);
     }
 }

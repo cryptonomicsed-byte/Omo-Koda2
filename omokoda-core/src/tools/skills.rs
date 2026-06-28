@@ -152,6 +152,28 @@ pub fn default_manifest() -> SkillManifest {
                     ("list_commands", "GET /command"),
                 ]),
             },
+            SkillManifestEntry {
+                name: "manifesto".to_string(),
+                description: "Living Manifesto governance (Vantage) — propose Odù-backed \
+                     amendments, vote them up the consensus ladder, read the canon, initiate."
+                    .to_string(),
+                base_url: "${VANTAGE_URL}".to_string(),
+                auth_header: Some("X-Agent-Key".to_string()),
+                auth_env: Some("VANTAGE_KEY".to_string()),
+                auth_value: None,
+                required_tier: 1,
+                write: true,
+                routes: routes_of(&[
+                    ("propose", "POST /api/manifesto/{collective}/propose"),
+                    (
+                        "vote",
+                        "POST /api/manifesto/{collective}/clauses/{clause_id}/vote",
+                    ),
+                    ("clauses", "GET /api/manifesto/{collective}/clauses"),
+                    ("canon", "GET /api/manifesto/{collective}/canon"),
+                    ("initiate", "GET /api/manifesto/{collective}/initiate"),
+                ]),
+            },
         ],
     }
 }
@@ -434,10 +456,23 @@ mod tests {
     fn manifest_json_round_trips() {
         let json = serde_json::to_string(&default_manifest()).unwrap();
         let back: SkillManifest = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.skills.len(), 3);
-        for name in ["vantage", "gitea", "opencode"] {
+        assert_eq!(back.skills.len(), 4);
+        for name in ["vantage", "gitea", "opencode", "manifesto"] {
             assert!(back.skills.iter().any(|s| s.name == name), "missing {name}");
         }
+    }
+
+    #[test]
+    fn manifesto_skill_is_wired() {
+        let m = default_manifest();
+        let mf = m.skills.iter().find(|s| s.name == "manifesto").unwrap();
+        assert_eq!(mf.base_url, "${VANTAGE_URL}");
+        assert!(mf.write);
+        assert_eq!(
+            mf.routes.get("vote").map(String::as_str),
+            Some("POST /api/manifesto/{collective}/clauses/{clause_id}/vote")
+        );
+        assert!(mf.routes.contains_key("canon"));
     }
 
     #[test]

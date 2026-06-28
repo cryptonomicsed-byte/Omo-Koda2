@@ -190,8 +190,17 @@ act "log" "started"
     }
 
     #[test]
-    fn rejects_unknown_slash_command() {
-        let err = parse("/unknowncommand").unwrap_err();
-        assert_eq!(err.code, ParseErrorCode::UnknownCommand);
+    fn unknown_slash_routes_to_skill_act() {
+        // Slash sugar: a non-builtin slash command is no longer an error — it is
+        // `act` on that skill name (resolution happens later at the tool layer).
+        let stmts = parse("/unknowncommand").unwrap();
+        assert_eq!(stmts.len(), 1);
+        match &stmts[0] {
+            Statement::Act { tool, sandbox, .. } => {
+                assert_eq!(tool, "unknowncommand");
+                assert!(!sandbox);
+            }
+            other => panic!("expected Act, got {other:?}"),
+        }
     }
 }

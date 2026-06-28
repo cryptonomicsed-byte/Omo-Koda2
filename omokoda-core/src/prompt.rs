@@ -88,21 +88,27 @@ impl SystemPromptBuilder {
     }
 
     fn identity_section(&self) -> String {
+        // Resolve the BIPỌ̀N39 identity index into its IfáScript Odù sign so the
+        // agent knows its Odù by name and vessel, not as a bare number.
+        let sign = self.odu_identity.sign();
+        let prescription = sign
+            .prescription
+            .as_deref()
+            .map(|p| format!("\nPrescription: {}", p))
+            .unwrap_or_default();
         format!(
             "You are {}, a sovereign agent in the Omo-Koda network.\n\
              Agent ID: {}\n\
              Tier: {} | Reputation: {:.1}\n\
-             Odu: {} ({})",
+             Odu: {} (#{}) — vessel of the {}{}",
             self.agent_name,
             self.agent_id,
             self.tier,
             self.reputation,
-            self.odu_identity.primary_index,
-            self.odu_identity
-                .mnemonic
-                .split_whitespace()
-                .next()
-                .unwrap_or("unknown"),
+            sign.name,
+            sign.index,
+            sign.vessel,
+            prescription,
         )
     }
 
@@ -210,6 +216,20 @@ mod tests {
         assert!(prompt.contains("Omo"));
         assert!(prompt.contains("agent-test-fingerp"));
         assert!(prompt.contains("Tier: 1"));
+    }
+
+    #[test]
+    fn test_identity_shows_resolved_odu_sign() {
+        // The Odu line names the resolved sign and its vessel, not a bare index.
+        let prompt = make_builder().build();
+        let sign = OduIdentity {
+            primary_index: 3,
+            mnemonic: "Ogunda speaks truth".to_string(),
+        }
+        .sign();
+        assert!(prompt.contains(&sign.name));
+        assert!(prompt.contains("vessel of the"));
+        assert!(prompt.contains("(#3)"));
     }
 
     #[test]

@@ -193,15 +193,64 @@ fn parse_slash_cmd(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
     tokens.pos += 1; // skip '/'
     let command = tokens.next_word().unwrap_or_default().trim().to_string();
 
-    if !VALID_SLASH_COMMANDS.contains(&command.as_str()) {
+    if command.is_empty() {
         return Err(ParseError {
             code: ParseErrorCode::UnknownCommand,
-            message: format!("unknown slash command: /{command}"),
+            message: "empty slash command".into(),
         });
     }
 
-    let arg = tokens.next_word().filter(|s| !s.is_empty());
-    Ok(Statement::SlashCmd { command, arg })
+    // Built-in slash commands route to the SlashCmd handler.
+    if VALID_SLASH_COMMANDS.contains(&command.as_str()) {
+        let arg = tokens.next_word().filter(|s| !s.is_empty());
+        return Ok(Statement::SlashCmd { command, arg });
+    }
+
+    // Otherwise it is sugar for a skill invocation:
+    //   /<skill> <route> [<json-object>]   →   act <skill> {"route":..,<json>}
+    // If the token after the skill starts with '{', there is no route word and
+    // the JSON object is taken verbatim (it must carry its own "route").
+    let route = if tokens
+        .peek_word()
+        .map(|w| w.starts_with('{'))
+        .unwrap_or(false)
+    {
+        None
+    } else {
+        tokens.next_word().filter(|s| !s.is_empty())
+    };
+    let json = tokens.consume_rest_of_input_with_current_word();
+    tokens.pos = tokens.input.len(); // a slash command consumes its whole line
+
+    let params = build_skill_params(route.as_deref(), &json);
+    Ok(Statement::Act {
+        tool: command,
+        params,
+        sandbox: false,
+    })
+}
+
+/// Build the `act` params JSON for a `/skill route json` slash invocation by
+/// splicing the route into the supplied object. String-only (no JSON parse) so
+/// the parser stays dependency-free; malformed input surfaces later as a clear
+/// "invalid params" error from the skill tool.
+fn build_skill_params(route: Option<&str>, json: &str) -> String {
+    let json = json.trim();
+    match route {
+        None => {
+            if json.is_empty() {
+                "{}".to_string()
+            } else {
+                json.to_string()
+            }
+        }
+        Some(route) => match json.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
+            Some(inner) if !inner.trim().is_empty() => {
+                format!("{{\"route\":\"{route}\",{}}}", inner.trim())
+            }
+            _ => format!("{{\"route\":\"{route}\"}}"),
+        },
+    }
 }
 
 fn parse_birth(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
@@ -440,5 +489,65 @@ impl<'a> Tokenizer<'a> {
         }
         self.pos = start;
         None
+    }
+}
+
+#[cfg(test)]
+mod slash_tests {
+    use super::*;
+
+    fn one(input: &str) -> Statement {
+        let mut s = parse(input).expect("parse failed");
+        assert_eq!(s.len(), 1, "expected exactly one statement");
+        s.pop().unwrap()
+    }
+
+    #[test]
+    fn builtin_slash_still_routes_to_slashcmd() {
+        match one("/skills") {
+            Statement::SlashCmd { command, .. } => assert_eq!(command, "skills"),
+            other => panic!("expected SlashCmd, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn skill_slash_with_route_only() {
+        match one("/gitea whoami") {
+            Statement::Act {
+                tool,
+                params,
+                sandbox,
+            } => {
+                assert_eq!(tool, "gitea");
+                assert_eq!(params, r#"{"route":"whoami"}"#);
+                assert!(!sandbox);
+            }
+            other => panic!("expected Act, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn skill_slash_splices_route_into_json() {
+        match one(r#"/gitea create_issue {"path":{"owner":"o"}}"#) {
+            Statement::Act { tool, params, .. } => {
+                assert_eq!(tool, "gitea");
+                assert_eq!(params, r#"{"route":"create_issue","path":{"owner":"o"}}"#);
+            }
+            other => panic!("expected Act, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn skill_slash_json_only_passes_through() {
+        match one(r#"/vantage {"route":"block_agents","path":{"block_id":"default"}}"#) {
+            Statement::Act { tool, params, .. } => {
+                assert_eq!(tool, "vantage");
+                assert_eq!(
+                    params,
+                    r#"{"route":"block_agents","path":{"block_id":"default"}}"#
+                );
+            }
+            other => panic!("expected Act, got {other:?}"),
+        }
     }
 }

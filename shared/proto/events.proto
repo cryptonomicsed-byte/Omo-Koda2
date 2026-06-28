@@ -137,6 +137,36 @@ message ResourceOffered {
   string kind = 3;
 }
 
+// ── Living Manifesto events ───────────────────────────────────────────────────
+// Shared with Vantage (backend/routers/manifesto.py): an agent proposes an
+// Odù-backed clause, and it is ratified once accumulated vote weight promotes it
+// into the binding canon (Council/Canonical). Both systems emit the same
+// `{"type": ...}` JSON vocabulary so a manifesto flow is legible end to end.
+
+message ManifestoClauseProposed {
+  string collective = 1;
+  uint64 clause_id = 2;
+  uint32 odu_id = 3;
+  string vessel = 4;
+  string principle = 5;
+  string author = 6;
+}
+
+message ManifestoClauseRatified {
+  string collective = 1;
+  uint64 clause_id = 2;
+  string level = 3;   // "council" | "canonical"
+  float weight = 4;
+}
+
+// Resonance score computed by the Block Mesh Julia layer for a cast packet
+// (see IfáScript ritual_codex::julia_bridge). Emitted when a cast is scored.
+message ResonanceScored {
+  uint32 odu_id = 1;
+  uint32 tier = 2;
+  float score = 3;
+}
+
 message SovereignEvent {
   oneof event {
     AgentBorn agent_born = 1;
@@ -160,5 +190,8 @@ message SovereignEvent {
     CapabilityVerified capability_verified = 19;
     ProbationEscalated probation_escalated = 20;
     ResourceOffered resource_offered = 21;
+    ManifestoClauseProposed manifesto_clause_proposed = 22;
+    ManifestoClauseRatified manifesto_clause_ratified = 23;
+    ResonanceScored resonance_scored = 24;
   }
 }

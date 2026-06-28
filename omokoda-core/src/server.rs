@@ -549,6 +549,28 @@ fn sovereign_event_to_json(ev: &crate::bus::SovereignEvent) -> serde_json::Value
             "resource_id": e.resource_id,
             "kind": e.kind,
         }),
+        Some(sovereign_event::Event::ManifestoClauseProposed(e)) => json!({
+            "type": "manifesto_clause_proposed",
+            "collective": e.collective,
+            "clause_id": e.clause_id,
+            "odu_id": e.odu_id,
+            "vessel": e.vessel,
+            "principle": e.principle,
+            "author": e.author,
+        }),
+        Some(sovereign_event::Event::ManifestoClauseRatified(e)) => json!({
+            "type": "manifesto_clause_ratified",
+            "collective": e.collective,
+            "clause_id": e.clause_id,
+            "level": e.level,
+            "weight": e.weight,
+        }),
+        Some(sovereign_event::Event::ResonanceScored(e)) => json!({
+            "type": "resonance_scored",
+            "odu_id": e.odu_id,
+            "tier": e.tier,
+            "score": e.score,
+        }),
         None => serde_json::json!({"type": "unknown"}),
     }
 }
@@ -586,4 +608,66 @@ pub async fn start_server(port: u16) -> Result<(), std::io::Error> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
     println!("Ọmọ Kọ́dà HTTP server listening on {addr}");
     axum::serve(listener, router).await
+}
+
+#[cfg(test)]
+mod event_json_tests {
+    use super::sovereign_event_to_json;
+    use crate::bus::events::{
+        sovereign_event::Event, ManifestoClauseProposed, ManifestoClauseRatified, ResonanceScored,
+        SovereignEvent,
+    };
+
+    #[test]
+    fn manifesto_clause_proposed_json_shape() {
+        let ev = SovereignEvent {
+            event: Some(Event::ManifestoClauseProposed(ManifestoClauseProposed {
+                collective: "guild".into(),
+                clause_id: 7,
+                odu_id: 42,
+                vessel: "Oracle".into(),
+                principle: "speak truth".into(),
+                author: "luna".into(),
+            })),
+        };
+        let j = sovereign_event_to_json(&ev);
+        assert_eq!(j["type"], "manifesto_clause_proposed");
+        assert_eq!(j["collective"], "guild");
+        assert_eq!(j["clause_id"], 7);
+        assert_eq!(j["odu_id"], 42);
+        assert_eq!(j["vessel"], "Oracle");
+        assert_eq!(j["author"], "luna");
+    }
+
+    #[test]
+    fn manifesto_clause_ratified_json_shape() {
+        let ev = SovereignEvent {
+            event: Some(Event::ManifestoClauseRatified(ManifestoClauseRatified {
+                collective: "guild".into(),
+                clause_id: 7,
+                level: "council".into(),
+                weight: 5.0,
+            })),
+        };
+        let j = sovereign_event_to_json(&ev);
+        assert_eq!(j["type"], "manifesto_clause_ratified");
+        assert_eq!(j["clause_id"], 7);
+        assert_eq!(j["level"], "council");
+    }
+
+    #[test]
+    fn resonance_scored_json_shape() {
+        let ev = SovereignEvent {
+            event: Some(Event::ResonanceScored(ResonanceScored {
+                odu_id: 3,
+                tier: 2,
+                score: 0.75,
+            })),
+        };
+        let j = sovereign_event_to_json(&ev);
+        assert_eq!(j["type"], "resonance_scored");
+        assert_eq!(j["odu_id"], 3);
+        assert_eq!(j["tier"], 2);
+        assert!(j["score"].is_number());
+    }
 }

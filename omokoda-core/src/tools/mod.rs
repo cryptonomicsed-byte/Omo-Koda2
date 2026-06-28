@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Arc, Mutex};
 
 use crate::execution::permission_enforcer::{enforce_mode, validate_path_boundary};
 use crate::sandbox::WasmSandbox;
@@ -11,6 +12,7 @@ pub mod file_ops;
 pub mod mesh_tools;
 pub mod repl;
 pub mod retry;
+pub mod skills;
 pub mod sovereign;
 pub mod streaming;
 pub mod structured_output;
@@ -110,12 +112,14 @@ impl Tool for LazyTool {
 
 pub struct ToolRegistry {
     tools: HashMap<String, Box<dyn Tool>>,
+    external_skills: Arc<Mutex<Vec<skills::SkillManifestEntry>>>,
 }
 
 impl ToolRegistry {
     pub fn new() -> Self {
         let mut registry = Self {
             tools: HashMap::new(),
+            external_skills: Arc::new(Mutex::new(Vec::new())),
         };
         registry.register(Box::new(ReadFileTool));
         registry.register(Box::new(WriteFileTool));
@@ -172,11 +176,41 @@ impl ToolRegistry {
         registry.register(Box::new(mesh_tools::MeshSignalEventTool));
         registry.register(Box::new(mesh_tools::MeshDiscoverCapabilitiesTool));
 
+        // Config-driven external service skills (ships with Vantage).
+        for entry in skills::default_manifest().skills {
+            registry.register_skill(entry);
+        }
+        registry.register(Box::new(skills::SkillsListTool::new(
+            registry.external_skills.clone(),
+        )));
+
         registry
     }
 
     pub fn register(&mut self, tool: Box<dyn Tool>) {
         self.tools.insert(tool.name().to_string(), tool);
+    }
+
+    /// Register one external service skill (a config-driven HTTP adapter). The
+    /// skill becomes invocable as `act <name>` and appears in the `skills` list.
+    pub fn register_skill(&mut self, entry: skills::SkillManifestEntry) {
+        if let Ok(mut g) = self.external_skills.lock() {
+            g.push(entry.clone());
+        }
+        self.register(Box::new(skills::ExternalServiceTool::new(entry)));
+    }
+
+    /// Load a JSON skill manifest from `path` and register each entry. Returns
+    /// the number of skills registered.
+    pub fn load_skills_manifest(&mut self, path: &Path) -> Result<usize, String> {
+        let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+        let manifest: skills::SkillManifest =
+            serde_json::from_str(&text).map_err(|e| e.to_string())?;
+        let n = manifest.skills.len();
+        for entry in manifest.skills {
+            self.register_skill(entry);
+        }
+        Ok(n)
     }
 
     pub fn is_allowed(&self, name: &str, tier: u8) -> bool {

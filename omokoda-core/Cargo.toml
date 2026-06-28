@@ -28,8 +28,12 @@ reqwest = { version = "0.11", features = ["json", "stream"] }
 async-trait = "0.1"
 urlencoding = "2.1"
 ed25519-dalek = "2.0"
-bipon39 = { path = "../bipon39-stub" }
-ifascript = { path = "../ifascript-stub" }
+# Real crates (public). Pinned to the audited main commits; build against the
+# actual BIPON39 / IfáScript behavior, not the CI stubs (which mirrored only the
+# API shape). The ../bipon39-stub and ../ifascript-stub crates remain as
+# workspace members but are no longer depended on.
+bipon39 = { git = "https://github.com/cryptonomicsed-byte/BIPON39", rev = "9d62b4de8e5b78199a1534ab7b45e08612620380" }
+ifascript = { git = "https://github.com/cryptonomicsed-byte/If-Script", rev = "53eea72afc23c6618594c59bb1007b03db5774d9" }
 zangbeto-enforcement = { path = "../zangbeto-stub" }
 omokoda-mesh = { path = "../omokoda-mesh" }
 omokoda-hermetic = { path = "../omokoda-hermetic" }

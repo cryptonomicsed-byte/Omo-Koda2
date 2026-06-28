@@ -147,6 +147,7 @@ jobs:
             include("omokoda-memory/src/augury.jl")
             include("omokoda-memory/src/depin_optimizer.jl")
             include("omokoda-memory/src/garden_analytics.jl")
+            include("omokoda-memory/src/resonance.jl")
             println("Julia modules loaded OK")
 
             # BB(2): known to write 4 ones in 6 steps
@@ -167,6 +168,14 @@ jobs:
             series = Float64.(1:10)
             pred = predict(series, 3; method=:holt)
             @assert pred.predictions[1] > 10.0 "Holt prediction should extrapolate upward"
+
+            # Resonance scoring (serves IfáScript julia_bridge /mesh/resonance)
+            for (oid, t) in ((0,1), (128,4), (65535,7), (42,3))
+                rs = compute_resonance(oid, t, "seek wisdom")
+                @assert 0.0 <= rs <= 1.0 "resonance out of range: $rs"
+            end
+            @assert compute_resonance(100, 7, "x") > compute_resonance(100, 1, "x") "resonance must be monotonic in tier"
+            @assert isapprox(compute_resonance(0, 1, ""), 0.4/7; atol=1e-9) "floor packet (odu 0, tier 1, no intent) should score 0.4*(1/7)"
 
             println("All Julia unit tests passed")
           '

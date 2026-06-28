@@ -23,6 +23,7 @@ Endpoints:
   POST /garden/feed                → Augury feature vector from receipts
 
   POST /mesh/score                 → Julia trust score computation
+  POST /mesh/resonance             → IfáScript ResonancePacket → resonance score
   POST /mesh/correlations          → Cross-agent trust correlations
   POST /mesh/forecast              → Resource demand forecast
   POST /mesh/reliability           → Agent commitment reliability report
@@ -55,6 +56,7 @@ const GLOBAL_DAG = Ref(MemoryDAG())
 include(joinpath(@__DIR__, "src", "mesh_analytics.jl"))
 include(joinpath(@__DIR__, "src", "vantage_bridge.jl"))
 include(joinpath(@__DIR__, "src", "soma_bridge.jl"))
+include(joinpath(@__DIR__, "src", "resonance.jl"))
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -91,7 +93,7 @@ function handle_capabilities(req::HTTP.Request)
         "augury"   => ["/predict", "/augury/dag/snapshot", "/augury/dag/summary"],
         "optimize" => ["/optimize", "/optimize/reliability"],
         "garden"   => ["/garden/analyse", "/garden/feed"],
-        "mesh"     => ["/mesh/score", "/mesh/correlations", "/mesh/forecast", "/mesh/reliability"],
+        "mesh"     => ["/mesh/score", "/mesh/resonance", "/mesh/correlations", "/mesh/forecast", "/mesh/reliability"],
     ))
 end
 
@@ -298,6 +300,22 @@ function handle_mesh_score(req::HTTP.Request)
     ))
 end
 
+# Serves IfáScript's ritual_codex::julia_bridge: a ResonancePacket
+# {odu_id, tier, day, timestamp, intent} in, {"resonance": x} out. Scoring is in
+# src/resonance.jl (pure, unit-tested in CI).
+function handle_mesh_resonance(req::HTTP.Request)
+    body   = parse_body(req)
+    odu_id = Int(get(body, "odu_id", 0))
+    tier   = Int(get(body, "tier", 1))
+    intent = string(get(body, "intent", ""))
+
+    json_ok(Dict(
+        "odu_id"    => odu_id,
+        "tier"      => tier,
+        "resonance" => compute_resonance(odu_id, tier, intent),
+    ))
+end
+
 # ---------------------------------------------------------------------------
 # Mesh analytics handlers
 # ---------------------------------------------------------------------------
@@ -373,6 +391,7 @@ HTTP.register!(ROUTER, "POST", "/garden/analyse",      handle_garden_analyse)
 HTTP.register!(ROUTER, "POST", "/garden/feed",         handle_garden_feed)
 
 HTTP.register!(ROUTER, "POST", "/mesh/score",          handle_mesh_score)
+HTTP.register!(ROUTER, "POST", "/mesh/resonance",      handle_mesh_resonance)
 HTTP.register!(ROUTER, "POST", "/mesh/correlations",   handle_mesh_correlations)
 HTTP.register!(ROUTER, "POST", "/mesh/forecast",       handle_mesh_forecast)
 HTTP.register!(ROUTER, "POST", "/mesh/reliability",    handle_mesh_reliability)

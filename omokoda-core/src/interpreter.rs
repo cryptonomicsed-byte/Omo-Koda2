@@ -1114,15 +1114,38 @@ impl Steward {
                 let auth_result = self.permission_policy.authorize(&tool, &params, None);
                 if let crate::permissions::PermissionOutcome::Deny { reason } = auth_result {
                     // A denied capability is an anomaly — report it to ZÀNGBÉTÒ
-                    // for enforcement (fail-open when ZANGBETO_URL is unset).
-                    crate::bus::zangbeto::report_anomaly(
+                    // for enforcement (fail-open when ZANGBETO_URL is unset). If the
+                    // enforcer escalates to a blocking verdict (quarantine/suspend),
+                    // honor it in the denial rather than discarding the response.
+                    let verdict = crate::bus::zangbeto::report_anomaly(
                         agent_id.as_str(),
                         "warning",
                         "capability_escape",
                         &reason,
                     )
                     .await;
+                    if verdict
+                        .as_ref()
+                        .is_some_and(crate::bus::zangbeto::verdict_blocks)
+                    {
+                        return Err(format!(
+                            "Permission denied (ZÀNGBÉTÒ quarantine): {}",
+                            reason
+                        ));
+                    }
                     return Err(format!("Permission denied: {}", reason));
+                }
+
+                // 1b. Pre-act ZÀNGBÉTÒ enforcement gate. For an *otherwise-allowed*
+                // act, ask the enforcer to review it; a blocking verdict denies the
+                // act before it runs. Fail-open: no ZANGBETO_URL (or an unreachable
+                // / non-blocking enforcer) → `None` → the act proceeds unchanged.
+                if let Some(verdict) =
+                    crate::bus::zangbeto::review_act(agent_id.as_str(), &tool, &params).await
+                {
+                    if crate::bus::zangbeto::verdict_blocks(&verdict) {
+                        return Err(format!("Blocked by ZÀNGBÉTÒ enforcement: {}", tool));
+                    }
                 }
 
                 // Apply synapse decay for elapsed inactivity before any act
@@ -1381,6 +1404,19 @@ impl Steward {
                             )),
                         };
                         let _ = self.event_bus.publish(audit_event);
+                    } else {
+                        // A failed post-act audit is no longer swallowed silently —
+                        // surface it as a Denial telemetry event for observers.
+                        let denial = SovereignEvent {
+                            event: Some(sovereign_event::Event::Denial(
+                                crate::bus::events::Denial {
+                                    tool: tool.clone(),
+                                    reason: "zangbeto post-act audit failed".to_string(),
+                                    resource: receipt.receipt_id.clone(),
+                                },
+                            )),
+                        };
+                        let _ = self.event_bus.publish(denial);
                     }
                 }
 

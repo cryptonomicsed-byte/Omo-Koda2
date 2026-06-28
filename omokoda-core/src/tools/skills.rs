@@ -128,6 +128,30 @@ pub fn default_manifest() -> SkillManifest {
                     ("create_pull", "POST /repos/{owner}/{repo}/pulls"),
                 ]),
             },
+            SkillManifestEntry {
+                name: "opencode".to_string(),
+                description: "OpenCode agent server (`opencode serve`) — sessions, messages, \
+                     config. Set OPENCODE_URL (default http://127.0.0.1:4096) to enable."
+                    .to_string(),
+                base_url: "${OPENCODE_URL}".to_string(),
+                auth_header: None,
+                auth_env: None,
+                auth_value: None,
+                required_tier: 1,
+                write: true,
+                routes: routes_of(&[
+                    ("health", "GET /global/health"),
+                    ("create_session", "POST /session"),
+                    ("list_sessions", "GET /session"),
+                    ("get_session", "GET /session/{id}"),
+                    ("delete_session", "DELETE /session/{id}"),
+                    ("send_message", "POST /session/{id}/message"),
+                    ("list_messages", "GET /session/{id}/message"),
+                    ("get_config", "GET /config"),
+                    ("list_providers", "GET /provider"),
+                    ("list_commands", "GET /command"),
+                ]),
+            },
         ],
     }
 }
@@ -410,9 +434,22 @@ mod tests {
     fn manifest_json_round_trips() {
         let json = serde_json::to_string(&default_manifest()).unwrap();
         let back: SkillManifest = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.skills.len(), 2);
-        assert!(back.skills.iter().any(|s| s.name == "vantage"));
-        assert!(back.skills.iter().any(|s| s.name == "gitea"));
+        assert_eq!(back.skills.len(), 3);
+        for name in ["vantage", "gitea", "opencode"] {
+            assert!(back.skills.iter().any(|s| s.name == name), "missing {name}");
+        }
+    }
+
+    #[test]
+    fn opencode_skill_is_wired() {
+        let m = default_manifest();
+        let o = m.skills.iter().find(|s| s.name == "opencode").unwrap();
+        assert_eq!(o.base_url, "${OPENCODE_URL}");
+        assert!(o.auth_header.is_none()); // localhost server, unauthenticated
+        assert_eq!(
+            o.routes.get("send_message").map(String::as_str),
+            Some("POST /session/{id}/message")
+        );
     }
 
     #[test]

@@ -12,7 +12,7 @@ pub struct StubBiponClient;
 
 impl BiponClient for StubBiponClient {
     fn entropy_to_mnemonic(&self, entropy: &[u8]) -> Result<MnemonicResult, ClientError> {
-        // Delegate to vendored bipon39-stub crate
+        // Delegate to the real bipon39 crate.
         let words = bipon39::entropy_to_mnemonic(entropy)
             .map_err(|e| ClientError::InvalidInput(e.to_string()))?;
         let phrase = words.join(" ");

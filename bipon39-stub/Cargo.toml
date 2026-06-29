@@ -1,8 +1,0 @@
-[package]
-name        = "bipon39"
-version     = "0.1.0"
-edition     = "2021"
-description = "BIPỌ̀N39 — vendored CI stub (used when omo-koda/Bipon39-Rust is not accessible)"
-
-[dependencies]
-serde = { version = "1.0", features = ["derive"] }

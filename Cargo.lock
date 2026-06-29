@@ -502,13 +502,6 @@ dependencies = [
 
 [[package]]
 name = "bipon39"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "bipon39"
 version = "0.1.1"
 source = "git+https://github.com/cryptonomicsed-byte/BIPON39?rev=9d62b4de8e5b78199a1534ab7b45e08612620380#9d62b4de8e5b78199a1534ab7b45e08612620380"
 dependencies = [
@@ -2307,13 +2300,6 @@ dependencies = [
 
 [[package]]
 name = "ifascript"
-version = "0.1.0"
-dependencies = [
- "once_cell",
-]
-
-[[package]]
-name = "ifascript"
 version = "0.2.0"
 source = "git+https://github.com/cryptonomicsed-byte/If-Script?rev=53eea72afc23c6618594c59bb1007b03db5774d9#53eea72afc23c6618594c59bb1007b03db5774d9"
 dependencies = [
@@ -3029,7 +3015,7 @@ dependencies = [
  "argon2",
  "async-trait",
  "axum",
- "bipon39 0.1.1",
+ "bipon39",
  "blake3",
  "chacha20poly1305",
  "chrono",
@@ -3040,7 +3026,7 @@ dependencies = [
  "hkdf",
  "hmac",
  "httpmock",
- "ifascript 0.2.0",
+ "ifascript",
  "jsonschema",
  "omokoda-hermetic",
  "omokoda-mesh",

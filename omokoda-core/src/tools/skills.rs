@@ -174,6 +174,96 @@ pub fn default_manifest() -> SkillManifest {
                     ("initiate", "GET /api/manifesto/{collective}/initiate"),
                 ]),
             },
+            // ── complement repos ──
+            SkillManifestEntry {
+                name: "supermemory".to_string(),
+                description: "Supermemory MCP — hybrid memory search, document store, \
+                     connections. Set SUPERMEMORY_URL (e.g. https://mcp.supermemory.ai) \
+                     and SUPERMEMORY_KEY to enable."
+                    .to_string(),
+                base_url: "${SUPERMEMORY_URL}".to_string(),
+                auth_header: Some("Authorization".to_string()),
+                auth_env: None,
+                auth_value: Some("Bearer ${SUPERMEMORY_KEY}".to_string()),
+                required_tier: 1,
+                write: true,
+                routes: routes_of(&[
+                    ("search", "POST /v3/search"),
+                    ("documents", "POST /v3/documents"),
+                    ("get_document", "GET /v3/documents/{id}"),
+                    ("delete_document", "DELETE /v3/documents/{id}"),
+                    ("connections", "GET /v3/connections"),
+                    ("settings", "GET /v3/settings"),
+                    ("health", "GET /"),
+                ]),
+            },
+            SkillManifestEntry {
+                name: "worldmonitor".to_string(),
+                description: "WorldMonitor intelligence dashboard — 35+ geo/military/\
+                     finance/cyber APIs. Set WORLDMONITOR_URL (e.g. https://api.worldmonitor.app) \
+                     and WORLDMONITOR_KEY to enable."
+                    .to_string(),
+                base_url: "${WORLDMONITOR_URL}".to_string(),
+                auth_header: Some("X-Api-Key".to_string()),
+                auth_env: Some("WORLDMONITOR_KEY".to_string()),
+                auth_value: None,
+                required_tier: 1,
+                write: false,
+                routes: routes_of(&[
+                    ("health", "GET /api/health"),
+                    ("bootstrap", "GET /api/bootstrap"),
+                    ("market", "GET /api/market"),
+                    ("military", "GET /api/military"),
+                    ("climate", "GET /api/climate"),
+                    ("conflict", "GET /api/conflict"),
+                    ("cyber", "GET /api/cyber"),
+                    ("sanctions", "GET /api/sanctions"),
+                    ("forecast", "GET /api/forecast"),
+                    ("news", "GET /api/news"),
+                    ("mcp", "GET /api/mcp"),
+                ]),
+            },
+            SkillManifestEntry {
+                name: "herdr".to_string(),
+                description: "Herdr multi-agent terminal runtime — agent detection, \
+                     pane control, session restore. Requires local Herdr server \
+                     (cargo run -- server --listen 127.0.0.1:9733). Set HERDR_URL to enable."
+                    .to_string(),
+                base_url: "${HERDR_URL}".to_string(),
+                auth_header: None,
+                auth_env: None,
+                auth_value: None,
+                required_tier: 2,
+                write: true,
+                routes: routes_of(&[
+                    ("agents", "GET /api/agents"),
+                    ("agent_read", "GET /api/agent/{id}/read"),
+                    ("sessions", "GET /api/sessions"),
+                    ("health", "GET /api/health"),
+                ]),
+            },
+            SkillManifestEntry {
+                name: "oh-my-pi".to_string(),
+                description: "oh-my-pi coding agent — hash-anchored edits, LSP/DAP, \
+                     Rust-native grep. Run `omp serve` to expose it as a skill. \
+                     Set OMP_URL (default http://127.0.0.1:9787) to enable."
+                    .to_string(),
+                base_url: "${OMP_URL}".to_string(),
+                auth_header: None,
+                auth_env: None,
+                auth_value: None,
+                required_tier: 1,
+                write: true,
+                routes: routes_of(&[
+                    ("health", "GET /global/health"),
+                    ("session_create", "POST /api/session"),
+                    ("session_prompt", "POST /api/session/{id}/prompt"),
+                    ("session_wait", "POST /api/session/{id}/wait"),
+                    ("session_messages", "GET /api/session/{id}/message"),
+                    ("config", "GET /api/config"),
+                    ("commands", "GET /api/command"),
+                ]),
+            },
         ],
     }
 }
@@ -456,8 +546,8 @@ mod tests {
     fn manifest_json_round_trips() {
         let json = serde_json::to_string(&default_manifest()).unwrap();
         let back: SkillManifest = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.skills.len(), 4);
-        for name in ["vantage", "gitea", "opencode", "manifesto"] {
+        assert_eq!(back.skills.len(), 8);
+        for name in ["vantage", "gitea", "opencode", "manifesto", "supermemory", "worldmonitor", "herdr", "oh-my-pi"] {
             assert!(back.skills.iter().any(|s| s.name == name), "missing {name}");
         }
     }

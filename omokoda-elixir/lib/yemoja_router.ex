@@ -21,11 +21,6 @@ defmodule Yemoja.Router do
   plug :match
   plug :dispatch
 
-<<<<<<< HEAD
-=======
-  # ── spawn_agent ──────────────────────────────────────────────────────────────
-
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
   post "/spawn_agent" do
     role   = Map.get(conn.body_params, "role", "worker")
     _budget = Map.get(conn.body_params, "budget_synapse", 1000.0)
@@ -43,11 +38,6 @@ defmodule Yemoja.Router do
     end
   end
 
-<<<<<<< HEAD
-=======
-  # ── agent_status ─────────────────────────────────────────────────────────────
-
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
   get "/agent_status/:agent_id" do
     status =
       case Registry.lookup(Yemoja.Registry, {Yemoja.AgentWorker, agent_id}) do
@@ -58,11 +48,6 @@ defmodule Yemoja.Router do
     json(conn, 200, %{agent_id: agent_id, status: status})
   end
 
-<<<<<<< HEAD
-=======
-  # ── mesh presence ────────────────────────────────────────────────────────────
-
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
   get "/mesh/presence/:block_id" do
     agents =
       Yemoja.Registry
@@ -74,38 +59,19 @@ defmodule Yemoja.Router do
     json(conn, 200, %{agents: agents})
   end
 
-<<<<<<< HEAD
   post "/mesh/broadcast/:block_id" do
-=======
-  # ── mesh broadcast ───────────────────────────────────────────────────────────
-
-  post "/mesh/broadcast/:block_id" do
-    # Broadcast is logged; real pub/sub would use Phoenix.PubSub or Registry sends.
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
     require Logger
     Logger.debug("mesh_broadcast block=#{block_id} event=#{inspect(conn.body_params)}")
     json(conn, 200, %{broadcast: true, block_id: block_id})
   end
 
-<<<<<<< HEAD
   post "/mesh/consensus/:block_id" do
     proposal = conn.body_params
-=======
-  # ── mesh consensus ───────────────────────────────────────────────────────────
-
-  post "/mesh/consensus/:block_id" do
-    proposal = conn.body_params
-    # Simple majority vote: collect votes from all alive agents.
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
     agents =
       Registry.select(Yemoja.Registry, [{{:"$1", :"$2", :"$3"}, [], [{{:"$1", :"$2"}}]}])
 
     votes =
       Enum.map(agents, fn {{Yemoja.AgentWorker, _id}, _pid} ->
-<<<<<<< HEAD
-=======
-        # Stub vote — real impl would send GenServer calls and await replies.
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
         :accept
       end)
 
@@ -116,11 +82,6 @@ defmodule Yemoja.Router do
     json(conn, 200, %{block_id: block_id, proposal: proposal, result: result, votes: length(votes)})
   end
 
-<<<<<<< HEAD
-=======
-  # ── mesh handoff ─────────────────────────────────────────────────────────────
-
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
   post "/mesh/handoff" do
     agent_id    = Map.get(conn.body_params, "agent_id", "")
     target_node = Map.get(conn.body_params, "target_node", "")
@@ -136,11 +97,6 @@ defmodule Yemoja.Router do
     end
   end
 
-<<<<<<< HEAD
-=======
-  # ── health ───────────────────────────────────────────────────────────────────
-
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
   get "/health" do
     json(conn, 200, %{ok: true, service: "yemoja"})
   end
@@ -149,11 +105,6 @@ defmodule Yemoja.Router do
     json(conn, 404, %{error: "not found", path: conn.request_path})
   end
 
-<<<<<<< HEAD
-=======
-  # ── helpers ──────────────────────────────────────────────────────────────────
-
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
   defp json(conn, status, body) do
     conn
     |> put_resp_content_type("application/json")

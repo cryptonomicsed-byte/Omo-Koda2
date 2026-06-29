@@ -8,11 +8,7 @@ import (
 // ResourceOffer is a resource this agent makes available to the mesh.
 type ResourceOffer struct {
 	ResourceID string
-<<<<<<< HEAD
 	Kind       string
-=======
-	Kind       string // "compute", "storage", "bandwidth", "data"
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
 	Capacity   float64
 	ExpiresAt  time.Time
 	OwnerID    string

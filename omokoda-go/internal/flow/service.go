@@ -27,10 +27,6 @@ func (s *FlowService) EnforceFlow(agentID string, tier int) error {
 	return nil
 }
 
-<<<<<<< HEAD
-=======
-// isSabbath returns true during UTC Saturday 00:00–01:00 (ritual-codex Sabbath enforcement).
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
 func isSabbath() bool {
 	now := time.Now().UTC()
 	return now.Weekday() == time.Saturday && now.Hour() == 0

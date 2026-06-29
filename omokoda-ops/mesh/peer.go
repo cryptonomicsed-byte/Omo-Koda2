@@ -11,11 +11,7 @@ import (
 type Peer struct {
 	AgentID    string
 	BlockID    string
-<<<<<<< HEAD
 	Addr       string
-=======
-	Addr       string // base URL of the peer's Ọmọ Kọ́dà steward
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
 	LastSeen   time.Time
 	TrustScore float64
 }
@@ -23,11 +19,7 @@ type Peer struct {
 // PeerStore is a thread-safe store of known peers.
 type PeerStore struct {
 	mu    sync.RWMutex
-<<<<<<< HEAD
 	peers map[string]*Peer
-=======
-	peers map[string]*Peer // keyed by AgentID
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
 }
 
 func NewPeerStore() *PeerStore {

@@ -26,10 +26,6 @@ func main() {
 	svc := flow.NewService(limiter)
 	store := flow.NewPrimitiveStore()
 
-<<<<<<< HEAD
-=======
-	// TCP server (original protocol)
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
 	lis, err := net.Listen("tcp", ":"+tcpPort)
 	if err != nil {
 		log.Fatalf("Failed to listen on TCP :%s: %v", tcpPort, err)
@@ -37,10 +33,6 @@ func main() {
 	log.Printf("ỌYA flow service listening on TCP :%s", tcpPort)
 	go svc.Serve(lis)
 
-<<<<<<< HEAD
-=======
-	// HTTP REST API for OyaClient (Rust) integration
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
 	httpHandler := flow.NewHTTPHandler(store)
 	log.Printf("ỌYA HTTP API listening on :%s", httpPort)
 	go func() {

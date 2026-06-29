@@ -123,15 +123,6 @@ impl Constitution {
     }
 }
 
-<<<<<<< HEAD
-=======
-/// Evaluates `think` intents and `act` actions through the constitutional principles.
-/// Called FROM WITHIN the primitives — not a new primitive itself.
-///
-/// This is the Rust (Èṣù) layer of the constitutional stack. The deeper evaluation
-/// (with full Hermetic principle reasoning) happens in the Lisp/ọbàtálá service.
-/// This guard provides fast, synchronous local evaluation before any LLM or tool call.
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
 #[derive(Debug, Clone)]
 pub struct ConstitutionalGuard {
     pub constitution: Constitution,
@@ -148,14 +139,6 @@ impl ConstitutionalGuard {
         Self::new(Constitution::standard())
     }
 
-<<<<<<< HEAD
-=======
-    /// Evaluate an intent (from `think`) or action (from `act`) against the constitution.
-    ///
-    /// `hermetic` is the result from the ọbàtálá service (or its stub). If None,
-    /// the ethics service is unavailable — fail closed (deny all) rather than
-    /// allowing actions without ethical evaluation.
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
     #[must_use]
     pub fn evaluate(
         &self,
@@ -442,11 +425,6 @@ mod tests {
 
     #[test]
     fn none_hermetic_fails_closed() {
-<<<<<<< HEAD
-=======
-        // SECURITY: when the ethics service is unavailable (hermetic = None),
-        // the guard must BLOCK rather than allow — fail closed, not fail open.
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
         let guard = ConstitutionalGuard::standard();
         let verdict = guard.evaluate(
             "summarize the document",

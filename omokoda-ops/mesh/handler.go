@@ -24,6 +24,10 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/mesh/health", h.handleHealth)
 }
 
+<<<<<<< HEAD
+=======
+// handleGossip accepts incoming gossip announcements from peer agents.
+>>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
 func (h *Handler) handleGossip(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -38,6 +42,10 @@ func (h *Handler) handleGossip(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+<<<<<<< HEAD
+=======
+// handlePeers returns the list of known mesh peers.
+>>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
 func (h *Handler) handlePeers(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -48,6 +56,10 @@ func (h *Handler) handlePeers(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"peers": peers}) //nolint:errcheck
 }
 
+<<<<<<< HEAD
+=======
+// handleResource accepts a resource offer advertisement and registers the peer.
+>>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
 func (h *Handler) handleResource(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -71,6 +83,10 @@ func (h *Handler) handleResource(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+<<<<<<< HEAD
+=======
+// handleHealth returns basic mesh health metrics.
+>>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)

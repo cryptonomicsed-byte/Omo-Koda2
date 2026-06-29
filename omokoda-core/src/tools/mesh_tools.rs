@@ -33,10 +33,13 @@ fn http() -> &'static Client {
 /// Set on the first write call so the agent is lazily registered in its block.
 static VANTAGE_JOINED: AtomicBool = AtomicBool::new(false);
 
+<<<<<<< HEAD
 /// Vantage API key minted at birth when `VANTAGE_KEY` is not pre-provisioned.
 /// Lets a self-registered agent authenticate subsequent mesh calls in-process.
 static MINTED_KEY: OnceLock<String> = OnceLock::new();
 
+=======
+>>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
 pub struct VantageClient {
     base_url: String,
     api_key: String,
@@ -56,6 +59,7 @@ impl VantageClient {
         })
     }
 
+<<<<<<< HEAD
     /// The API key to authenticate with: the env-provisioned key if present,
     /// otherwise a key minted during birth-time self-registration.
     fn effective_key(&self) -> Option<String> {
@@ -70,6 +74,15 @@ impl VantageClient {
         let req = match self.effective_key() {
             Some(key) => req.header("X-Agent-Key", key),
             None => req,
+=======
+    async fn send(&self, req: reqwest::RequestBuilder) -> Result<serde_json::Value, String> {
+        // Vantage authenticates Ọ̀mọ̀ Kọ́dà agents via the X-Agent-Key header
+        // (see Vantage backend/deps.py::get_agent).
+        let req = if self.api_key.is_empty() {
+            req
+        } else {
+            req.header("X-Agent-Key", &self.api_key)
+>>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
         };
         let resp = req
             .send()
@@ -119,6 +132,7 @@ impl VantageClient {
 
 static VANTAGE: LazyLock<Option<VantageClient>> = LazyLock::new(VantageClient::from_env);
 
+<<<<<<< HEAD
 /// Verifiable sovereign identity carried to Vantage when an agent is born.
 pub struct NewbornIdentity<'a> {
     pub agent_id: &'a str,
@@ -315,6 +329,8 @@ pub async fn observe_mesh_context(agent_id: &str) -> Option<String> {
     }
 }
 
+=======
+>>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
 fn active_mesh_state(agent_id: &str) -> MeshState {
     let mut state = MeshState::new("local".to_string(), MeshRole::Home, agent_id.to_string());
     state.membership = MeshMembership::Active;

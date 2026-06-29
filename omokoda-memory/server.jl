@@ -56,7 +56,10 @@ const GLOBAL_DAG = Ref(MemoryDAG())
 include(joinpath(@__DIR__, "src", "mesh_analytics.jl"))
 include(joinpath(@__DIR__, "src", "vantage_bridge.jl"))
 include(joinpath(@__DIR__, "src", "soma_bridge.jl"))
+<<<<<<< HEAD
 include(joinpath(@__DIR__, "src", "resonance.jl"))
+=======
+>>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
 
 # ---------------------------------------------------------------------------
 # Helpers

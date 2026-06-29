@@ -24,6 +24,10 @@ func main() {
 	hub = NewSSEHub(getStewardURL() + "/v1/events")
 	go hub.Run()
 
+<<<<<<< HEAD
+=======
+	// Mesh layer: peer gossip + resource registry + health probes.
+>>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
 	agentID := os.Getenv("AGENT_ID")
 	if agentID == "" {
 		agentID = "omokoda-ops"
@@ -32,7 +36,11 @@ func main() {
 	if blockID == "" {
 		blockID = "default"
 	}
+<<<<<<< HEAD
 	selfAddr := os.Getenv("SELF_ADDR")
+=======
+	selfAddr := os.Getenv("SELF_ADDR") // e.g. http://my-host:8080
+>>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
 
 	meshStore := mesh.NewPeerStore()
 	gossiper := mesh.NewGossiper(agentID, blockID, selfAddr, meshStore)
@@ -62,8 +70,15 @@ func main() {
 	mux.HandleFunc("/v1/devices", handleDevices)
 	mux.HandleFunc("/v1/devices/", handleDevices)
 
+<<<<<<< HEAD
 	meshHandler.RegisterRoutes(mux)
 
+=======
+	// --- BlockMesh: gossip, peers, resource registry, health ---
+	meshHandler.RegisterRoutes(mux)
+
+	// --- Rhythm gate endpoints (for HttpOyaClient) ---
+>>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
 	mux.HandleFunc("/rhythm/cooldown", rhythmCooldownHandler)
 	mux.HandleFunc("/rhythm/record", rhythmRecordHandler)
 

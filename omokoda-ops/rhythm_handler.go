@@ -20,6 +20,11 @@ type rhythmRecordRequest struct {
 	Primitive string `json:"primitive"`
 }
 
+<<<<<<< HEAD
+=======
+// cooldownCheck reports whether any tracked primitive is currently rate-limited
+// for the given agent. Read-only: does not update the tracker.
+>>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
 func cooldownCheck(agentID string) bool {
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
@@ -33,6 +38,10 @@ func cooldownCheck(agentID string) bool {
 	return false
 }
 
+<<<<<<< HEAD
+=======
+// recordPrimitive stamps the current time for agent+primitive in the tracker.
+>>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
 func recordPrimitive(agentID, primitive string) {
 	if _, ok := toolCooldowns[primitive]; !ok {
 		return

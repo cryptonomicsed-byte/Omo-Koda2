@@ -547,7 +547,16 @@ mod tests {
         let json = serde_json::to_string(&default_manifest()).unwrap();
         let back: SkillManifest = serde_json::from_str(&json).unwrap();
         assert_eq!(back.skills.len(), 8);
-        for name in ["vantage", "gitea", "opencode", "manifesto", "supermemory", "worldmonitor", "herdr", "oh-my-pi"] {
+        for name in [
+            "vantage",
+            "gitea",
+            "opencode",
+            "manifesto",
+            "supermemory",
+            "worldmonitor",
+            "herdr",
+            "oh-my-pi",
+        ] {
             assert!(back.skills.iter().any(|s| s.name == name), "missing {name}");
         }
     }

@@ -398,6 +398,7 @@ HTTP.register!(ROUTER, "POST", "/mesh/resonance",      handle_mesh_resonance)
 HTTP.register!(ROUTER, "POST", "/mesh/correlations",   handle_mesh_correlations)
 HTTP.register!(ROUTER, "POST", "/mesh/forecast",       handle_mesh_forecast)
 HTTP.register!(ROUTER, "POST", "/mesh/reliability",    handle_mesh_reliability)
+HTTP.register!(ROUTER, "POST", "/mesh/score",          handle_mesh_score)
 
 HTTP.register!(ROUTER, "POST", "/vantage/ingest",      handle_vantage_ingest)
 HTTP.register!(ROUTER, "POST", "/vantage/similar",     handle_vantage_similar)

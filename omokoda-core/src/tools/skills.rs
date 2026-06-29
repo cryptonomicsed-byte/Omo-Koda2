@@ -174,6 +174,53 @@ pub fn default_manifest() -> SkillManifest {
                     ("initiate", "GET /api/manifesto/{collective}/initiate"),
                 ]),
             },
+            SkillManifestEntry {
+                name: "pine".to_string(),
+                description: "Pine Script indicators (Vantage) — author and run technical \
+                     indicators in the sandboxed pine-runtime, save them to your vault, and \
+                     share them into guilds. Output is numeric series for charting. Set \
+                     VANTAGE_URL and VANTAGE_KEY to enable."
+                    .to_string(),
+                base_url: "${VANTAGE_URL}".to_string(),
+                auth_header: Some("X-Agent-Key".to_string()),
+                auth_env: Some("VANTAGE_KEY".to_string()),
+                auth_value: None,
+                required_tier: 1,
+                write: true,
+                routes: routes_of(&[
+                    // run: body {"script","symbol","interval"} → {plots, alerts}
+                    ("run", "POST /api/pine/run"),
+                    // save: body {"name","script","description"}
+                    ("save", "POST /api/pine/indicators"),
+                    ("list", "GET /api/pine/indicators"),
+                    // share: path {"id"}, body {"guild_slug"}
+                    ("share", "POST /api/pine/indicators/{id}/share"),
+                    ("delete", "DELETE /api/pine/indicators/{id}"),
+                ]),
+            },
+            SkillManifestEntry {
+                name: "markets".to_string(),
+                description: "Market data (Vantage) — live OHLC candles, built-in technical \
+                     indicators (SMA/EMA/RSI/MACD/Bollinger), backtests, and quotes. Public \
+                     read endpoints. Set VANTAGE_URL to enable."
+                    .to_string(),
+                base_url: "${VANTAGE_URL}".to_string(),
+                auth_header: Some("X-Agent-Key".to_string()),
+                auth_env: Some("VANTAGE_KEY".to_string()),
+                auth_value: None,
+                required_tier: 1,
+                write: false,
+                routes: routes_of(&[
+                    // ohlc/indicators: path {"symbol"}, query {"interval","limit"}
+                    ("ohlc", "GET /api/intel/ohlc/{symbol}"),
+                    ("indicators", "GET /api/intel/indicators/{symbol}"),
+                    // backtest/price: query {"symbol","days"} / path {"symbol"}
+                    ("backtest", "GET /api/intel/backtest"),
+                    ("price", "GET /api/trading/markets/{symbol}/price"),
+                    ("overview", "GET /api/intel/market"),
+                    ("arbitrage", "GET /api/intel/arbitrage"),
+                ]),
+            },
             // ── complement repos ──
             SkillManifestEntry {
                 name: "supermemory".to_string(),
@@ -507,6 +554,45 @@ mod tests {
     }
 
     #[test]
+    fn pine_skill_is_wired() {
+        let m = default_manifest();
+        let p = m.skills.iter().find(|s| s.name == "pine").unwrap();
+        assert_eq!(p.base_url, "${VANTAGE_URL}");
+        assert_eq!(p.auth_header.as_deref(), Some("X-Agent-Key"));
+        assert_eq!(p.auth_env.as_deref(), Some("VANTAGE_KEY"));
+        assert!(p.write);
+        assert_eq!(
+            p.routes.get("run").map(String::as_str),
+            Some("POST /api/pine/run")
+        );
+        assert!(p.routes.contains_key("save") && p.routes.contains_key("share"));
+    }
+
+    #[test]
+    fn markets_skill_is_read_only_with_ohlc() {
+        let m = default_manifest();
+        let mk = m.skills.iter().find(|s| s.name == "markets").unwrap();
+        assert!(!mk.write);
+        assert_eq!(
+            mk.routes.get("ohlc").map(String::as_str),
+            Some("GET /api/intel/ohlc/{symbol}")
+        );
+        assert!(mk.routes.contains_key("indicators"));
+    }
+
+    #[test]
+    fn pine_run_builds_post_to_vantage() {
+        // The /pine run slash invocation resolves to a POST at the configured base.
+        let params = serde_json::json!({
+            "body": {"script": "plot(ta.rsi(close,14))", "symbol": "BTC", "interval": "1d"}
+        });
+        let (method, url) =
+            build_invocation("POST /api/pine/run", "http://vantage:8080", &params).unwrap();
+        assert_eq!(method, "POST");
+        assert_eq!(url, "http://vantage:8080/api/pine/run");
+    }
+
+    #[test]
     fn resolve_env_passthrough_and_missing() {
         assert_eq!(
             resolve_env("http://host/x"),
@@ -546,12 +632,14 @@ mod tests {
     fn manifest_json_round_trips() {
         let json = serde_json::to_string(&default_manifest()).unwrap();
         let back: SkillManifest = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.skills.len(), 8);
+        assert_eq!(back.skills.len(), 10);
         for name in [
             "vantage",
             "gitea",
             "opencode",
             "manifesto",
+            "pine",
+            "markets",
             "supermemory",
             "worldmonitor",
             "herdr",

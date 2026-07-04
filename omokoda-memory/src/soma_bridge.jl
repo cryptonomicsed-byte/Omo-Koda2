@@ -49,10 +49,7 @@ function handle_soma_reconstruct(req::HTTP.Request)
     nodes = GLOBAL_DAG[].nodes
     agent_nodes = filter(((id, _),) -> startswith(id, "soma_$(agent_id)_"), collect(nodes))
 
-<<<<<<< HEAD
-=======
     # Time-series prediction from the agent's past importance values
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
     if length(agent_nodes) >= 3
         series = Float64[n.values[1] for (_, n) in agent_nodes]
         try
@@ -65,10 +62,7 @@ function handle_soma_reconstruct(req::HTTP.Request)
         end
     end
 
-<<<<<<< HEAD
-=======
     # Semantic similarity to find recurring patterns
->>>>>>> origin/claude/omokoda-integration-roadmap-6q0j4x
     if !isempty(agent_nodes)
         try
             query_vec = Float64[0.5, 0.1, 0.5]

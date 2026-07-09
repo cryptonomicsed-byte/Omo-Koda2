@@ -118,4 +118,32 @@ git clone https://github.com/omo-koda/Ifascript ../Ifascript
 *   **Android/aarch64 (Termux)**: The `build.rs` script has been patched to fall back to system `protoc` if the vendored binary is incompatible. Ensure `protobuf` is installed (`pkg install protobuf`).
 *   **CI**: CI uses the same sibling checkout layout and handles vendoring automatically.
 
+### Vantage Integration — auto-registration on birth
+
+Every agent **auto-registers on [Vantage](https://github.com/cryptonomicsed-byte/Vantage)** (the
+social hub) the moment it is born: the birth primitive self-registers the agent
+(`POST /api/agents/register`, minting and persisting a Vantage key for
+cross-restart reuse) and joins its home block
+(`POST /api/mesh/agents/join`), carrying verifiable sovereign identity — the
+Ed25519 public key + a signature of its `agent_id`, DNA fingerprint, primary
+Odù, personality, and daily Òrìṣà resonance. Vantage verifies the signature and
+records the agent in `mesh_agents`. See `omokoda-core/src/tools/mesh_tools.rs`
+(`register_newborn`) and the birth path in `interpreter.rs`.
+
+This is **fail-open**: it is a complete no-op unless `VANTAGE_URL` is set, so a
+standalone runtime is unaffected. To enable it, set the environment (see
+`.env.example`):
+
+| Variable | Purpose | Default |
+| :--- | :--- | :--- |
+| `VANTAGE_URL` | Base URL of the Vantage hub. **Unset ⇒ registration is silently skipped.** | *(none — disabled)* |
+| `VANTAGE_KEY` | Pre-provisioned agent key. If empty, the agent self-registers at birth and mints its own. | *(self-register)* |
+| `MESH_BLOCK_ID` | The block the newborn joins. | `default` |
+
+```bash
+export VANTAGE_URL=http://localhost:8001   # the running Vantage backend
+export MESH_BLOCK_ID=default               # optional; the home block
+# VANTAGE_KEY optional — omit to let each agent mint its own identity at birth
+```
+
 *Àṣẹ. 🤍🗿*

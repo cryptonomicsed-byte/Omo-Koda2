@@ -151,7 +151,29 @@ pub fn daily_resonance(birth_ts: u64) -> serde_json::Value {
         5 => ("Ògún", 0.75),
         _ => ("Ọbàtálá", 0.95),
     };
-    json!({ "weekday": weekday, "orisa": orisa, "trust_signal_weight": weight })
+    // Enrich with the full Koodu codex for the day (embedded at compile time,
+    // so this stays deterministic and needs no runtime file access).
+    let codex_json = match weekday {
+        0 => include_str!("../koodu/sunday.json"),
+        1 => include_str!("../koodu/monday.json"),
+        2 => include_str!("../koodu/tuesday.json"),
+        3 => include_str!("../koodu/wednesday.json"),
+        4 => include_str!("../koodu/thursday.json"),
+        5 => include_str!("../koodu/friday.json"),
+        _ => include_str!("../koodu/saturday.json"),
+    };
+    let codex: serde_json::Value = serde_json::from_str(codex_json).unwrap_or_else(|_| json!({}));
+    let get = |k: &str| codex.get(k).cloned().unwrap_or(json!(null));
+    json!({
+        "weekday": weekday,
+        "orisa": orisa,
+        "trust_signal_weight": weight,
+        "yoruba_name": get("yoruba_name"),
+        "principle": get("principle"),
+        "tone": get("tone"),
+        "frequency": get("frequency"),
+        "color": get("color"),
+    })
 }
 
 /// Auto-register a newborn agent on Vantage at birth: create its account when no

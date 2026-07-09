@@ -817,8 +817,22 @@ impl Steward {
                     crate::tools::mesh_tools::daily_resonance(agent.birth_timestamp());
                 let reg_existing_key: Option<String> = agent.vantage_key().map(|s| s.to_string());
                 let p = agent.personality();
+                // Resolve the deterministic BIPỌ̀N39 Odù index into its full
+                // IfáScript sign (archetype, orisha, taboos, prescriptions,
+                // VM opcode) so the mesh carries the real divination, not a bare
+                // index. Deterministic — same seed reproduces the same sign.
+                let odu_full = ifascript::get_odu(reg_odu);
                 let reg_personality = serde_json::json!({
                     "dominant_orisha": p.dominant_orisha.name(),
+                    "odu_sign": {
+                        "index": reg_odu,
+                        "name": odu_full.universal_name,
+                        "archetype": odu_full.archetype,
+                        "orisha": odu_full.orisha,
+                        "taboos": odu_full.taboos,
+                        "prescriptions": odu_full.prescriptions,
+                        "opcode": format!("{:?}", odu_full.opcode),
+                    },
                     "summary": p.personality_summary,
                     "ritual_suggestions": p.ritual_suggestions,
                     "elements": {

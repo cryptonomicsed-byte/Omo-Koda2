@@ -218,6 +218,13 @@ pub struct AgentSnapshot {
     /// Vantage API key minted at birth, persisted for cross-restart reuse.
     #[serde(default)]
     pub vantage_key: Option<String>,
+    /// CloakSeed display-offset — derived from an optional birth passphrase.
+    #[serde(default)]
+    pub cloak_offset: Option<u8>,
+    /// Duress panic-phrase hash (blake3) — set from the birth passphrase;
+    /// entering the phrase later triggers a decoy. Only the hash is stored.
+    #[serde(default)]
+    pub duress_phrase_hash: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -542,6 +549,21 @@ impl Steward {
             )?,
         );
 
+        // CloakSeed + Duress (optional): a birth passphrase (via metadata) is a
+        // second factor NOT derivable from the seed. It seeds a display-cloak
+        // offset and a duress panic-phrase (stored only as a blake3 hash →
+        // decoy on entry). Absent = no extra protection.
+        let (cloak_offset, duress_phrase_hash) = metadata
+            .iter()
+            .find(|p| p.key == "passphrase")
+            .map(|p| p.value.trim().to_string())
+            .filter(|p| !p.is_empty())
+            .map(|p| {
+                let h = blake3::hash(p.as_bytes());
+                (Some(h.as_bytes()[0]), Some(hex::encode(h.as_bytes())))
+            })
+            .unwrap_or((None, None));
+
         let mut session = Session::new(id.clone(), name.clone(), birth_timestamp);
         for pair in metadata {
             session.apply_metadata(&pair.key, &pair.value);
@@ -584,6 +606,8 @@ impl Steward {
             act_counter: 0,
             mesh: None,
             vantage_key: None,
+            cloak_offset,
+            duress_phrase_hash,
         };
         let mut core = AgentCore::from_snapshot(snapshot, k_root);
         core.private_data = Some(private_data);

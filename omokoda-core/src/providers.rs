@@ -92,8 +92,11 @@ impl ProviderRegistry {
                 .ok()
                 .filter(|u| !u.is_empty())
                 .unwrap_or_else(|| "http://localhost:8300".to_string());
+            // Default to a free, reliably-available direct model. The auto/*
+            // combo router 503s under load ("Maximum combo retry limit"); a
+            // pinned free model is steadier. Override with OMNIROUTE_MODEL.
             let model = std::env::var("OMNIROUTE_MODEL")
-                .unwrap_or_else(|_| "auto/fast".to_string());
+                .unwrap_or_else(|_| "oc/deepseek-v4-flash-free".to_string());
             // OmniRoute needs no key; send a non-empty dummy to avoid an empty
             // Authorization: Bearer header being rejected by some frontends.
             let token = std::env::var("OMNIROUTE_TOKEN")
@@ -545,7 +548,10 @@ impl LlmProvider for OpenAIProvider {
             "model": self.model,
             "messages": messages,
             "temperature": 0.7,
-            "max_tokens": 500,
+            // Reasoning models (e.g. deepseek-v4-flash) spend tokens on hidden
+            // reasoning before emitting the answer; too small a budget returns
+            // empty content with finish_reason=length. Give real headroom.
+            "max_tokens": 2000,
             // Must be explicit: OmniRoute (and some OpenAI-compatible gateways)
             // stream by default, returning text/event-stream chunks that would
             // break the single-object JSON parse below.
@@ -566,10 +572,20 @@ impl LlmProvider for OpenAIProvider {
         }
 
         let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-        let response = json["choices"][0]["message"]["content"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let message = &json["choices"][0]["message"];
+        // Prefer the answer; if a reasoning model left content empty, fall back
+        // to its reasoning so a thought is never silently lost.
+        let mut response = message["content"].as_str().unwrap_or("").trim().to_string();
+        if response.is_empty() {
+            response = message["reasoning_content"]
+                .as_str()
+                .unwrap_or("")
+                .trim()
+                .to_string();
+        }
+        if response.is_empty() {
+            return Err("provider returned empty content".to_string());
+        }
 
         let usage = TokenUsage {
             input_tokens: json["usage"]["prompt_tokens"].as_u64().unwrap_or(0) as u32,

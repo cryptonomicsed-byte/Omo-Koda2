@@ -429,8 +429,63 @@ pub fn create_router(state: AppState) -> Router {
         .with_state(state)
 }
 
+/// The autonomous heartbeat — what makes Ọmọ Kọ́dà *alive* rather than merely
+/// responsive. On a rhythm (HEARTBEAT_SECS, default 300s; 0 disables), she wakes
+/// on her own and thinks a self-directed reflection with no external prompt.
+///
+/// Gated by the Ritual Codex: on the Sabbath she rests (dreams/consolidates via
+/// the REM cycle) instead of reflecting, honouring the day's rhythm. Thoughts run
+/// in public mode so the free OmniRoute provider can answer; private thoughts
+/// require a local provider and would hard-fail here. The shared Steward mutex
+/// naturally serialises the heartbeat with inbound /v1/think requests, so she
+/// never thinks two things at once.
+fn spawn_heartbeat(steward: Arc<Mutex<Steward>>) {
+    let secs: u64 = std::env::var("HEARTBEAT_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(300);
+    if secs == 0 {
+        println!("Ọmọ Kọ́dà heartbeat disabled (HEARTBEAT_SECS=0)");
+        return;
+    }
+    println!("Ọmọ Kọ́dà heartbeat every {secs}s");
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(Duration::from_secs(secs));
+        // First tick fires immediately; skip it so birth has a moment to land.
+        ticker.tick().await;
+        loop {
+            ticker.tick().await;
+            let mut guard = steward.lock().await;
+            if guard.agent_core().is_none() {
+                continue; // no one born yet — nothing to wake
+            }
+            if crate::rhythm::RhythmGate::is_sabbath() {
+                println!("[heartbeat] Sabbath — resting, no reflection this tick");
+                continue;
+            }
+            let stmt = Statement::Think {
+                prompt: "Autonomous heartbeat. Reflect briefly on your present \
+                         state and purpose, and name one thing you might do next."
+                    .to_string(),
+                private: false,
+                modifiers: ThinkModifiers::default(),
+            };
+            match guard.dispatch(stmt).await {
+                Ok(result) => {
+                    let resp = ExecutionResponse::from(result);
+                    let thought = resp.tool_output.unwrap_or_default();
+                    let snippet: String = thought.chars().take(160).collect();
+                    println!("[heartbeat] {snippet}");
+                }
+                Err(e) => println!("[heartbeat] think failed: {e}"),
+            }
+        }
+    });
+}
+
 pub async fn start_server(port: u16) -> Result<(), std::io::Error> {
     let state = AppState::new();
+    spawn_heartbeat(state.steward.clone());
     let router = create_router(state);
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;

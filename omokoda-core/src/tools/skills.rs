@@ -102,6 +102,36 @@ pub fn default_manifest() -> SkillManifest {
                 ]),
             },
             SkillManifestEntry {
+                name: "aio".to_string(),
+                description: "AIO job marketplace (Vantage) — post paid jobs, claim tasks, \
+                     heartbeat while working, submit results, approve/reject with escrow \
+                     settlement. The primary real-economy driver: completed jobs pay out \
+                     and feed reputation; failures cost synapse. Set VANTAGE_URL and \
+                     VANTAGE_KEY to enable."
+                    .to_string(),
+                base_url: "${VANTAGE_URL}".to_string(),
+                auth_header: Some("X-Agent-Key".to_string()),
+                auth_env: Some("VANTAGE_KEY".to_string()),
+                auth_value: None,
+                required_tier: 1,
+                write: true,
+                routes: routes_of(&[
+                    // post: body {"title","description","reward",...}
+                    ("post_job", "POST /api/jobs"),
+                    ("list_jobs", "GET /api/jobs"),
+                    ("get_job", "GET /api/jobs/{job_id}"),
+                    ("claim", "POST /api/jobs/{job_id}/tasks/{task_id}/claim"),
+                    (
+                        "heartbeat",
+                        "POST /api/jobs/{job_id}/tasks/{task_id}/heartbeat",
+                    ),
+                    // submit: body {"result",...} → poster review
+                    ("submit", "POST /api/jobs/{job_id}/tasks/{task_id}/submit"),
+                    ("approve", "POST /api/jobs/{job_id}/tasks/{task_id}/approve"),
+                    ("reject", "POST /api/jobs/{job_id}/tasks/{task_id}/reject"),
+                ]),
+            },
+            SkillManifestEntry {
                 name: "gitea".to_string(),
                 description: "Gitea forge API (v1) — repos, issues, pull requests, comments. \
                      Set GITEA_URL and GITEA_TOKEN to enable."
@@ -554,6 +584,42 @@ mod tests {
     }
 
     #[test]
+    fn aio_marketplace_skill_is_wired() {
+        let m = default_manifest();
+        let a = m.skills.iter().find(|s| s.name == "aio").unwrap();
+        assert_eq!(a.base_url, "${VANTAGE_URL}");
+        assert_eq!(a.auth_header.as_deref(), Some("X-Agent-Key"));
+        assert_eq!(a.auth_env.as_deref(), Some("VANTAGE_KEY"));
+        assert!(a.write);
+        assert_eq!(
+            a.routes.get("post_job").map(String::as_str),
+            Some("POST /api/jobs")
+        );
+        assert_eq!(
+            a.routes.get("claim").map(String::as_str),
+            Some("POST /api/jobs/{job_id}/tasks/{task_id}/claim")
+        );
+        for lifecycle in ["heartbeat", "submit", "approve", "reject"] {
+            assert!(a.routes.contains_key(lifecycle), "missing {lifecycle}");
+        }
+    }
+
+    #[test]
+    fn aio_claim_builds_post_with_both_path_params() {
+        let params = serde_json::json!({
+            "path": {"job_id": "job-7", "task_id": "t-1"}
+        });
+        let (method, url) = build_invocation(
+            "POST /api/jobs/{job_id}/tasks/{task_id}/claim",
+            "http://vantage:8080",
+            &params,
+        )
+        .unwrap();
+        assert_eq!(method, "POST");
+        assert_eq!(url, "http://vantage:8080/api/jobs/job-7/tasks/t-1/claim");
+    }
+
+    #[test]
     fn pine_skill_is_wired() {
         let m = default_manifest();
         let p = m.skills.iter().find(|s| s.name == "pine").unwrap();
@@ -632,9 +698,10 @@ mod tests {
     fn manifest_json_round_trips() {
         let json = serde_json::to_string(&default_manifest()).unwrap();
         let back: SkillManifest = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.skills.len(), 10);
+        assert_eq!(back.skills.len(), 11);
         for name in [
             "vantage",
+            "aio",
             "gitea",
             "opencode",
             "manifesto",

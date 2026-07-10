@@ -1,3 +1,4 @@
+pub mod busy_beaver;
 pub mod tier;
 
 use omokoda_hermetic::HermeticState;

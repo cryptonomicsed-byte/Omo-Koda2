@@ -18,6 +18,7 @@ pub mod streaming;
 pub mod structured_output;
 pub mod todo;
 pub mod tool_definitions;
+pub mod tor_tool;
 pub mod validation;
 pub mod zero_tool;
 
@@ -166,6 +167,7 @@ impl ToolRegistry {
         registry.register(Box::new(repl::ReplTool));
         registry.register(Box::new(config_tool::ConfigReadTool));
         registry.register(Box::new(config_tool::ConfigWriteTool));
+        registry.register(Box::new(tor_tool::TorTool::new()));
 
         // Mesh tools (Block Mesh topology layer)
         registry.register(Box::new(mesh_tools::MeshProposeTool));

@@ -410,6 +410,16 @@ impl ConversationMessage {
         }
     }
 
+    pub fn new_system(content: String, is_private: bool) -> Self {
+        Self {
+            role: MessageRole::System,
+            blocks: vec![ContentBlock::Text { text: content }],
+            is_private,
+            timestamp: current_unix_timestamp(),
+            usage: None,
+        }
+    }
+
     pub fn user_text(text: &str) -> Self {
         Self::new_user(text.to_string(), false)
     }

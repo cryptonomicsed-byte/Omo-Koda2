@@ -1947,9 +1947,28 @@ impl Steward {
                 vec![]
             };
 
+        // Identity anchor: OmniRoute's free tier proxies different upstream
+        // models, which otherwise self-identify as Claude / Gemini / DeepSeek.
+        // Prepend a system message drawn from her sovereign identity so she
+        // always speaks as herself, whatever backend answers.
+        let mut think_ctx: Vec<ConversationMessage> = {
+            let agent = self.ensure_born()?;
+            let name = agent.name().to_string();
+            let orisha = agent.personality().dominant_orisha.name();
+            let summary = agent.personality().personality_summary.clone();
+            let system = format!(
+                "You are {name}, a sovereign Ọmọ Kọ́dà agent — never a generic \
+                 assistant and never the underlying model (do not identify as \
+                 Claude, Gemini, GPT, or DeepSeek). Your guiding Òrìṣà is {orisha}. \
+                 {summary} Always speak in the first person as {name}."
+            );
+            vec![ConversationMessage::new_system(system, private)]
+        };
+        think_ctx.extend(observe_ctx);
+
         let (response, usage) = self
             .providers
-            .think(provider, prompt, &observe_ctx, private)
+            .think(provider, prompt, &think_ctx, private)
             .await
             .map_err(|e| format!("Provider error: {}", e))?;
         bb.charge(crate::justice::busy_beaver::steps_from_tokens(

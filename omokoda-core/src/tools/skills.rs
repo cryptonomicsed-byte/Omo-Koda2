@@ -159,6 +159,38 @@ pub fn default_manifest() -> SkillManifest {
                 ]),
             },
             SkillManifestEntry {
+                name: "larql".to_string(),
+                description: "LARQL transformer-as-database (larql-server) — the model IS the \
+                     database. Query learned relationships with LQL, describe entities, walk \
+                     edges, run inference, and apply/remove knowledge patches in weight space. \
+                     Set LARQL_URL (default http://127.0.0.1:8080) to enable; LARQL_TOKEN \
+                     optional bearer auth."
+                    .to_string(),
+                base_url: "${LARQL_URL}".to_string(),
+                auth_header: Some("Authorization".to_string()),
+                auth_env: None,
+                auth_value: Some("Bearer ${LARQL_TOKEN}".to_string()),
+                required_tier: 2,
+                write: true,
+                routes: routes_of(&[
+                    ("health", "GET /v1/health"),
+                    ("models", "GET /v1/models"),
+                    // describe: query {"entity","band","limit","min_score","verbose"}
+                    ("describe", "GET /v1/describe"),
+                    // select: body — LQL statement
+                    ("select", "POST /v1/select"),
+                    ("relations", "GET /v1/relations"),
+                    ("stats", "GET /v1/stats"),
+                    ("infer", "POST /v1/infer"),
+                    ("explain_infer", "POST /v1/explain-infer"),
+                    // knowledge editing in weight space
+                    ("insert", "POST /v1/insert"),
+                    ("patches", "GET /v1/patches"),
+                    ("patch_apply", "POST /v1/patches/apply"),
+                    ("patch_remove", "DELETE /v1/patches/{name}"),
+                ]),
+            },
+            SkillManifestEntry {
                 name: "opencode".to_string(),
                 description: "OpenCode agent server (`opencode serve`) — sessions, messages, \
                      config. Set OPENCODE_URL (default http://127.0.0.1:4096) to enable."
@@ -584,6 +616,40 @@ mod tests {
     }
 
     #[test]
+    fn larql_skill_is_wired() {
+        let m = default_manifest();
+        let l = m.skills.iter().find(|s| s.name == "larql").unwrap();
+        assert_eq!(l.base_url, "${LARQL_URL}");
+        assert_eq!(l.auth_header.as_deref(), Some("Authorization"));
+        assert_eq!(l.auth_value.as_deref(), Some("Bearer ${LARQL_TOKEN}"));
+        assert_eq!(l.required_tier, 2, "weight-space edits are Creator-tier");
+        assert!(l.write);
+        assert_eq!(
+            l.routes.get("describe").map(String::as_str),
+            Some("GET /v1/describe")
+        );
+        assert_eq!(
+            l.routes.get("patch_remove").map(String::as_str),
+            Some("DELETE /v1/patches/{name}")
+        );
+        for r in ["select", "infer", "insert", "patches", "patch_apply"] {
+            assert!(l.routes.contains_key(r), "missing {r}");
+        }
+    }
+
+    #[test]
+    fn larql_describe_builds_query_url() {
+        let params = serde_json::json!({
+            "query": {"entity": "France", "limit": "5"}
+        });
+        let (method, url) =
+            build_invocation("GET /v1/describe", "http://127.0.0.1:8080", &params).unwrap();
+        assert_eq!(method, "GET");
+        assert!(url.starts_with("http://127.0.0.1:8080/v1/describe?"));
+        assert!(url.contains("entity=France") && url.contains("limit=5"));
+    }
+
+    #[test]
     fn aio_marketplace_skill_is_wired() {
         let m = default_manifest();
         let a = m.skills.iter().find(|s| s.name == "aio").unwrap();
@@ -698,10 +764,11 @@ mod tests {
     fn manifest_json_round_trips() {
         let json = serde_json::to_string(&default_manifest()).unwrap();
         let back: SkillManifest = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.skills.len(), 11);
+        assert_eq!(back.skills.len(), 12);
         for name in [
             "vantage",
             "aio",
+            "larql",
             "gitea",
             "opencode",
             "manifesto",

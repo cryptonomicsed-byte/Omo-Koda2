@@ -914,11 +914,13 @@ impl Steward {
                     let config = &agent.session().config;
                     let provider_name = config.default_provider.as_str();
                     match provider_name {
-                        "webllm" | "ollama" => {} // allowed
+                        // larql serves locally-decompiled weights (larql-server)
+                        // — private-eligible like the other local engines.
+                        "webllm" | "ollama" | "larql" => {} // allowed
                         _ => {
                             return Err(format!(
                                 "Private thoughts require a local provider. Current: {}. \
-                             Allowed: webllm, ollama. Blocked: openai, anthropic, gemini, etc.",
+                             Allowed: webllm, ollama, larql. Blocked: openai, anthropic, gemini, etc.",
                                 provider_name
                             ))
                         }

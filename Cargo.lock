@@ -523,6 +523,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "bipon39"
+version = "0.1.1"
+source = "git+https://github.com/cryptonomicsed-byte/BIPON39?rev=9d62b4de8e5b78199a1534ab7b45e08612620380#9d62b4de8e5b78199a1534ab7b45e08612620380"
+dependencies = [
+ "clap",
+ "digest",
+ "ed25519-dalek",
+ "getrandom 0.2.17",
+ "hex",
+ "hmac",
+ "once_cell",
+ "pbkdf2",
+ "serde",
+ "serde_json",
+ "sha2",
+ "subtle",
+ "thiserror 1.0.69",
+ "unicode-normalization",
+ "zeroize",
+]
+
+[[package]]
 name = "bit-set"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2322,6 +2344,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "ifascript"
+version = "0.2.0"
+source = "git+https://github.com/cryptonomicsed-byte/If-Script?rev=53eea72afc23c6618594c59bb1007b03db5774d9#53eea72afc23c6618594c59bb1007b03db5774d9"
+dependencies = [
+ "chrono",
+ "clap",
+ "getrandom 0.2.17",
+ "hex",
+ "hkdf",
+ "log",
+ "pest",
+ "pest_derive",
+ "rand",
+ "rand_chacha",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sha3",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "indexmap"
 version = "2.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3015,7 +3060,7 @@ dependencies = [
  "argon2",
  "async-trait",
  "axum",
- "bipon39",
+ "bipon39 0.1.1",
  "blake3",
  "chacha20poly1305",
  "chrono",
@@ -3026,7 +3071,7 @@ dependencies = [
  "hkdf",
  "hmac",
  "httpmock",
- "ifascript",
+ "ifascript 0.2.0",
  "jsonschema",
  "omokoda-hermetic",
  "omokoda-mesh",

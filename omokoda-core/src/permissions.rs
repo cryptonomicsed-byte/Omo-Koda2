@@ -66,6 +66,12 @@ impl Default for PatternPolicy {
                 "write:*".to_string(),
                 "exec:*".to_string(),
                 "net:*".to_string(),
+                // Tool-category actions (mesh_*, and any non-file tool) pass the
+                // granular pattern layer here; the real gate for them is the
+                // tier/reputation matrix (tools.is_allowed) + Hermetic gates.
+                // Without this, every mesh tool is denied "no matching allow
+                // pattern" regardless of tier.
+                "tool:*".to_string(),
             ],
             deny: vec![
                 "read:/etc/*".to_string(),

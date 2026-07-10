@@ -12,6 +12,7 @@ defmodule OmokodaSwarm.Application do
       OmokodaSwarm.Hive,
       OmokodaSwarm.ConstitutionalSupervisor,
       OmokodaSwarm.Memory.Supervisor,
+      OmokodaSwarm.Memory.RemCycle,
       OmokodaSwarm.Coordinator,
       OmokodaSwarm.BackendRegistry,
       OmokodaSwarm.TeammateLayoutManager,

@@ -595,6 +595,194 @@ impl LlmProvider for OpenAIProvider {
 
         Ok((response, usage))
     }
+
+    fn supports_tools(&self) -> bool {
+        true
+    }
+
+    /// OpenAI-compatible function calling (works for DeepSeek, OmniRoute, and any
+    /// OpenAI-compatible gateway). Maps the conversation — including prior tool
+    /// calls and their results — into the chat/completions schema, advertises the
+    /// tools as `type:function`, and parses `tool_calls` back out.
+    async fn generate_with_tools(
+        &self,
+        messages: &[ConversationMessage],
+        tools: &[ToolDefinition],
+        _private: bool,
+    ) -> Result<LlmResponse, String> {
+        use crate::session::{ContentBlock, MessageRole};
+        let url = if self.metadata.endpoint.contains("/v1/") {
+            self.metadata.endpoint.clone()
+        } else {
+            format!(
+                "{}/v1/chat/completions",
+                self.metadata.endpoint.trim_end_matches('/')
+            )
+        };
+
+        // Map conversation → OpenAI messages. Tool results become separate
+        // role:"tool" messages (one per result); assistant tool calls carry a
+        // tool_calls array.
+        let mut api_messages: Vec<serde_json::Value> = Vec::new();
+        for msg in messages {
+            match msg.role {
+                MessageRole::System | MessageRole::User => {
+                    let text: String = msg
+                        .blocks
+                        .iter()
+                        .filter_map(|b| match b {
+                            ContentBlock::Text { text } => Some(text.clone()),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let role = if msg.role == MessageRole::System {
+                        "system"
+                    } else {
+                        "user"
+                    };
+                    if !text.is_empty() {
+                        api_messages.push(serde_json::json!({"role": role, "content": text}));
+                    }
+                }
+                MessageRole::Assistant => {
+                    let mut text = String::new();
+                    let mut tool_calls = Vec::new();
+                    for b in &msg.blocks {
+                        match b {
+                            ContentBlock::Text { text: t } => text.push_str(t),
+                            ContentBlock::ToolUse { id, name, input } => {
+                                tool_calls.push(serde_json::json!({
+                                    "id": id,
+                                    "type": "function",
+                                    "function": {"name": name, "arguments": input},
+                                }));
+                            }
+                            _ => {}
+                        }
+                    }
+                    let mut m = serde_json::json!({"role": "assistant"});
+                    m["content"] = if text.is_empty() {
+                        serde_json::Value::Null
+                    } else {
+                        serde_json::Value::String(text)
+                    };
+                    if !tool_calls.is_empty() {
+                        m["tool_calls"] = serde_json::Value::Array(tool_calls);
+                    }
+                    api_messages.push(m);
+                }
+                MessageRole::Tool => {
+                    // Each tool result is its own role:"tool" message.
+                    for b in &msg.blocks {
+                        if let ContentBlock::ToolResult {
+                            tool_use_id,
+                            output,
+                            ..
+                        } = b
+                        {
+                            api_messages.push(serde_json::json!({
+                                "role": "tool",
+                                "tool_call_id": tool_use_id,
+                                "content": output,
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+
+        let api_tools: Vec<serde_json::Value> = tools
+            .iter()
+            .map(|t| {
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": {
+                            "type": t.input_schema.type_,
+                            "properties": t.input_schema.properties.iter().map(|(k, v)| {
+                                let mut prop = serde_json::json!({"type": v.type_});
+                                if let Some(desc) = &v.description {
+                                    prop["description"] = serde_json::Value::String(desc.clone());
+                                }
+                                (k.clone(), prop)
+                            }).collect::<std::collections::HashMap<_, _>>(),
+                            "required": t.input_schema.required,
+                        },
+                    },
+                })
+            })
+            .collect();
+
+        let body = serde_json::json!({
+            "model": self.model,
+            "messages": api_messages,
+            "tools": api_tools,
+            "max_tokens": 2000,
+            "stream": false,
+        });
+
+        let resp = self
+            .client
+            .post(url)
+            .bearer_auth(&self.api_key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let err = resp.text().await.unwrap_or_default();
+            return Err(format!("OpenAI status error {}: {}", status, err));
+        }
+
+        let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+        let usage = TokenUsage {
+            input_tokens: json["usage"]["prompt_tokens"].as_u64().unwrap_or(0) as u32,
+            output_tokens: json["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32,
+            ..Default::default()
+        };
+        let message = &json["choices"][0]["message"];
+
+        // Tool calls requested?
+        if let Some(calls) = message["tool_calls"].as_array() {
+            if !calls.is_empty() {
+                let parsed: Vec<crate::tools::tool_definitions::ToolCall> = calls
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, c)| {
+                        let f = &c["function"];
+                        let name = f["name"].as_str()?.to_string();
+                        let input = f["arguments"].as_str().unwrap_or("{}").to_string();
+                        let id = c["id"]
+                            .as_str()
+                            .map(str::to_string)
+                            .unwrap_or_else(|| format!("call_{i}"));
+                        Some(crate::tools::tool_definitions::ToolCall { id, name, input })
+                    })
+                    .collect();
+                let text_prefix = message["content"].as_str().map(str::to_string);
+                return Ok(LlmResponse::ToolUse {
+                    text_prefix,
+                    calls: parsed,
+                    usage,
+                });
+            }
+        }
+
+        // Plain text (with reasoning fallback, mirroring generate()).
+        let mut content = message["content"].as_str().unwrap_or("").trim().to_string();
+        if content.is_empty() {
+            content = message["reasoning_content"]
+                .as_str()
+                .unwrap_or("")
+                .trim()
+                .to_string();
+        }
+        Ok(LlmResponse::Text { content, usage })
+    }
 }
 
 #[derive(Debug)]

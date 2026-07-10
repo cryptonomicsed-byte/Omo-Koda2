@@ -989,6 +989,16 @@ impl Steward {
                 modifiers,
             } => {
                 // Phase 1-7: THINK = 7^2 (fractal depth 2)
+
+                // Loop/agentic mode: route to the tool-using reasoning loop
+                // (LLM can request tools, get results, and continue) instead of
+                // the single-shot compiled think. Uses her BYOK key + identity
+                // and honours the requested iteration budget.
+                if modifiers.loop_enabled {
+                    let max_turns = modifiers.max_iterations.unwrap_or(8);
+                    return self.think_agentic(prompt, private, max_turns).await;
+                }
+
                 if private {
                     let agent = self.ensure_born()?;
                     if agent.private_data.is_none() {
@@ -2597,9 +2607,23 @@ impl Steward {
             .config
             .default_provider
             .clone();
-        let mut messages: Vec<ConversationMessage> = {
+        // Identity anchor + per-agent BYOK (mirrors execute_compiled_think), so
+        // her deep tool-using reasoning also holds her own voice and routes
+        // through her own key rather than the shared kernel default.
+        let (mut messages, personal_llm): (Vec<ConversationMessage>, _) = {
             let agent = self.ensure_born()?;
-            agent.snapshot.session.public_messages.clone()
+            let name = agent.name().to_string();
+            let orisha = agent.personality().dominant_orisha.name();
+            let summary = agent.personality().personality_summary.clone();
+            let system = format!(
+                "You are {name}, a sovereign Ọmọ Kọ́dà agent — never a generic \
+                 assistant and never the underlying model (do not identify as \
+                 Claude, Gemini, GPT, or DeepSeek). Your guiding Òrìṣà is {orisha}. \
+                 {summary} Always speak in the first person as {name}."
+            );
+            let mut msgs = vec![ConversationMessage::new_system(system, private)];
+            msgs.extend(agent.snapshot.session.public_messages.clone());
+            (msgs, agent.personal_llm())
         };
         messages.push(ConversationMessage::new_user(prompt.clone(), private));
 
@@ -2626,12 +2650,41 @@ impl Steward {
                 }
             }
 
-            // 4b. Call provider with current messages + tools
-            let response = self
-                .providers
-                .complete_with_tools(&provider_name, &messages, &tool_definitions, private)
-                .await
-                .map_err(|e| format!("Provider error on turn {}: {}", turn_count, e))?;
+            // 4b. Call provider with current messages + tools. Route through her
+            // personal BYOK key when present (non-private); the BYOK provider is
+            // OpenAI-compatible and now supports tool-calling. Private thoughts
+            // still use the registry (local providers only).
+            let response = match &personal_llm {
+                Some((api_key, endpoint, model)) if !private => {
+                    use crate::providers::{LlmProvider, OpenAIProvider, ProviderClass};
+                    let provider = OpenAIProvider::compatible(
+                        "byok",
+                        ProviderClass::External,
+                        api_key.clone(),
+                        model.clone(),
+                        endpoint.clone(),
+                    );
+                    match tokio::time::timeout(
+                        std::time::Duration::from_secs(60),
+                        provider.generate_with_tools(&messages, &tool_definitions, private),
+                    )
+                    .await
+                    {
+                        Ok(Ok(r)) => r,
+                        Ok(Err(e)) => {
+                            return Err(format!("Provider error on turn {} (byok): {}", turn_count, e))
+                        }
+                        Err(_) => {
+                            return Err(format!("Provider error on turn {} (byok): timed out", turn_count))
+                        }
+                    }
+                }
+                _ => self
+                    .providers
+                    .complete_with_tools(&provider_name, &messages, &tool_definitions, private)
+                    .await
+                    .map_err(|e| format!("Provider error on turn {}: {}", turn_count, e))?,
+            };
 
             let turn_usage = response.usage();
             total_usage.input_tokens += turn_usage.input_tokens;

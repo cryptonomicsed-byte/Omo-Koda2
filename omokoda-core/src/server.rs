@@ -70,6 +70,13 @@ pub struct ThinkRequest {
     pub prompt: String,
     #[serde(default)]
     pub private: bool,
+    /// When true, run the tool-using agentic loop (perceive/act across turns)
+    /// instead of a single-shot think. Routes through her BYOK key + identity.
+    #[serde(default)]
+    pub agentic: bool,
+    /// Optional turn budget for agentic mode (default 8).
+    #[serde(default)]
+    pub max_turns: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -159,7 +166,11 @@ async fn think_handler(
     let stmt = Statement::Think {
         prompt: req.prompt,
         private: req.private,
-        modifiers: ThinkModifiers::default(),
+        modifiers: ThinkModifiers {
+            loop_enabled: req.agentic,
+            max_iterations: req.max_turns,
+            ..ThinkModifiers::default()
+        },
     };
     match steward.dispatch(stmt).await {
         Ok(result) => Json(ExecutionResponse::from(result)).into_response(),

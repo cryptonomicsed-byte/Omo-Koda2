@@ -231,7 +231,8 @@ pub struct AgentSnapshot {
     /// agent uses it; it is not shared with any other birth on the kernel.
     #[serde(skip)]
     pub llm_api_key: Option<String>,
-    /// Endpoint for the BYOK key (`llm_endpoint`), default DeepSeek's /v1.
+    /// Endpoint base for the BYOK key (`llm_endpoint`), default DeepSeek's host
+    /// (generate() appends /v1/chat/completions).
     #[serde(skip)]
     pub llm_endpoint: Option<String>,
     /// Model for the BYOK key (`llm_model`), default deepseek-chat.
@@ -343,11 +344,13 @@ impl AgentCore {
     /// agents — only the agent born with the key gets it.
     pub fn personal_llm(&self) -> Option<(String, String, String)> {
         self.snapshot.llm_api_key.as_ref().map(|key| {
+            // Base host only — generate() appends /v1/chat/completions. Adding
+            // /v1 here would double it (…/v1/v1/chat/completions → 404).
             let endpoint = self
                 .snapshot
                 .llm_endpoint
                 .clone()
-                .unwrap_or_else(|| "https://api.deepseek.com/v1".to_string());
+                .unwrap_or_else(|| "https://api.deepseek.com".to_string());
             let model = self
                 .snapshot
                 .llm_model

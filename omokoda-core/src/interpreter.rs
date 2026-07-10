@@ -690,13 +690,15 @@ impl Steward {
         core.private_data = Some(private_data);
         core.current_memory_key = k0;
 
-        // Founding sovereign grant also elevates the Steward's permission mode
-        // to Allow, so this agent's autonomous acts aren't blocked by mode
-        // escalation (no interactive prompter exists in serve/heartbeat). Pattern,
-        // tier, and Hermetic gates still apply — this only removes the
-        // WorkspaceWrite→DangerFullAccess prompt an autonomous agent can't answer.
+        // Founding sovereign grant also (a) elevates the Steward's permission
+        // mode to Allow, so autonomous acts aren't blocked by mode escalation
+        // (no interactive prompter exists in serve/heartbeat), and (b) endows an
+        // abundant synapse pool so the ecosystem heart can sustain token-heavy
+        // agentic reasoning without starving. Pattern, tier, and Hermetic gates
+        // still apply — this only removes gates an autonomous heart can't clear.
         if sovereign {
             self.set_permission_mode(crate::permissions::PermissionMode::Allow);
+            core.set_synapse(100_000_000.0);
         }
 
         self.agent = Some(core);

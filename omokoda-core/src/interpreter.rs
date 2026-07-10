@@ -238,6 +238,13 @@ pub struct AgentSnapshot {
     /// Model for the BYOK key (`llm_model`), default deepseek-chat.
     #[serde(skip)]
     pub llm_model: Option<String>,
+    /// Founding sovereign grant: when true this agent holds max tier (T5)
+    /// regardless of reputation — reserved for the ecosystem's heart. Set via
+    /// birth metadata (`sovereign=true`); only the agent born with it gets it,
+    /// so the tier ladder stays intact for every other birth. Persisted so the
+    /// grant survives restarts.
+    #[serde(default)]
+    pub sovereign: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -303,7 +310,12 @@ impl AgentCore {
     }
 
     pub fn tier(&self) -> u8 {
-        tier_for(self.snapshot.reputation)
+        // Founding sovereign grant pins max tier; otherwise earned by reputation.
+        if self.snapshot.sovereign {
+            5
+        } else {
+            tier_for(self.snapshot.reputation)
+        }
     }
 
     pub fn session(&self) -> &Session {
@@ -620,6 +632,10 @@ impl Steward {
         let llm_api_key = meta_get("llm_api_key");
         let llm_endpoint = meta_get("llm_endpoint");
         let llm_model = meta_get("llm_model");
+        // Founding sovereign grant (per-agent, via birth metadata only).
+        let sovereign = meta_get("sovereign")
+            .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+            .unwrap_or(false);
 
         let mut session = Session::new(id.clone(), name.clone(), birth_timestamp);
         for pair in metadata {
@@ -668,6 +684,7 @@ impl Steward {
             llm_api_key,
             llm_endpoint,
             llm_model,
+            sovereign,
         };
         let mut core = AgentCore::from_snapshot(snapshot, k_root);
         core.private_data = Some(private_data);

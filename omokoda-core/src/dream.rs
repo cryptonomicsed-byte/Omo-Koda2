@@ -5,7 +5,9 @@
 //!
 //! - **Consolidation** (default every 30 min): sweeps stale entries below the
 //!   importance threshold — light housekeeping between turns.
-//! - **REM cycle** (default weekly): the deep dream state. Measures the
+//! - **REM cycle** (on the Sabbath — UTC Saturday, once per Sabbath): the
+//!   deep dream state. While the rhythm gate queues irreversible outward
+//!   action for the Sabbath, the dream engine turns inward. Measures the
 //!   *fractal dimension* of the agent's activity timeline (box-counting —
 //!   Mandelbrot's burst-noise insight: information clusters in self-similar
 //!   bursts separated by noise), then folds each path-cluster of low-importance
@@ -57,8 +59,10 @@ impl Default for DreamConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemConfig {
-    /// How often the REM cycle runs (seconds). Default 604_800 (weekly).
-    pub interval_secs: u64,
+    /// If this long has passed since the last REM cycle, run even off-Sabbath
+    /// (a slept-through Sabbath must not mean unbounded drift). Default
+    /// 1_209_600 (two weeks — two missed Sabbaths).
+    pub overdue_after_secs: u64,
     /// Entries at or below this importance are candidate noise. Default 0.35.
     pub noise_importance: f64,
     /// Minimum noise entries sharing a path before they fold into one macro
@@ -69,11 +73,24 @@ pub struct RemConfig {
 impl Default for RemConfig {
     fn default() -> Self {
         Self {
-            interval_secs: 604_800,
+            overdue_after_secs: 1_209_600,
             noise_importance: 0.35,
             min_fold_cluster: 3,
         }
     }
+}
+
+// ── Sabbath alignment ─────────────────────────────────────────────────────────
+
+pub const SECONDS_PER_DAY: u64 = 86_400;
+
+/// True if `now` (unix seconds) falls on the UTC Sabbath — Saturday, the same
+/// day [`crate::rhythm::RhythmGate::is_sabbath`] observes. While the rhythm
+/// gate queues irreversible *outward* action for the Sabbath, the dream engine
+/// turns *inward*: the weekly REM cycle runs on this day.
+/// (1970-01-01 was a Thursday, hence the +4 offset; 6 = Saturday.)
+pub fn is_sabbath_at(now: u64) -> bool {
+    (now / SECONDS_PER_DAY + 4) % 7 == 6
 }
 
 // ── Fractal dimension ─────────────────────────────────────────────────────────
@@ -303,18 +320,31 @@ impl DreamEngine {
         Some(result)
     }
 
-    /// Returns true if the weekly REM cadence has elapsed (or never run).
+    /// Returns true if the REM cycle is due: it is the Sabbath (UTC Saturday)
+    /// and no REM has run yet today — or the cycle is overdue because more
+    /// than [`RemConfig::overdue_after_secs`] passed since the last one
+    /// (agent slept through its Sabbaths).
     pub fn should_rem(&self, now: u64) -> bool {
+        if let Some(last) = self.last_rem {
+            if now.saturating_sub(last) >= self.rem_config.overdue_after_secs {
+                return true;
+            }
+        }
+        if !is_sabbath_at(now) {
+            return false;
+        }
         match self.last_rem {
             None => true,
-            Some(last) => now.saturating_sub(last) >= self.rem_config.interval_secs,
+            // Once per Sabbath: the last run must be on an earlier UTC day.
+            Some(last) => now / SECONDS_PER_DAY > last / SECONDS_PER_DAY,
         }
     }
 
-    /// Attempt the weekly REM cycle: measure the fractal dimension of the
+    /// Attempt the Sabbath REM cycle: measure the fractal dimension of the
     /// activity timeline, fold each path-cluster of noise entries into one
     /// compressed macro node, then prune the residual noise. Returns `None`
-    /// if the cadence has not elapsed or a dream is already running.
+    /// unless the cycle is due (see [`Self::should_rem`]) — the Sabbath, or
+    /// overdue catch-up — or if a dream is already running.
     pub fn try_rem_cycle(&mut self, dir: &mut OduDirectory, now: u64) -> Option<RemReport> {
         if !self.should_rem(now) {
             return None;
@@ -489,10 +519,30 @@ mod dream_tests {
 
     // ── REM cycle ─────────────────────────────────────────────────────────
 
+    /// 1970-01-03 (unix day 2) was a Saturday — the first Sabbath after epoch.
+    const SABBATH: u64 = 2 * SECONDS_PER_DAY;
+    const NEXT_SABBATH: u64 = SABBATH + 7 * SECONDS_PER_DAY;
+
     fn noise_entry(id: &str, path: &str, importance: f64) -> OduEntry {
         let mut e = OduEntry::new(id, format!("noise content {id}"), path);
         e.importance = importance;
         e
+    }
+
+    #[test]
+    fn is_sabbath_at_matches_known_days() {
+        assert!(!is_sabbath_at(SECONDS_PER_DAY), "Friday is not the Sabbath");
+        assert!(is_sabbath_at(SABBATH), "Saturday is the Sabbath");
+        assert!(is_sabbath_at(SABBATH + 86_399), "…all day long");
+        assert!(!is_sabbath_at(3 * SECONDS_PER_DAY), "Sunday is not");
+        assert!(is_sabbath_at(NEXT_SABBATH));
+    }
+
+    #[test]
+    fn is_sabbath_at_agrees_with_rhythm_gate() {
+        // The dream engine and the rhythm gate must observe the same Sabbath.
+        let now = current_unix_timestamp();
+        assert_eq!(is_sabbath_at(now), crate::rhythm::RhythmGate::is_sabbath());
     }
 
     #[test]
@@ -537,8 +587,8 @@ mod dream_tests {
         dir.insert(keeper);
 
         let report = engine
-            .try_rem_cycle(&mut dir, 1000)
-            .expect("first REM runs");
+            .try_rem_cycle(&mut dir, SABBATH)
+            .expect("first REM runs on the Sabbath");
         assert_eq!(report.nodes_before, 5);
         assert_eq!(report.clusters_folded, 1);
         assert_eq!(report.nodes_folded, 4);
@@ -565,20 +615,41 @@ mod dream_tests {
         dir.insert(noise_entry("a", "topics/x", 0.3));
         dir.insert(noise_entry("b", "topics/x", 0.3));
 
-        let report = engine.try_rem_cycle(&mut dir, 1000).unwrap();
+        let report = engine.try_rem_cycle(&mut dir, SABBATH).unwrap();
         assert_eq!(report.clusters_folded, 0);
         assert_eq!(report.nodes_pruned, 0);
         assert_eq!(dir.len(), 2);
     }
 
     #[test]
-    fn rem_cycle_respects_weekly_cadence() {
+    fn rem_cycle_falls_on_the_sabbath() {
         let mut engine = DreamEngine::new(DreamConfig::default());
         let mut dir = OduDirectory::new();
-        assert!(engine.try_rem_cycle(&mut dir, 1000).is_some());
-        // A day later: too soon.
-        assert!(engine.try_rem_cycle(&mut dir, 1000 + 86_400).is_none());
-        // A week later: due again.
-        assert!(engine.try_rem_cycle(&mut dir, 1000 + 604_800).is_some());
+        // Friday: nothing, even though no REM has ever run.
+        assert!(engine.try_rem_cycle(&mut dir, SECONDS_PER_DAY).is_none());
+        // Sabbath morning: the dream state begins.
+        assert!(engine.try_rem_cycle(&mut dir, SABBATH + 3_600).is_some());
+        // Later the same Sabbath: once per Sabbath only.
+        assert!(engine.try_rem_cycle(&mut dir, SABBATH + 40_000).is_none());
+        // Midweek: still nothing.
+        assert!(engine
+            .try_rem_cycle(&mut dir, SABBATH + 3 * SECONDS_PER_DAY)
+            .is_none());
+        // Next Sabbath: due again.
+        assert!(engine.try_rem_cycle(&mut dir, NEXT_SABBATH).is_some());
+    }
+
+    #[test]
+    fn rem_cycle_overdue_catchup_runs_off_sabbath() {
+        let mut engine = DreamEngine::new(DreamConfig::default());
+        let mut dir = OduDirectory::new();
+        assert!(engine.try_rem_cycle(&mut dir, SABBATH).is_some());
+        // Two missed Sabbaths later, on a Monday: catch-up fires anyway.
+        let monday_after_two_weeks =
+            SABBATH + engine.rem_config.overdue_after_secs + 2 * SECONDS_PER_DAY;
+        assert!(!is_sabbath_at(monday_after_two_weeks));
+        assert!(engine
+            .try_rem_cycle(&mut dir, monday_after_two_weeks)
+            .is_some());
     }
 }

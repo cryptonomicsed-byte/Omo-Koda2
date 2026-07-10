@@ -186,8 +186,8 @@ impl TaskScheduler {
                 if self.dream.should_consolidate(now) {
                     ran |= self.dream.try_consolidate(dir, now).is_some();
                 }
-                // Weekly REM pass rides the same trigger; it gates itself on
-                // its own (much longer) cadence.
+                // The REM pass rides the same trigger; it gates itself on the
+                // Sabbath (once per UTC Saturday, plus overdue catch-up).
                 ran |= self.dream.try_rem_cycle(dir, now).is_some();
                 if ran {
                     dream_triggered = true;

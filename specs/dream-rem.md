@@ -2,8 +2,8 @@
 
 The Dream Engine runs two rhythms over Living Odu memory:
 
-Consolidation    every 30 min (default)   stale-entry sweep, light housekeeping
-REM cycle        weekly (default)         fractal burst analysis + cluster folding
+Consolidation    every 30 min (default)     stale-entry sweep, light housekeeping
+REM cycle        on the Sabbath (UTC Sat)   fractal burst analysis + cluster folding
 
 The REM cycle is the deep dream state: the agent shifts from responding to
 pruning and reorganizing its knowledge. Implementation:
@@ -42,10 +42,18 @@ node per topic; the fold summary keeps the zoom-in preview. Nothing above
 the noise line is ever touched by REM — high-importance memory is not the
 governor's business.
 
-## Cadence & Concurrency
+## Cadence & Concurrency — the Sabbath
 
-- Default interval 604,800 s (weekly). First run fires on the first dream
-  trigger after birth, then gates on the interval.
+- The REM cycle falls on the **Sabbath**: UTC Saturday, the same day
+  `RhythmGate::is_sabbath()` observes. The rhythm gate queues irreversible
+  *outward* action for the Sabbath; the dream engine turns *inward* and
+  dreams. At most one REM pass per Sabbath (gated on UTC day, not wall
+  interval).
+- **Overdue catch-up**: if more than `overdue_after_secs` (default
+  1,209,600 s — two missed Sabbaths) passes since the last REM, the cycle
+  runs at the next dream trigger regardless of weekday, so a slept-through
+  Sabbath never becomes unbounded drift.
+- A newborn's first REM waits for its first Sabbath.
 - Shares the `ConsolidationLock` with ordinary consolidation — a REM pass
   never overlaps another dream.
 - Triggered from the background task scheduler's dream hook

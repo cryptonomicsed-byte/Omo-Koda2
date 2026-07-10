@@ -914,11 +914,13 @@ impl Steward {
                     let config = &agent.session().config;
                     let provider_name = config.default_provider.as_str();
                     match provider_name {
-                        "webllm" | "ollama" => {} // allowed
+                        // larql serves locally-decompiled weights (larql-server)
+                        // — private-eligible like the other local engines.
+                        "webllm" | "ollama" | "larql" => {} // allowed
                         _ => {
                             return Err(format!(
                                 "Private thoughts require a local provider. Current: {}. \
-                             Allowed: webllm, ollama. Blocked: openai, anthropic, gemini, etc.",
+                             Allowed: webllm, ollama, larql. Blocked: openai, anthropic, gemini, etc.",
                                 provider_name
                             ))
                         }
@@ -933,6 +935,21 @@ impl Steward {
                         agent.reputation(),
                         *agent.odu_seed().as_bytes(),
                         agent.hermetic_state().clone(),
+                    )
+                };
+
+                // Busy Beaver governor: dynamic ceiling of productive steps for
+                // this session, from synapse balance × tier × reputation × DNA
+                // entropy. Charged as work happens; settled after execution.
+                let mut bb = {
+                    let agent = self.ensure_born()?;
+                    crate::justice::busy_beaver::BbGovernor::new(
+                        crate::justice::busy_beaver::compute_bb_ceiling(
+                            agent.synapse(),
+                            crate::justice::tier::Tier::from(agent.tier()),
+                            agent.reputation(),
+                            agent.dna_fingerprint(),
+                        ),
                     )
                 };
 
@@ -986,13 +1003,25 @@ impl Steward {
                     ),
                     crate::justice::HookDecision::Warn(warning) => {
                         let (base, usage) = self
-                            .execute_compiled_think(&prompt, private, &provider, &compilation)
+                            .execute_compiled_think(
+                                &prompt,
+                                private,
+                                &provider,
+                                &compilation,
+                                &mut bb,
+                            )
                             .await?;
                         (format!("Justice warning: {warning}\n{base}"), usage)
                     }
                     crate::justice::HookDecision::Allow => {
-                        self.execute_compiled_think(&prompt, private, &provider, &compilation)
-                            .await?
+                        self.execute_compiled_think(
+                            &prompt,
+                            private,
+                            &provider,
+                            &compilation,
+                            &mut bb,
+                        )
+                        .await?
                     }
                 };
 
@@ -1037,6 +1066,22 @@ impl Steward {
 
                 let burn_amount = usage.compute_synapse_burn().max(1000.0);
                 agent_mut.burn_synapse(burn_amount)?;
+
+                // Busy Beaver settlement: blowing the ceiling costs synapse
+                // (clamped to balance — never a hard failure); a completed
+                // high-utilization session earns a top-up. Selection pressure
+                // favors agents that compute wisely within their bound.
+                if bb.exceeded() {
+                    let balance = agent_mut.synapse();
+                    let penalty = crate::justice::busy_beaver::EXCEED_PENALTY_SYNAPSE.min(balance);
+                    agent_mut.set_synapse(balance - penalty);
+                } else if bb.high_utilization() && compilation.validation.allowed {
+                    let balance = agent_mut.synapse();
+                    agent_mut.set_synapse(
+                        (balance + crate::justice::busy_beaver::HIGH_UTILIZATION_BONUS_SYNAPSE)
+                            .min(crate::economics::SYNAPSE_MAX_PER_AGENT),
+                    );
+                }
                 agent_mut.add_message(ConversationMessage::new_user(prompt.clone(), private));
                 agent_mut.add_message(ConversationMessage::new_assistant(
                     response.clone(),
@@ -1085,6 +1130,9 @@ impl Steward {
                     "steps": compilation.plan.steps.len(),
                     "router": compilation.router_fingerprint,
                     "hermetic_score": hermetic_score,
+                    "bb_ceiling": bb.ceiling,
+                    "bb_steps": bb.steps_used,
+                    "bb_utilization": (bb.utilization() * 1000.0).round() / 1000.0,
                 })
                 .to_string();
 
@@ -1162,6 +1210,19 @@ impl Steward {
                         tool, tier
                     ));
                 }
+
+                // Busy Beaver governor for this act session (see justice::busy_beaver).
+                let mut bb = {
+                    let agent = self.ensure_born()?;
+                    crate::justice::busy_beaver::BbGovernor::new(
+                        crate::justice::busy_beaver::compute_bb_ceiling(
+                            agent.synapse(),
+                            crate::justice::tier::Tier::from(agent.tier()),
+                            agent.reputation(),
+                            agent.dna_fingerprint(),
+                        ),
+                    )
+                };
 
                 // 1. Permission Authorization (Strictly Pre-Act)
                 let auth_result = self.permission_policy.authorize(&tool, &params, None);
@@ -1388,6 +1449,29 @@ impl Steward {
                 agent_mut.burn_synapse(burn_amount)?;
                 agent_mut.update_reputation(new_rep, ReputationChangeReason::Act);
                 agent_mut.increment_act_counter();
+
+                // Busy Beaver settlement: the call itself plus its token volume
+                // count as productive steps; a token-heavy act on a young agent
+                // can blow the ceiling and pay the penalty (clamped to balance).
+                let output = {
+                    bb.charge(crate::justice::busy_beaver::steps_from_tokens(
+                        tool_usage.total_tokens(),
+                    ));
+                    if bb.exceeded() {
+                        let balance = agent_mut.synapse();
+                        let penalty =
+                            crate::justice::busy_beaver::EXCEED_PENALTY_SYNAPSE.min(balance);
+                        agent_mut.set_synapse(balance - penalty);
+                        format!(
+                            "{output}\n[BB exceeded] {} of {} productive steps — \
+                             {penalty:.0} synapse penalty applied. Prefer smaller, \
+                             deeper-tier work.",
+                            bb.steps_used, bb.ceiling
+                        )
+                    } else {
+                        output
+                    }
+                };
 
                 // Receipt generation
                 let last_hash = agent_mut.receipts().last_hash().to_string();
@@ -1793,6 +1877,7 @@ impl Steward {
         private: bool,
         provider: &str,
         compilation: &IntentCompilation,
+        bb: &mut crate::justice::busy_beaver::BbGovernor,
     ) -> Result<(String, TokenUsage), String> {
         if !compilation.validation.allowed || compilation.validation.requires_confirmation {
             return Ok((
@@ -1811,7 +1896,20 @@ impl Steward {
                         TokenUsage::default(),
                     ));
                 }
+                // Busy Beaver halt: once the reflective-pause threshold is
+                // crossed, defer the remaining planned calls instead of
+                // running the agent past its productive-step ceiling.
+                if bb.should_pause() {
+                    outputs.push(format!(
+                        "[BB reflective pause] {} of {} productive steps used — \
+                         deferred '{}' and any remaining calls. Re-plan or run \
+                         in /sandbox with a narrower goal.",
+                        bb.steps_used, bb.ceiling, call.tool
+                    ));
+                    break;
+                }
                 let (receipt, output) = self.execute_direct_act_call(call, private).await?;
+                bb.charge(1);
                 outputs.push(format!(
                     "{} => {} (receipt: {})",
                     call.tool, output, receipt.receipt_id
@@ -1841,10 +1939,15 @@ impl Steward {
                 vec![]
             };
 
-        self.providers
+        let (response, usage) = self
+            .providers
             .think(provider, prompt, &observe_ctx, private)
             .await
-            .map_err(|e| format!("Provider error: {}", e))
+            .map_err(|e| format!("Provider error: {}", e))?;
+        bb.charge(crate::justice::busy_beaver::steps_from_tokens(
+            usage.total_tokens(),
+        ));
+        Ok((response, usage))
     }
 
     async fn execute_direct_act_call(

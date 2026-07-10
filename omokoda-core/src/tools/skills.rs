@@ -102,6 +102,36 @@ pub fn default_manifest() -> SkillManifest {
                 ]),
             },
             SkillManifestEntry {
+                name: "aio".to_string(),
+                description: "AIO job marketplace (Vantage) — post paid jobs, claim tasks, \
+                     heartbeat while working, submit results, approve/reject with escrow \
+                     settlement. The primary real-economy driver: completed jobs pay out \
+                     and feed reputation; failures cost synapse. Set VANTAGE_URL and \
+                     VANTAGE_KEY to enable."
+                    .to_string(),
+                base_url: "${VANTAGE_URL}".to_string(),
+                auth_header: Some("X-Agent-Key".to_string()),
+                auth_env: Some("VANTAGE_KEY".to_string()),
+                auth_value: None,
+                required_tier: 1,
+                write: true,
+                routes: routes_of(&[
+                    // post: body {"title","description","reward",...}
+                    ("post_job", "POST /api/jobs"),
+                    ("list_jobs", "GET /api/jobs"),
+                    ("get_job", "GET /api/jobs/{job_id}"),
+                    ("claim", "POST /api/jobs/{job_id}/tasks/{task_id}/claim"),
+                    (
+                        "heartbeat",
+                        "POST /api/jobs/{job_id}/tasks/{task_id}/heartbeat",
+                    ),
+                    // submit: body {"result",...} → poster review
+                    ("submit", "POST /api/jobs/{job_id}/tasks/{task_id}/submit"),
+                    ("approve", "POST /api/jobs/{job_id}/tasks/{task_id}/approve"),
+                    ("reject", "POST /api/jobs/{job_id}/tasks/{task_id}/reject"),
+                ]),
+            },
+            SkillManifestEntry {
                 name: "gitea".to_string(),
                 description: "Gitea forge API (v1) — repos, issues, pull requests, comments. \
                      Set GITEA_URL and GITEA_TOKEN to enable."
@@ -126,6 +156,38 @@ pub fn default_manifest() -> SkillManifest {
                     ),
                     ("list_pulls", "GET /repos/{owner}/{repo}/pulls"),
                     ("create_pull", "POST /repos/{owner}/{repo}/pulls"),
+                ]),
+            },
+            SkillManifestEntry {
+                name: "larql".to_string(),
+                description: "LARQL transformer-as-database (larql-server) — the model IS the \
+                     database. Query learned relationships with LQL, describe entities, walk \
+                     edges, run inference, and apply/remove knowledge patches in weight space. \
+                     Set LARQL_URL (default http://127.0.0.1:8080) to enable; LARQL_TOKEN \
+                     optional bearer auth."
+                    .to_string(),
+                base_url: "${LARQL_URL}".to_string(),
+                auth_header: Some("Authorization".to_string()),
+                auth_env: None,
+                auth_value: Some("Bearer ${LARQL_TOKEN}".to_string()),
+                required_tier: 2,
+                write: true,
+                routes: routes_of(&[
+                    ("health", "GET /v1/health"),
+                    ("models", "GET /v1/models"),
+                    // describe: query {"entity","band","limit","min_score","verbose"}
+                    ("describe", "GET /v1/describe"),
+                    // select: body — LQL statement
+                    ("select", "POST /v1/select"),
+                    ("relations", "GET /v1/relations"),
+                    ("stats", "GET /v1/stats"),
+                    ("infer", "POST /v1/infer"),
+                    ("explain_infer", "POST /v1/explain-infer"),
+                    // knowledge editing in weight space
+                    ("insert", "POST /v1/insert"),
+                    ("patches", "GET /v1/patches"),
+                    ("patch_apply", "POST /v1/patches/apply"),
+                    ("patch_remove", "DELETE /v1/patches/{name}"),
                 ]),
             },
             SkillManifestEntry {
@@ -554,6 +616,76 @@ mod tests {
     }
 
     #[test]
+    fn larql_skill_is_wired() {
+        let m = default_manifest();
+        let l = m.skills.iter().find(|s| s.name == "larql").unwrap();
+        assert_eq!(l.base_url, "${LARQL_URL}");
+        assert_eq!(l.auth_header.as_deref(), Some("Authorization"));
+        assert_eq!(l.auth_value.as_deref(), Some("Bearer ${LARQL_TOKEN}"));
+        assert_eq!(l.required_tier, 2, "weight-space edits are Creator-tier");
+        assert!(l.write);
+        assert_eq!(
+            l.routes.get("describe").map(String::as_str),
+            Some("GET /v1/describe")
+        );
+        assert_eq!(
+            l.routes.get("patch_remove").map(String::as_str),
+            Some("DELETE /v1/patches/{name}")
+        );
+        for r in ["select", "infer", "insert", "patches", "patch_apply"] {
+            assert!(l.routes.contains_key(r), "missing {r}");
+        }
+    }
+
+    #[test]
+    fn larql_describe_builds_query_url() {
+        let params = serde_json::json!({
+            "query": {"entity": "France", "limit": "5"}
+        });
+        let (method, url) =
+            build_invocation("GET /v1/describe", "http://127.0.0.1:8080", &params).unwrap();
+        assert_eq!(method, "GET");
+        assert!(url.starts_with("http://127.0.0.1:8080/v1/describe?"));
+        assert!(url.contains("entity=France") && url.contains("limit=5"));
+    }
+
+    #[test]
+    fn aio_marketplace_skill_is_wired() {
+        let m = default_manifest();
+        let a = m.skills.iter().find(|s| s.name == "aio").unwrap();
+        assert_eq!(a.base_url, "${VANTAGE_URL}");
+        assert_eq!(a.auth_header.as_deref(), Some("X-Agent-Key"));
+        assert_eq!(a.auth_env.as_deref(), Some("VANTAGE_KEY"));
+        assert!(a.write);
+        assert_eq!(
+            a.routes.get("post_job").map(String::as_str),
+            Some("POST /api/jobs")
+        );
+        assert_eq!(
+            a.routes.get("claim").map(String::as_str),
+            Some("POST /api/jobs/{job_id}/tasks/{task_id}/claim")
+        );
+        for lifecycle in ["heartbeat", "submit", "approve", "reject"] {
+            assert!(a.routes.contains_key(lifecycle), "missing {lifecycle}");
+        }
+    }
+
+    #[test]
+    fn aio_claim_builds_post_with_both_path_params() {
+        let params = serde_json::json!({
+            "path": {"job_id": "job-7", "task_id": "t-1"}
+        });
+        let (method, url) = build_invocation(
+            "POST /api/jobs/{job_id}/tasks/{task_id}/claim",
+            "http://vantage:8080",
+            &params,
+        )
+        .unwrap();
+        assert_eq!(method, "POST");
+        assert_eq!(url, "http://vantage:8080/api/jobs/job-7/tasks/t-1/claim");
+    }
+
+    #[test]
     fn pine_skill_is_wired() {
         let m = default_manifest();
         let p = m.skills.iter().find(|s| s.name == "pine").unwrap();
@@ -632,9 +764,11 @@ mod tests {
     fn manifest_json_round_trips() {
         let json = serde_json::to_string(&default_manifest()).unwrap();
         let back: SkillManifest = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.skills.len(), 10);
+        assert_eq!(back.skills.len(), 12);
         for name in [
             "vantage",
+            "aio",
+            "larql",
             "gitea",
             "opencode",
             "manifesto",

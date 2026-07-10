@@ -112,6 +112,10 @@ impl RhythmGate {
             | "api_connect"
             | "agent_orchestration"
             | "self_modification"
+            // zero patch mutates the agent's own program graph — the purest
+            // form of self-modification. Queued on the Sabbath while the
+            // dream engine runs its REM cycle.
+            | "zero"
             | "multi_agent_fabric" => ActionReversibility::Irreversible,
             _ => ActionReversibility::Reversible,
         }

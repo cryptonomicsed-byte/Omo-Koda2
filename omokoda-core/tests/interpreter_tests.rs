@@ -64,6 +64,33 @@ mod interpreter_tests {
     }
 
     #[tokio::test]
+    async fn nominal_think_pays_metabolic_burn_without_bb_penalty() {
+        // A short think on a fresh agent sits well inside its Busy Beaver
+        // ceiling: the only synapse cost is the metabolic burn (1000 floor),
+        // with neither the exceed penalty (-2500) nor the utilization bonus
+        // (+1000) applied.
+        let mut steward = test_steward!("nominal_think_pays_metabolic_burn_without_bb_penalty");
+        steward.set_mock_provider("mock thought".to_string());
+        steward
+            .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
+            .await
+            .unwrap();
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+
+        let stmts = parse(r#"think "hello world""#).unwrap();
+        let result = steward.dispatch(stmts[0].clone()).await.unwrap();
+        assert!(result.receipt.is_some());
+
+        let synapse = steward.agent_core().unwrap().synapse();
+        assert_eq!(
+            synapse,
+            99_000.0,
+            "expected exactly the 1000-synapse metabolic burn, got a delta of {}",
+            100_000.0 - synapse
+        );
+    }
+
+    #[tokio::test]
     async fn think_dispatch_with_event_sink_emits_cycle_events() {
         use tokio::sync::mpsc;
 

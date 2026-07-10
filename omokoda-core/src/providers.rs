@@ -80,6 +80,24 @@ impl ProviderRegistry {
             "http://localhost:11434".to_string(),
         )));
 
+        // LARQL — a local transformer decompiled into a queryable vindex,
+        // served by larql-server's OpenAI-compatible surface. Weights stay on
+        // this machine, so it qualifies as a Local (private-thought-eligible)
+        // provider when LARQL_URL points at localhost.
+        if let Ok(url) = std::env::var("LARQL_URL") {
+            if !url.is_empty() {
+                let token = std::env::var("LARQL_TOKEN").unwrap_or_default();
+                let model = std::env::var("LARQL_MODEL").unwrap_or_else(|_| "default".to_string());
+                registry.register(Box::new(OpenAIProvider::compatible(
+                    "larql",
+                    ProviderClass::Local,
+                    token,
+                    model,
+                    url,
+                )));
+            }
+        }
+
         if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
             registry.register(Box::new(OpenAIProvider::new(api_key, None, None)));
         }
@@ -421,6 +439,28 @@ impl OpenAIProvider {
             metadata: ProviderMetadata {
                 name: "OpenAI".to_string(),
                 class: ProviderClass::External,
+                endpoint,
+            },
+            client: reqwest::Client::new(),
+            api_key,
+            model,
+        }
+    }
+
+    /// Any server speaking the OpenAI chat-completions wire format, under its
+    /// own provider name and class. This is how self-hosted engines (e.g. a
+    /// local LARQL `larql-server`) join the registry without new wire code.
+    pub fn compatible(
+        name: &str,
+        class: ProviderClass,
+        api_key: String,
+        model: String,
+        endpoint: String,
+    ) -> Self {
+        Self {
+            metadata: ProviderMetadata {
+                name: name.to_string(),
+                class,
                 endpoint,
             },
             client: reqwest::Client::new(),

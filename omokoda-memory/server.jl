@@ -27,6 +27,8 @@ Endpoints:
   POST /mesh/correlations          → Cross-agent trust correlations
   POST /mesh/forecast              → Resource demand forecast
   POST /mesh/reliability           → Agent commitment reliability report
+
+  POST /dream/rem                  → REM fractal compression plan (weekly dream state)
 """
 
 # -- bootstrap ---------------------------------------------------------------
@@ -54,6 +56,7 @@ const VERSION = "0.1.0"
 const GLOBAL_DAG = Ref(MemoryDAG())
 
 include(joinpath(@__DIR__, "src", "mesh_analytics.jl"))
+include(joinpath(@__DIR__, "src", "rem_fractal.jl"))
 include(joinpath(@__DIR__, "src", "vantage_bridge.jl"))
 include(joinpath(@__DIR__, "src", "soma_bridge.jl"))
 include(joinpath(@__DIR__, "src", "resonance.jl"))
@@ -94,6 +97,7 @@ function handle_capabilities(req::HTTP.Request)
         "optimize" => ["/optimize", "/optimize/reliability"],
         "garden"   => ["/garden/analyse", "/garden/feed"],
         "mesh"     => ["/mesh/score", "/mesh/resonance", "/mesh/correlations", "/mesh/forecast", "/mesh/reliability"],
+        "dream"    => ["/dream/rem"],
     ))
 end
 
@@ -366,6 +370,25 @@ function handle_mesh_reliability(req::HTTP.Request)
 end
 
 # ---------------------------------------------------------------------------
+# Dream / REM handlers
+# ---------------------------------------------------------------------------
+
+# Hive-scale REM planning: Elixir streams node summaries from many agents;
+# the plan (folds + prune_ids) goes back for the caller to apply and write
+# back. Pure planning — this endpoint never mutates state. Logic is in
+# src/rem_fractal.jl; the per-agent equivalent lives in omokoda-core dream.rs.
+function handle_dream_rem(req::HTTP.Request)
+    body = parse_body(req)
+    nodes = [Dict{String,Any}(string(k) => v for (k, v) in n) for n in get(body, "nodes", [])]
+    noise_importance = Float64(get(body, "noise_importance", 0.35))
+    min_fold_cluster = Int(get(body, "min_fold_cluster", 3))
+    plan = rem_plan(nodes;
+                    noise_importance=noise_importance,
+                    min_fold_cluster=min_fold_cluster)
+    json_ok(plan)
+end
+
+# ---------------------------------------------------------------------------
 # Router
 # ---------------------------------------------------------------------------
 
@@ -396,6 +419,8 @@ HTTP.register!(ROUTER, "POST", "/mesh/correlations",   handle_mesh_correlations)
 HTTP.register!(ROUTER, "POST", "/mesh/forecast",       handle_mesh_forecast)
 HTTP.register!(ROUTER, "POST", "/mesh/reliability",    handle_mesh_reliability)
 HTTP.register!(ROUTER, "POST", "/mesh/score",          handle_mesh_score)
+
+HTTP.register!(ROUTER, "POST", "/dream/rem",           handle_dream_rem)
 
 HTTP.register!(ROUTER, "POST", "/vantage/ingest",      handle_vantage_ingest)
 HTTP.register!(ROUTER, "POST", "/vantage/similar",     handle_vantage_similar)

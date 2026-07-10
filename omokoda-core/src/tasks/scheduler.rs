@@ -181,16 +181,21 @@ impl TaskScheduler {
                 .unwrap_or_default()
                 .as_secs();
 
-            if self.dream.should_consolidate(now) {
-                if let Some(dir) = odu {
-                    if self.dream.try_consolidate(dir, now).is_some() {
-                        dream_triggered = true;
-                        self.completed_since_dream = 0;
-                    }
-                } else {
+            if let Some(dir) = odu {
+                let mut ran = false;
+                if self.dream.should_consolidate(now) {
+                    ran |= self.dream.try_consolidate(dir, now).is_some();
+                }
+                // Weekly REM pass rides the same trigger; it gates itself on
+                // its own (much longer) cadence.
+                ran |= self.dream.try_rem_cycle(dir, now).is_some();
+                if ran {
                     dream_triggered = true;
                     self.completed_since_dream = 0;
                 }
+            } else if self.dream.should_consolidate(now) {
+                dream_triggered = true;
+                self.completed_since_dream = 0;
             }
         }
 

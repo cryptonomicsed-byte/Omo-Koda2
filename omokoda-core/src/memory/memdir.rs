@@ -51,6 +51,12 @@ impl OduEntry {
 pub struct OduDirectory {
     pub entries: HashMap<String, OduEntry>,
     pub swarm_shared: HashMap<String, Vec<OduEntry>>,
+    /// Fractal fold archive: macro-node id → the micro entries it compressed.
+    /// Folds are lossless — a REM cycle moves noise clusters here instead of
+    /// deleting them, and [`Self::unfold`] restores them on demand. This is
+    /// the scale-invariance property: zoomed out, one macro node; zoomed in,
+    /// the original sub-graph.
+    pub archived_folds: HashMap<String, Vec<OduEntry>>,
 }
 
 impl OduDirectory {
@@ -58,6 +64,7 @@ impl OduDirectory {
         Self {
             entries: HashMap::new(),
             swarm_shared: HashMap::new(),
+            archived_folds: HashMap::new(),
         }
     }
 
@@ -135,6 +142,41 @@ impl OduDirectory {
 
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+
+    // ── Fractal fold archive ──────────────────────────────────────────────
+
+    /// Archive the micro entries a REM fold compressed under `macro_id`.
+    pub fn archive_fold(&mut self, macro_id: impl Into<String>, entries: Vec<OduEntry>) {
+        if !entries.is_empty() {
+            self.archived_folds.insert(macro_id.into(), entries);
+        }
+    }
+
+    /// Zoom in: restore a fold's micro entries into the live directory and
+    /// remove the macro node. Restored entries are touched (fresh
+    /// `last_accessed`) but keep their original importance — if they are
+    /// still noise, the next REM cycle folds them again. Returns the number
+    /// of entries restored, or `None` if `macro_id` has no archived fold.
+    pub fn unfold(&mut self, macro_id: &str) -> Option<usize> {
+        let entries = self.archived_folds.remove(macro_id)?;
+        self.entries.remove(macro_id);
+        let count = entries.len();
+        for mut entry in entries {
+            entry.touch();
+            self.entries.insert(entry.id.clone(), entry);
+        }
+        Some(count)
+    }
+
+    /// Number of archived folds (macro nodes with recoverable micro entries).
+    pub fn archived_fold_count(&self) -> usize {
+        self.archived_folds.len()
+    }
+
+    /// Total micro entries held across all archived folds.
+    pub fn archived_entry_count(&self) -> usize {
+        self.archived_folds.values().map(Vec::len).sum()
     }
 }
 

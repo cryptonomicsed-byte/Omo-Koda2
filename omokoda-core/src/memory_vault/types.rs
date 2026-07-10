@@ -154,3 +154,14 @@ pub struct CreateKnowledgeBody {
 pub struct AccessLogQuery {
     pub limit: Option<usize>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultDirEntry {
+    pub name: String,
+    pub path: String,
+}
+
+#[derive(Deserialize)]
+pub struct ListDirQuery {
+    pub dir: Option<String>,
+}

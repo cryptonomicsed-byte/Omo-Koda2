@@ -65,6 +65,13 @@ export function MemoryVaultTab({ isOwner = true }: Props) {
   const [accessLog, setAccessLog] = useState<
     { timestamp: string; resource: string; access_type: string; accessor: string }[] | null
   >(null)
+  const [dirFiles, setDirFiles] = useState<
+    Record<string, { name: string; path: string }[] | null>
+  >({})
+  const [knowledgeForm, setKnowledgeForm] = useState<{
+    subject: string; predicate: string; object: string; confidence: string
+  } | null>(null)
+  const [knowledgeSaving, setKnowledgeSaving] = useState(false)
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -135,6 +142,43 @@ export function MemoryVaultTab({ isOwner = true }: Props) {
       // access log is non-critical, silently ignore
     }
   }, [])
+
+  const fetchDirFiles = useCallback(async (dir: string) => {
+    setDirFiles((prev) => ({ ...prev, [dir]: null }))
+    try {
+      const r = await fetch(`/v1/vault/ls?dir=${dir}`)
+      if (!r.ok) return
+      const data = await r.json()
+      setDirFiles((prev) => ({ ...prev, [dir]: data.files ?? [] }))
+    } catch {
+      setDirFiles((prev) => ({ ...prev, [dir]: [] }))
+    }
+  }, [])
+
+  const handleSaveKnowledge = useCallback(async () => {
+    if (!knowledgeForm) return
+    setKnowledgeSaving(true)
+    try {
+      const r = await fetch('/v1/vault/knowledge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: knowledgeForm.subject,
+          predicate: knowledgeForm.predicate,
+          object: knowledgeForm.object,
+          confidence: parseFloat(knowledgeForm.confidence) || 1.0,
+        }),
+      })
+      if (r.ok) {
+        setKnowledgeForm(null)
+        await fetchStatus()
+      }
+    } catch {
+      // ignore
+    } finally {
+      setKnowledgeSaving(false)
+    }
+  }, [knowledgeForm, fetchStatus])
 
   const accessMeta = status
     ? ACCESS_META[status.config.access]
@@ -283,15 +327,137 @@ export function MemoryVaultTab({ isOwner = true }: Props) {
                   traces: '👁',
                   drafts: '📝',
                 }
+                const expanded = dir in dirFiles
+                const files = dirFiles[dir]
                 return (
-                  <div key={dir} className="file-category">
-                    <span className="cat-icon">{icons[dir] ?? '📄'}</span>
-                    <span className="cat-name">{dir}/</span>
-                    <span className="cat-count">{count} notes</span>
+                  <div key={dir} className="file-category-group">
+                    <button
+                      className="file-category"
+                      onClick={() => {
+                        if (expanded) {
+                          setDirFiles((p) => {
+                            const n = { ...p }
+                            delete n[dir]
+                            return n
+                          })
+                        } else {
+                          fetchDirFiles(dir)
+                        }
+                      }}
+                    >
+                      <span className="cat-icon">{icons[dir] ?? '📄'}</span>
+                      <span className="cat-name">{dir}/</span>
+                      <span className="cat-count">{count} notes</span>
+                      <span className="cat-chevron">{expanded ? '▾' : '▸'}</span>
+                    </button>
+                    {expanded && (
+                      <div className="file-list">
+                        {files === null ? (
+                          <div className="file-list-loading">Loading…</div>
+                        ) : files.length === 0 ? (
+                          <div className="file-list-empty">No files yet</div>
+                        ) : (
+                          files.map((f) => (
+                            <a
+                              key={f.path}
+                              className="file-list-item"
+                              href={`/v1/vault/file/${f.path}`}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <span className="file-list-icon">📄</span>
+                              {f.name}
+                            </a>
+                          ))
+                        )}
+                      </div>
+                    )}
                   </div>
                 )
               })}
             </div>
+
+            {/* ── Knowledge triple form ── */}
+            {isOwner && (
+              <div className="knowledge-section">
+                {knowledgeForm === null ? (
+                  <button
+                    className="knowledge-add-btn"
+                    onClick={() =>
+                      setKnowledgeForm({ subject: '', predicate: '', object: '', confidence: '1' })
+                    }
+                  >
+                    + Add Knowledge Triple
+                  </button>
+                ) : (
+                  <div className="knowledge-form">
+                    <div className="knowledge-form-title">New Knowledge Triple</div>
+                    <div className="knowledge-form-row">
+                      <input
+                        className="knowledge-input"
+                        placeholder="Subject"
+                        value={knowledgeForm.subject}
+                        onChange={(e) =>
+                          setKnowledgeForm((f) => f && { ...f, subject: e.target.value })
+                        }
+                      />
+                      <input
+                        className="knowledge-input knowledge-predicate"
+                        placeholder="predicate"
+                        value={knowledgeForm.predicate}
+                        onChange={(e) =>
+                          setKnowledgeForm((f) => f && { ...f, predicate: e.target.value })
+                        }
+                      />
+                      <input
+                        className="knowledge-input"
+                        placeholder="Object"
+                        value={knowledgeForm.object}
+                        onChange={(e) =>
+                          setKnowledgeForm((f) => f && { ...f, object: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="knowledge-form-footer">
+                      <label className="knowledge-confidence-label">
+                        Confidence
+                        <input
+                          className="knowledge-input knowledge-conf-input"
+                          type="number"
+                          min="0"
+                          max="1"
+                          step="0.1"
+                          value={knowledgeForm.confidence}
+                          onChange={(e) =>
+                            setKnowledgeForm((f) => f && { ...f, confidence: e.target.value })
+                          }
+                        />
+                      </label>
+                      <div className="knowledge-form-actions">
+                        <button
+                          className="knowledge-cancel-btn"
+                          onClick={() => setKnowledgeForm(null)}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="knowledge-save-btn"
+                          onClick={handleSaveKnowledge}
+                          disabled={
+                            knowledgeSaving ||
+                            !knowledgeForm.subject ||
+                            !knowledgeForm.predicate ||
+                            !knowledgeForm.object
+                          }
+                        >
+                          {knowledgeSaving ? 'Saving…' : 'Save Triple'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="vault-file-actions">
               <a className="vault-download-btn" href="/v1/vault/download" download="memory-vault.zip">
                 <Download size={13} />
@@ -622,6 +788,10 @@ export function MemoryVaultTab({ isOwner = true }: Props) {
           gap: 6px;
           margin-top: 16px;
         }
+        .file-category-group {
+          display: flex;
+          flex-direction: column;
+        }
         .file-category {
           display: flex;
           align-items: center;
@@ -632,6 +802,11 @@ export function MemoryVaultTab({ isOwner = true }: Props) {
           border-radius: 4px;
           font-size: 13px;
           transition: border-color 0.15s;
+          cursor: pointer;
+          width: 100%;
+          text-align: left;
+          font-family: monospace;
+          color: inherit;
         }
         .file-category:hover {
           border-color: #1a1a3e;
@@ -646,6 +821,160 @@ export function MemoryVaultTab({ isOwner = true }: Props) {
         .cat-count {
           color: #555;
           font-size: 11px;
+        }
+        .cat-chevron {
+          color: #444;
+          font-size: 10px;
+        }
+        .file-list {
+          background: #070718;
+          border: 1px solid #0e0e2e;
+          border-top: none;
+          border-radius: 0 0 4px 4px;
+          overflow: hidden;
+        }
+        .file-list-loading,
+        .file-list-empty {
+          padding: 8px 14px;
+          font-size: 11px;
+          color: #444;
+        }
+        .file-list-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 7px 14px;
+          font-size: 12px;
+          color: #778;
+          text-decoration: none;
+          border-bottom: 1px solid #0a0a1a;
+          transition: background 0.1s, color 0.1s;
+          font-family: monospace;
+        }
+        .file-list-item:last-child {
+          border-bottom: none;
+        }
+        .file-list-item:hover {
+          background: rgba(0, 240, 255, 0.04);
+          color: #00f0ff;
+        }
+        .file-list-icon {
+          font-size: 12px;
+        }
+        .knowledge-section {
+          margin-top: 20px;
+        }
+        .knowledge-add-btn {
+          background: rgba(57, 255, 20, 0.06);
+          border: 1px dashed #39ff1444;
+          color: #39ff14;
+          padding: 9px 16px;
+          border-radius: 5px;
+          font-size: 12px;
+          font-family: monospace;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .knowledge-add-btn:hover {
+          background: rgba(57, 255, 20, 0.12);
+          border-style: solid;
+        }
+        .knowledge-form {
+          border: 1px solid #1a1a3e;
+          border-radius: 6px;
+          padding: 16px;
+          background: #070718;
+        }
+        .knowledge-form-title {
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          color: #555;
+          margin-bottom: 12px;
+        }
+        .knowledge-form-row {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+        .knowledge-input {
+          background: #0a0a20;
+          border: 1px solid #1a1a3e;
+          color: #e0e0e0;
+          padding: 7px 10px;
+          border-radius: 4px;
+          font-family: monospace;
+          font-size: 12px;
+          flex: 1;
+          min-width: 80px;
+          transition: border-color 0.15s;
+        }
+        .knowledge-input:focus {
+          outline: none;
+          border-color: #39ff14;
+        }
+        .knowledge-predicate {
+          color: #39ff14;
+          flex: 0.6;
+          text-align: center;
+        }
+        .knowledge-form-footer {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-top: 10px;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        .knowledge-confidence-label {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 11px;
+          color: #555;
+        }
+        .knowledge-conf-input {
+          flex: none;
+          width: 60px;
+        }
+        .knowledge-form-actions {
+          display: flex;
+          gap: 8px;
+        }
+        .knowledge-cancel-btn {
+          background: transparent;
+          border: 1px solid #1a1a3e;
+          color: #666;
+          padding: 7px 14px;
+          border-radius: 4px;
+          font-size: 12px;
+          font-family: monospace;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .knowledge-cancel-btn:hover {
+          border-color: #ff6666;
+          color: #ff6666;
+        }
+        .knowledge-save-btn {
+          background: rgba(57, 255, 20, 0.1);
+          border: 1px solid #39ff1466;
+          color: #39ff14;
+          padding: 7px 16px;
+          border-radius: 4px;
+          font-size: 12px;
+          font-family: monospace;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .knowledge-save-btn:hover:not(:disabled) {
+          background: rgba(57, 255, 20, 0.18);
+          border-color: #39ff14;
+        }
+        .knowledge-save-btn:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
         }
         .search-overlay {
           position: absolute;

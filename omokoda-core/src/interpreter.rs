@@ -1101,14 +1101,29 @@ impl Steward {
 
                 self.auto_save();
 
-                // Auto-export: if vault config has auto_export=true, append thought to traces
+                // Auto-export: if vault config has auto_export=true, write thought to traces
                 if let Some(agent) = self.agent_core() {
                     let agent_id = agent.id().as_str().to_string();
-                    let cfg = crate::vault::load_vault_config(&agent_id);
+                    let agent_name = agent.name().to_string();
+                    let vault_base = std::env::var("VAULT_BASE")
+                        .map(std::path::PathBuf::from)
+                        .unwrap_or_else(|_| std::path::PathBuf::from(".omokoda"));
+                    let cfg =
+                        crate::memory_vault::MemoryVault::new(&agent_id, &agent_name, &vault_base)
+                            .load_config();
                     if cfg.auto_export {
                         let export_content = response.clone();
-                        tokio::spawn(async move {
-                            let _ = crate::vault::vault_sync(&agent_id, &export_content);
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+                        tokio::task::spawn_blocking(move || {
+                            let vault = crate::memory_vault::MemoryVault::new(
+                                &agent_id,
+                                &agent_name,
+                                &vault_base,
+                            );
+                            vault.export_think(&export_content, now, 0);
                         });
                     }
                 }

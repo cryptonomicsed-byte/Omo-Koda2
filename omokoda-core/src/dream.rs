@@ -12,8 +12,10 @@
 //!   Mandelbrot's burst-noise insight: information clusters in self-similar
 //!   bursts separated by noise), then folds each path-cluster of low-importance
 //!   "noise" entries into a single compressed macro node and prunes the
-//!   residue. Zoomed out, a week of scattered chatter becomes one node per
-//!   topic; the fold summary keeps the zoom-in preview.
+//!   residue. Folds are **lossless**: the micro entries move into the
+//!   directory's fold archive and `OduDirectory::unfold` restores them on
+//!   demand. Zoomed out, a week of scattered chatter is one node per topic;
+//!   zoomed in, the original sub-graph.
 
 use crate::memory::memdir::{OduDirectory, OduEntry};
 use serde::{Deserialize, Serialize};
@@ -377,20 +379,24 @@ impl DreamEngine {
             ids.sort();
             let mut previews: Vec<String> = Vec::new();
             let mut max_importance: f64 = 0.0;
+            let mut micro: Vec<OduEntry> = Vec::with_capacity(ids.len());
             for id in &ids {
                 if let Some(e) = dir.remove(id) {
                     if previews.len() < 3 {
                         previews.push(e.content.chars().take(80).collect());
                     }
                     max_importance = max_importance.max(e.importance);
+                    micro.push(e);
                 }
             }
+            let macro_id = format!("rem:{path}:{now}");
             let mut folded = OduEntry::new(
-                format!("rem:{path}:{now}"),
+                macro_id.clone(),
                 format!(
-                    "[REM fold] {} entries on '{}': {}",
+                    "[REM fold] {} entries on '{}' (unfold '{}' to zoom in): {}",
                     ids.len(),
                     path,
+                    macro_id,
                     previews.join(" | ")
                 ),
                 path,
@@ -400,6 +406,9 @@ impl DreamEngine {
             folded.importance = (max_importance + 0.1).max(self.rem_config.noise_importance);
             folded.tags.push("rem-fold".to_string());
             dir.insert(folded);
+            // Lossless fold: the micro entries move to the archive, keyed by
+            // the macro node, so `unfold` can restore the full sub-graph.
+            dir.archive_fold(macro_id, micro);
             clusters_folded += 1;
             nodes_folded += ids.len();
         }
@@ -604,6 +613,35 @@ mod dream_tests {
             "macro node must survive the residual prune"
         );
         assert_eq!(dir.entries_at_path("topics/architecture").len(), 1);
+
+        // The fold is lossless: all four micro entries sit in the archive.
+        assert_eq!(dir.archived_fold_count(), 1);
+        assert_eq!(dir.archived_entry_count(), 4);
+    }
+
+    #[test]
+    fn rem_fold_unfolds_losslessly() {
+        let mut engine = DreamEngine::new(DreamConfig::default());
+        let mut dir = OduDirectory::new();
+        for i in 0..4 {
+            dir.insert(noise_entry(&format!("n{i}"), "topics/pleasantries", 0.2));
+        }
+        engine.try_rem_cycle(&mut dir, SABBATH).unwrap();
+        assert_eq!(dir.len(), 1, "folded to one macro node");
+
+        // Zoom in: the macro id is deterministic (rem:<path>:<timestamp>).
+        let macro_id = format!("rem:topics/pleasantries:{SABBATH}");
+        let restored = dir.unfold(&macro_id).expect("fold is archived");
+        assert_eq!(restored, 4);
+        assert_eq!(dir.len(), 4, "macro node replaced by original entries");
+        assert_eq!(dir.archived_fold_count(), 0);
+        for i in 0..4 {
+            let e = dir.get_mut(&format!("n{i}")).expect("entry restored");
+            assert_eq!(e.content, format!("noise content n{i}"));
+        }
+
+        // Unfolding twice is a no-op signal, not a panic.
+        assert!(dir.unfold(&macro_id).is_none());
     }
 
     #[test]

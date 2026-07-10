@@ -442,6 +442,14 @@ impl AgentCore {
             .encrypt(nonce, text.as_bytes())
             .map_err(|e| format!("memory encryption failed: {e}"))?;
 
+        // Tier-1 TEE envelope (Nautilus/Seal): when an attested enclave key
+        // is present, the software ciphertext is sealed a second time, bound
+        // to this agent's id. Fail-open — no enclave means software-only.
+        let ciphertext = match crate::memory::tee::TeeSealer::from_env() {
+            Some(sealer) => sealer.seal_bytes(&ciphertext, self.snapshot.id.as_str())?,
+            None => ciphertext,
+        };
+
         entry.ciphertext = Some(ciphertext);
         entry.zeroize_text();
 

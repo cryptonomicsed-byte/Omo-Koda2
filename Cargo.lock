@@ -3021,6 +3021,7 @@ dependencies = [
  "httpmock",
  "ifascript",
  "jsonschema",
+ "nautilus_integration",
  "omokoda-hermetic",
  "omokoda-mesh",
  "pbkdf2",

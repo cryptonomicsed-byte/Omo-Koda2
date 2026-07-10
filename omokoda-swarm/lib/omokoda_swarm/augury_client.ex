@@ -136,6 +136,27 @@ defmodule OmokodaSwarm.AuguryClient do
     post("/garden/feed", body)
   end
 
+  @doc """
+  Hive-scale REM compression plan (weekly dream state, Sabbath-triggered).
+
+  `nodes` — list of maps with id, path, importance, created_at.
+  Returns {:ok, %{"fractal_dimension" => fd, "folds" => [...], "prune_ids" => [...]}}.
+
+  The plan is advisory — only the memory owner applies it (see
+  specs/dream-rem.md). Options: noise_importance (0.35), min_fold_cluster (3).
+  """
+  def dream_rem(nodes, opts \\ []) when is_list(nodes) do
+    body =
+      %{
+        nodes: nodes,
+        noise_importance: Keyword.get(opts, :noise_importance, 0.35),
+        min_fold_cluster: Keyword.get(opts, :min_fold_cluster, 3)
+      }
+      |> OmokodaSwarm.JSON.encode!()
+
+    post("/dream/rem", body)
+  end
+
   # ---------------------------------------------------------------------------
   # Internal helpers
   # ---------------------------------------------------------------------------

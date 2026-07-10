@@ -37,10 +37,16 @@ macro importance    max(folded importances) + 0.1, floored at the noise
                     line so the macro node survives the residual prune
 residual prune      unclustered noise below noise_importance / 2 is deleted
 
+Folds are **lossless**: the micro entries move into the directory's fold
+archive (`OduDirectory::archived_folds`, keyed by macro id) and
+`OduDirectory::unfold(macro_id)` restores the full sub-graph on demand,
+removing the macro node. Restored entries keep their importance — still
+noise, they re-fold at the next REM. Only the *residual prune* deletes.
+
 This is the fractal zoom: zoomed out, a week of scattered chatter is one
-node per topic; the fold summary keeps the zoom-in preview. Nothing above
-the noise line is ever touched by REM — high-importance memory is not the
-governor's business.
+node per topic; zoomed in, the original entries. Nothing above the noise
+line is ever touched by REM — high-importance memory is not the governor's
+business.
 
 ## Cadence & Concurrency — the Sabbath
 

@@ -546,6 +546,10 @@ impl LlmProvider for OpenAIProvider {
             "messages": messages,
             "temperature": 0.7,
             "max_tokens": 500,
+            // Must be explicit: OmniRoute (and some OpenAI-compatible gateways)
+            // stream by default, returning text/event-stream chunks that would
+            // break the single-object JSON parse below.
+            "stream": false,
         });
 
         let resp = self

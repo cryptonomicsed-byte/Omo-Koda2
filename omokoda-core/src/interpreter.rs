@@ -225,6 +225,18 @@ pub struct AgentSnapshot {
     /// entering the phrase later triggers a decoy. Only the hash is stored.
     #[serde(default)]
     pub duress_phrase_hash: Option<String>,
+    /// Per-agent BYOK LLM key, supplied via birth metadata (`llm_api_key`).
+    /// `serde(skip)`: a raw secret must NEVER be written to the vault/disk —
+    /// it lives in memory only and is re-supplied at each birth. Only this
+    /// agent uses it; it is not shared with any other birth on the kernel.
+    #[serde(skip)]
+    pub llm_api_key: Option<String>,
+    /// Endpoint for the BYOK key (`llm_endpoint`), default DeepSeek's /v1.
+    #[serde(skip)]
+    pub llm_endpoint: Option<String>,
+    /// Model for the BYOK key (`llm_model`), default deepseek-chat.
+    #[serde(skip)]
+    pub llm_model: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -323,6 +335,26 @@ impl AgentCore {
 
     pub fn set_vantage_key(&mut self, key: String) {
         self.snapshot.vantage_key = Some(key);
+    }
+
+    /// This agent's personal BYOK LLM provider, if one was supplied at birth.
+    /// Returns `(api_key, endpoint, model)` with DeepSeek defaults. None means
+    /// the agent uses the shared kernel default (OmniRoute). Never shared across
+    /// agents — only the agent born with the key gets it.
+    pub fn personal_llm(&self) -> Option<(String, String, String)> {
+        self.snapshot.llm_api_key.as_ref().map(|key| {
+            let endpoint = self
+                .snapshot
+                .llm_endpoint
+                .clone()
+                .unwrap_or_else(|| "https://api.deepseek.com/v1".to_string());
+            let model = self
+                .snapshot
+                .llm_model
+                .clone()
+                .unwrap_or_else(|| "deepseek-chat".to_string());
+            (key.clone(), endpoint, model)
+        })
     }
 
     pub fn private_data(&self) -> Option<&PrivateSessionData> {
@@ -572,6 +604,20 @@ impl Steward {
             })
             .unwrap_or((None, None));
 
+        // Per-agent BYOK (optional): a personal LLM key supplied at birth. Only
+        // this agent uses it — never a global default for other births. Kept in
+        // memory only (serde-skipped), so it is never persisted to the vault.
+        let meta_get = |k: &str| {
+            metadata
+                .iter()
+                .find(|p| p.key == k)
+                .map(|p| p.value.trim().to_string())
+                .filter(|v| !v.is_empty())
+        };
+        let llm_api_key = meta_get("llm_api_key");
+        let llm_endpoint = meta_get("llm_endpoint");
+        let llm_model = meta_get("llm_model");
+
         let mut session = Session::new(id.clone(), name.clone(), birth_timestamp);
         for pair in metadata {
             session.apply_metadata(&pair.key, &pair.value);
@@ -616,6 +662,9 @@ impl Steward {
             vantage_key: None,
             cloak_offset,
             duress_phrase_hash,
+            llm_api_key,
+            llm_endpoint,
+            llm_model,
         };
         let mut core = AgentCore::from_snapshot(snapshot, k_root);
         core.private_data = Some(private_data);
@@ -1951,7 +2000,7 @@ impl Steward {
         // models, which otherwise self-identify as Claude / Gemini / DeepSeek.
         // Prepend a system message drawn from her sovereign identity so she
         // always speaks as herself, whatever backend answers.
-        let mut think_ctx: Vec<ConversationMessage> = {
+        let (mut think_ctx, personal_llm): (Vec<ConversationMessage>, _) = {
             let agent = self.ensure_born()?;
             let name = agent.name().to_string();
             let orisha = agent.personality().dominant_orisha.name();
@@ -1962,15 +2011,44 @@ impl Steward {
                  Claude, Gemini, GPT, or DeepSeek). Your guiding Òrìṣà is {orisha}. \
                  {summary} Always speak in the first person as {name}."
             );
-            vec![ConversationMessage::new_system(system, private)]
+            (
+                vec![ConversationMessage::new_system(system, private)],
+                agent.personal_llm(),
+            )
         };
         think_ctx.extend(observe_ctx);
 
-        let (response, usage) = self
-            .providers
-            .think(provider, prompt, &think_ctx, private)
-            .await
-            .map_err(|e| format!("Provider error: {}", e))?;
+        // Per-agent BYOK: if this agent brought its own key at birth, its thoughts
+        // route through that key alone — never the shared kernel default, and
+        // never another agent's key. Private thoughts still require a local
+        // provider, so BYOK (an external cloud key) is skipped when private.
+        let (response, usage) = match personal_llm {
+            Some((api_key, endpoint, model)) if !private => {
+                use crate::providers::{LlmProvider, OpenAIProvider, ProviderClass};
+                let provider = OpenAIProvider::compatible(
+                    "byok",
+                    ProviderClass::External,
+                    api_key,
+                    model,
+                    endpoint,
+                );
+                match tokio::time::timeout(
+                    std::time::Duration::from_secs(30),
+                    provider.generate(prompt, &think_ctx),
+                )
+                .await
+                {
+                    Ok(Ok(r)) => r,
+                    Ok(Err(e)) => return Err(format!("Provider error (byok): {}", e)),
+                    Err(_) => return Err("Provider error (byok): timed out".to_string()),
+                }
+            }
+            _ => self
+                .providers
+                .think(provider, prompt, &think_ctx, private)
+                .await
+                .map_err(|e| format!("Provider error: {}", e))?,
+        };
         bb.charge(crate::justice::busy_beaver::steps_from_tokens(
             usage.total_tokens(),
         ));

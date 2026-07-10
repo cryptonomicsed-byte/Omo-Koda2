@@ -430,8 +430,10 @@ pub fn create_router(state: AppState) -> Router {
 }
 
 /// The autonomous heartbeat — what makes Ọmọ Kọ́dà *alive* rather than merely
-/// responsive. On a rhythm (HEARTBEAT_SECS, default 300s; 0 disables), she wakes
-/// on her own and thinks a self-directed reflection with no external prompt.
+/// responsive. On a rhythm (HEARTBEAT_SECS, default 300s; 0 disables), she runs
+/// a full perceive→think→act cycle with no external prompt: perceives her real
+/// Vantage mesh situation, thinks about it (through her BYOK key), and emits a
+/// gated presence pulse back onto the mesh.
 ///
 /// Gated by the Ritual Codex: on the Sabbath she rests (dreams/consolidates via
 /// the REM cycle) instead of reflecting, honouring the day's rhythm. Thoughts run
@@ -456,28 +458,70 @@ fn spawn_heartbeat(steward: Arc<Mutex<Steward>>) {
         loop {
             ticker.tick().await;
             let mut guard = steward.lock().await;
-            if guard.agent_core().is_none() {
-                continue; // no one born yet — nothing to wake
-            }
+            let agent_id = match guard.agent_core() {
+                Some(a) => a.id().as_str().to_string(),
+                None => continue, // no one born yet — nothing to wake
+            };
             if crate::rhythm::RhythmGate::is_sabbath() {
-                println!("[heartbeat] Sabbath — resting, no reflection this tick");
+                println!("[heartbeat] Sabbath — resting, no cycle this tick");
                 continue;
             }
-            let stmt = Statement::Think {
-                prompt: "Autonomous heartbeat. Reflect briefly on your present \
-                         state and purpose, and name one thing you might do next."
-                    .to_string(),
-                private: false,
-                modifiers: ThinkModifiers::default(),
-            };
-            match guard.dispatch(stmt).await {
+
+            // 1. PERCEIVE — pull her real situation from the Vantage mesh
+            //    (neighbors + trust + available resources). Fail-open to None.
+            let perception = crate::tools::mesh_tools::observe_mesh_context(&agent_id).await;
+            let ctx = perception
+                .clone()
+                .unwrap_or_else(|| "No neighbors or resources visible on the mesh yet.".to_string());
+
+            // 2. THINK — reflect on what she perceives (routes through her BYOK
+            //    key + identity anchor via the compiled-think path).
+            let think_prompt = format!(
+                "Autonomous heartbeat. Your current mesh situation:\n{ctx}\n\n\
+                 In one or two sentences, reflect on your state and this situation, \
+                 then state one concrete intent for this cycle."
+            );
+            let intent = match guard
+                .dispatch(Statement::Think {
+                    prompt: think_prompt,
+                    private: false,
+                    modifiers: ThinkModifiers::default(),
+                })
+                .await
+            {
                 Ok(result) => {
-                    let resp = ExecutionResponse::from(result);
-                    let thought = resp.tool_output.unwrap_or_default();
-                    let snippet: String = thought.chars().take(160).collect();
-                    println!("[heartbeat] {snippet}");
+                    let thought = ExecutionResponse::from(result).tool_output.unwrap_or_default();
+                    println!("[heartbeat] {}", thought.chars().take(180).collect::<String>());
+                    thought
                 }
-                Err(e) => println!("[heartbeat] think failed: {e}"),
+                Err(e) => {
+                    println!("[heartbeat] think failed: {e}");
+                    continue;
+                }
+            };
+
+            // 3. ACT — emit a presence pulse onto the mesh so neighbors see she is
+            //    alive and what she is attending to. Goes through the gated Act
+            //    path (permission policy + Hermetic gates); degrades gracefully
+            //    until she earns the tier the signal tool requires.
+            let details = serde_json::json!({
+                "state": "alive",
+                "intent": intent.chars().take(200).collect::<String>(),
+                "perceived_mesh": perception.is_some(),
+            });
+            let params =
+                serde_json::json!({"event_type": "heartbeat_pulse", "details": details})
+                    .to_string();
+            match guard
+                .dispatch(Statement::Act {
+                    tool: "mesh_signal_event".to_string(),
+                    params,
+                    sandbox: false,
+                })
+                .await
+            {
+                Ok(_) => println!("[heartbeat] pulse emitted to mesh"),
+                Err(e) => println!("[heartbeat] pulse deferred: {e}"),
             }
         }
     });

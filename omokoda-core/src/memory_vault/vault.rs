@@ -1,6 +1,6 @@
 use crate::memory_vault::types::{
     AccessLevel, AccessLogEntry, Edge, GalaxyBounds, GalaxyData, KnowledgeTriple, Nebula,
-    SearchResult, Star, VaultConfig,
+    SearchResult, Star, VaultConfig, VaultDirEntry,
 };
 use crate::session::{ContentBlock, Session};
 use sha2::{Digest, Sha256};
@@ -29,10 +29,27 @@ impl MemoryVault {
         ] {
             let _ = fs::create_dir_all(vault_path.join(sub));
         }
-        Self {
+        let vault = Self {
             agent_id: agent_id.to_string(),
             agent_name: agent_name.to_string(),
             vault_path,
+        };
+        vault.seed_templates();
+        vault
+    }
+
+    fn seed_templates(&self) {
+        let tmpl = self
+            .vault_path
+            .join("templates")
+            .join("broadcast-template.md");
+        if !tmpl.exists() {
+            let _ = fs::write(
+                &tmpl,
+                "---\ntype: star\ncontent_type: text\ntags: []\n---\n\n# Broadcast Title\n\n\
+                Write your broadcast here.\n\n## Key Points\n\n- Point 1\n- Point 2\n\n\
+                ## Tags\n\n#knowledge #insight\n",
+            );
         }
     }
 
@@ -511,6 +528,32 @@ through the relationship `{}`.\n\n## Context\n{}\n",
             m.insert((*dir).to_string(), count_md_dir(&self.vault_path.join(dir)));
         }
         m
+    }
+
+    // ─── directory listing ───────────────────────────────────────────────────
+
+    pub fn list_dir(&self, dir: &str) -> Vec<VaultDirEntry> {
+        let allowed = ["broadcasts", "knowledge", "traces", "drafts", "templates"];
+        if !allowed.contains(&dir) {
+            return vec![];
+        }
+        let dir_path = self.vault_path.join(dir);
+        let Ok(entries) = fs::read_dir(&dir_path) else {
+            return vec![];
+        };
+        let mut files: Vec<VaultDirEntry> = entries
+            .flatten()
+            .filter(is_md)
+            .map(|e| {
+                let name = filename_str(&e);
+                VaultDirEntry {
+                    path: format!("{}/{}", dir, name),
+                    name,
+                }
+            })
+            .collect();
+        files.sort_by(|a, b| a.name.cmp(&b.name));
+        files
     }
 
     // ─── file access ─────────────────────────────────────────────────────────

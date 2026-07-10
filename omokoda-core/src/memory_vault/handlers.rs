@@ -7,8 +7,8 @@ use axum::{
 
 use crate::memory_vault::{
     types::{
-        AccessLogQuery, CreateKnowledgeBody, KnowledgeTriple, SearchQuery, UpdateConfigBody,
-        VaultStatus,
+        AccessLogQuery, CreateKnowledgeBody, KnowledgeTriple, ListDirQuery, SearchQuery,
+        UpdateConfigBody, VaultStatus,
     },
     vault::MemoryVault,
 };
@@ -257,6 +257,28 @@ pub async fn get_vault_file(
         Err(e) if e == "invalid path" => (StatusCode::FORBIDDEN, "invalid path").into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
+}
+
+// ─── GET /v1/vault/ls ───────────────────────────────────────────────────────
+
+pub async fn get_vault_ls(
+    State(state): State<AppState>,
+    Query(params): Query<ListDirQuery>,
+) -> impl IntoResponse {
+    let Some((agent_id, agent_name)) = active_agent(&state).await else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "no active agent"})),
+        )
+            .into_response();
+    };
+    let vault = MemoryVault::new(&agent_id, &agent_name, &state.vault_base);
+    let dir = params.dir.as_deref().unwrap_or("broadcasts");
+    Json(serde_json::json!({
+        "dir": dir,
+        "files": vault.list_dir(dir),
+    }))
+    .into_response()
 }
 
 // ─── GET /v1/vault/download ─────────────────────────────────────────────────

@@ -1,12 +1,13 @@
 use crate::bus::events::sovereign_event;
 use crate::interpreter::{ExecutionResult, Steward};
-use crate::parser::{MetadataPair, Statement, ThinkModifiers};
-use crate::vault::{
-    galaxy_data, insert_knowledge, list_files, load_vault_config, read_file, save_vault_config,
-    KnowledgeTriple, VaultConfig,
+use crate::memory_vault::handlers::{
+    get_access_log, get_galaxy_data, get_vault_config, get_vault_download, get_vault_file,
+    get_vault_ls, get_vault_status, post_vault_enable, post_vault_knowledge, post_vault_sync,
+    put_vault_config, search_vault,
 };
+use crate::parser::{MetadataPair, Statement, ThinkModifiers};
 use axum::{
-    extract::{Path, State},
+    extract::State,
     response::{
         sse::{Event, KeepAlive, Sse},
         IntoResponse, Json,
@@ -205,184 +206,6 @@ async fn status_handler(State(state): State<AppState>) -> Json<StatusResponse> {
 
 async fn health_handler() -> Json<HealthResponse> {
     Json(HealthResponse { ok: true })
-}
-
-// ---------------------------------------------------------------------------
-// Vault handlers
-// ---------------------------------------------------------------------------
-
-async fn vault_files_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let agent_id = {
-        let s = state.steward.lock().await;
-        s.agent_core().map(|a| a.id().as_str().to_string())
-    };
-    match agent_id {
-        None => (
-            axum::http::StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "no agent born"})),
-        )
-            .into_response(),
-        Some(id) => Json(list_files(&id)).into_response(),
-    }
-}
-
-async fn vault_read_file_handler(
-    State(state): State<AppState>,
-    Path(rel): Path<String>,
-) -> impl IntoResponse {
-    let agent_id = {
-        let s = state.steward.lock().await;
-        s.agent_core().map(|a| a.id().as_str().to_string())
-    };
-    match agent_id {
-        None => (
-            axum::http::StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "no agent born"})),
-        )
-            .into_response(),
-        Some(id) => match read_file(&id, &rel) {
-            Ok(content) => {
-                Json(serde_json::json!({"path": rel, "content": content})).into_response()
-            }
-            Err(e) => (
-                axum::http::StatusCode::NOT_FOUND,
-                Json(serde_json::json!({"error": e})),
-            )
-                .into_response(),
-        },
-    }
-}
-
-#[derive(Deserialize)]
-pub struct KnowledgeRequest {
-    pub subject: String,
-    pub predicate: String,
-    pub object: String,
-    #[serde(default)]
-    pub confidence: Option<f64>,
-}
-
-async fn vault_knowledge_handler(
-    State(state): State<AppState>,
-    Json(req): Json<KnowledgeRequest>,
-) -> impl IntoResponse {
-    let agent_id = {
-        let s = state.steward.lock().await;
-        s.agent_core().map(|a| a.id().as_str().to_string())
-    };
-    match agent_id {
-        None => (
-            axum::http::StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "no agent born"})),
-        )
-            .into_response(),
-        Some(id) => {
-            let triple = KnowledgeTriple {
-                subject: req.subject,
-                predicate: req.predicate,
-                object: req.object,
-                confidence: req.confidence.unwrap_or(1.0),
-                timestamp: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-            };
-            match insert_knowledge(&id, triple) {
-                Ok(()) => Json(serde_json::json!({"ok": true})).into_response(),
-                Err(e) => (
-                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({"error": e.to_string()})),
-                )
-                    .into_response(),
-            }
-        }
-    }
-}
-
-async fn vault_galaxy_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let agent_id = {
-        let s = state.steward.lock().await;
-        s.agent_core().map(|a| a.id().as_str().to_string())
-    };
-    match agent_id {
-        None => (
-            axum::http::StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "no agent born"})),
-        )
-            .into_response(),
-        Some(id) => Json(galaxy_data(&id)).into_response(),
-    }
-}
-
-#[derive(Deserialize)]
-pub struct SyncRequest {
-    #[serde(default)]
-    pub content: String,
-}
-
-async fn vault_sync_handler(
-    State(state): State<AppState>,
-    Json(req): Json<SyncRequest>,
-) -> impl IntoResponse {
-    let agent_id = {
-        let s = state.steward.lock().await;
-        s.agent_core().map(|a| a.id().as_str().to_string())
-    };
-    match agent_id {
-        None => (
-            axum::http::StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "no agent born"})),
-        )
-            .into_response(),
-        Some(id) => match crate::vault::vault_sync(&id, &req.content) {
-            Ok(()) => Json(serde_json::json!({"ok": true})).into_response(),
-            Err(e) => (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e.to_string()})),
-            )
-                .into_response(),
-        },
-    }
-}
-
-async fn vault_config_get_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let agent_id = {
-        let s = state.steward.lock().await;
-        s.agent_core().map(|a| a.id().as_str().to_string())
-    };
-    match agent_id {
-        None => (
-            axum::http::StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "no agent born"})),
-        )
-            .into_response(),
-        Some(id) => Json(load_vault_config(&id)).into_response(),
-    }
-}
-
-async fn vault_config_put_handler(
-    State(state): State<AppState>,
-    Json(cfg): Json<VaultConfig>,
-) -> impl IntoResponse {
-    let agent_id = {
-        let s = state.steward.lock().await;
-        s.agent_core().map(|a| a.id().as_str().to_string())
-    };
-    match agent_id {
-        None => (
-            axum::http::StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "no agent born"})),
-        )
-            .into_response(),
-        Some(id) => match save_vault_config(&id, &cfg) {
-            Ok(()) => Json(serde_json::json!({"ok": true})).into_response(),
-            Err(e) => (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": e.to_string()})),
-            )
-                .into_response(),
-        },
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -587,14 +410,19 @@ pub fn create_router(state: AppState) -> Router {
         .route("/v1/events", get(events_handler))
         .route("/v1/status", get(status_handler))
         .route("/v1/health", get(health_handler))
-        // Vault routes
-        .route("/v1/vault/files", get(vault_files_handler))
-        .route("/v1/vault/file/*rel", get(vault_read_file_handler))
-        .route("/v1/vault/knowledge", post(vault_knowledge_handler))
-        .route("/v1/vault/galaxy", get(vault_galaxy_handler))
-        .route("/v1/vault/sync", post(vault_sync_handler))
-        .route("/v1/vault/config", get(vault_config_get_handler))
-        .route("/v1/vault/config", put(vault_config_put_handler))
+        // Memory vault routes
+        .route("/v1/vault", get(get_vault_status))
+        .route("/v1/vault/config", get(get_vault_config))
+        .route("/v1/vault/config", put(put_vault_config))
+        .route("/v1/vault/sync", post(post_vault_sync))
+        .route("/v1/vault/galaxy", get(get_galaxy_data))
+        .route("/v1/vault/search", get(search_vault))
+        .route("/v1/vault/enable", post(post_vault_enable))
+        .route("/v1/vault/knowledge", post(post_vault_knowledge))
+        .route("/v1/vault/access-log", get(get_access_log))
+        .route("/v1/vault/download", get(get_vault_download))
+        .route("/v1/vault/ls", get(get_vault_ls))
+        .route("/v1/vault/file/*path", get(get_vault_file))
         // Rhythm route
         .route("/v1/rhythm/today", get(rhythm_today_handler))
         .layer(CorsLayer::permissive())

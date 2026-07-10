@@ -481,9 +481,9 @@ fn spawn_heartbeat(steward: Arc<Mutex<Steward>>) {
             // 1. PERCEIVE — pull her real situation from the Vantage mesh
             //    (neighbors + trust + available resources). Fail-open to None.
             let perception = crate::tools::mesh_tools::observe_mesh_context(&agent_id).await;
-            let ctx = perception
-                .clone()
-                .unwrap_or_else(|| "No neighbors or resources visible on the mesh yet.".to_string());
+            let ctx = perception.clone().unwrap_or_else(|| {
+                "No neighbors or resources visible on the mesh yet.".to_string()
+            });
 
             // 2. THINK — reflect on what she perceives (routes through her BYOK
             //    key + identity anchor via the compiled-think path).
@@ -501,8 +501,13 @@ fn spawn_heartbeat(steward: Arc<Mutex<Steward>>) {
                 .await
             {
                 Ok(result) => {
-                    let thought = ExecutionResponse::from(result).tool_output.unwrap_or_default();
-                    println!("[heartbeat] {}", thought.chars().take(180).collect::<String>());
+                    let thought = ExecutionResponse::from(result)
+                        .tool_output
+                        .unwrap_or_default();
+                    println!(
+                        "[heartbeat] {}",
+                        thought.chars().take(180).collect::<String>()
+                    );
                     thought
                 }
                 Err(e) => {
@@ -520,9 +525,8 @@ fn spawn_heartbeat(steward: Arc<Mutex<Steward>>) {
                 "intent": intent.chars().take(200).collect::<String>(),
                 "perceived_mesh": perception.is_some(),
             });
-            let params =
-                serde_json::json!({"event_type": "heartbeat_pulse", "details": details})
-                    .to_string();
+            let params = serde_json::json!({"event_type": "heartbeat_pulse", "details": details})
+                .to_string();
             match guard
                 .dispatch(Statement::Act {
                     tool: "mesh_signal_event".to_string(),

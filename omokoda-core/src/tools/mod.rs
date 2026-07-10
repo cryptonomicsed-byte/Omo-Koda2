@@ -19,6 +19,7 @@ pub mod structured_output;
 pub mod todo;
 pub mod tool_definitions;
 pub mod validation;
+pub mod zero_tool;
 
 #[derive(Debug, Clone)]
 pub struct ExecutionContext {
@@ -161,6 +162,7 @@ impl ToolRegistry {
         registry.register(Box::new(todo::WriteTodoTool));
         registry.register(Box::new(todo::ReadTodoTool));
         registry.register(Box::new(structured_output::StructuredOutputTool));
+        registry.register(Box::new(zero_tool::ZeroTool));
         registry.register(Box::new(repl::ReplTool));
         registry.register(Box::new(config_tool::ConfigReadTool));
         registry.register(Box::new(config_tool::ConfigWriteTool));

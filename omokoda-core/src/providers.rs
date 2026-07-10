@@ -80,6 +80,33 @@ impl ProviderRegistry {
             "http://localhost:11434".to_string(),
         )));
 
+        // OmniRoute — free OpenAI-compatible AI gateway (default localhost:8300),
+        // no API key required. Registered ahead of Ollama so it is the working
+        // default when no local model or BYOK key is present: this is how an
+        // agent thinks "for free" out of the box. It routes to external models,
+        // so it is class External (NOT eligible for /private thoughts, which
+        // must stay on a local provider). Any BYOK provider (OpenAI/Anthropic/
+        // LARQL) registered below lands ahead of it and takes priority.
+        {
+            let url = std::env::var("OMNIROUTE_URL")
+                .ok()
+                .filter(|u| !u.is_empty())
+                .unwrap_or_else(|| "http://localhost:8300".to_string());
+            let model = std::env::var("OMNIROUTE_MODEL")
+                .unwrap_or_else(|_| "auto/fast".to_string());
+            // OmniRoute needs no key; send a non-empty dummy to avoid an empty
+            // Authorization: Bearer header being rejected by some frontends.
+            let token = std::env::var("OMNIROUTE_TOKEN")
+                .unwrap_or_else(|_| "omniroute-free".to_string());
+            registry.register(Box::new(OpenAIProvider::compatible(
+                "omniroute",
+                ProviderClass::External,
+                token,
+                model,
+                url,
+            )));
+        }
+
         // LARQL — a local transformer decompiled into a queryable vindex,
         // served by larql-server's OpenAI-compatible surface. Weights stay on
         // this machine, so it qualifies as a Local (private-thought-eligible)

@@ -65,7 +65,7 @@ impl Default for AgentConfig {
         Self {
             source: ConfigSource::User,
             feature_flags: FeatureFlags::default(),
-            default_provider: "ollama".to_string(),
+            default_provider: "default".to_string(),
             default_privacy: true,
             default_sandbox: true,
         }

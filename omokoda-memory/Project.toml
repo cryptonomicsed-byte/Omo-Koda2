@@ -6,6 +6,7 @@ authors = ["Omo-Koda"]
 [deps]
 HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 JSON3 = "0f8b85d8-7e73-4b43-a3f2-7c045775d2be"
+SHA = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 
 [compat]
 julia = "1.9"

@@ -19,6 +19,8 @@ include("nist_tests.jl")
 include("augury.jl")
 include("depin_optimizer.jl")
 include("garden_analytics.jl")
+include("rem_fractal.jl")
+include("glyph_memory.jl")
 
 export
     # Busy Beaver
@@ -40,6 +42,15 @@ export
     monte_carlo_reliability, parse_node, parse_task,
 
     # Garden Analytics
-    Receipt, parse_receipt, analyse_receipts, augury_feed
+    Receipt, parse_receipt, analyse_receipts, augury_feed,
+
+    # REM fractal planner
+    rem_fractal_dimension, rem_plan,
+
+    # GlyphIndex sovereign memory (Ọ̀ṣun layer)
+    glyph_fold, glyph_content_hash, glyph_odu_link,
+    AgentGlyphVault, GlyphMemoryNode,
+    glyph_birth, glyph_remember!, glyph_touch!,
+    glyph_rem_nodes, glyph_apply_rem!, glyph_dream!
 
 end

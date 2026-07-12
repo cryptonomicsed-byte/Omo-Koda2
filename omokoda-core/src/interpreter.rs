@@ -2674,10 +2674,16 @@ impl Steward {
                     {
                         Ok(Ok(r)) => r,
                         Ok(Err(e)) => {
-                            return Err(format!("Provider error on turn {} (byok): {}", turn_count, e))
+                            return Err(format!(
+                                "Provider error on turn {} (byok): {}",
+                                turn_count, e
+                            ))
                         }
                         Err(_) => {
-                            return Err(format!("Provider error on turn {} (byok): timed out", turn_count))
+                            return Err(format!(
+                                "Provider error on turn {} (byok): timed out",
+                                turn_count
+                            ))
                         }
                     }
                 }

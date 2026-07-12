@@ -509,8 +509,13 @@ fn spawn_heartbeat(steward: Arc<Mutex<Steward>>) {
                 .await
             {
                 Ok(result) => {
-                    let thought = ExecutionResponse::from(result).tool_output.unwrap_or_default();
-                    println!("[heartbeat] {}", thought.chars().take(180).collect::<String>());
+                    let thought = ExecutionResponse::from(result)
+                        .tool_output
+                        .unwrap_or_default();
+                    println!(
+                        "[heartbeat] {}",
+                        thought.chars().take(180).collect::<String>()
+                    );
                     thought
                 }
                 Err(e) => {
@@ -528,9 +533,8 @@ fn spawn_heartbeat(steward: Arc<Mutex<Steward>>) {
                 "intent": intent.chars().take(200).collect::<String>(),
                 "perceived_mesh": perception.is_some(),
             });
-            let params =
-                serde_json::json!({"event_type": "heartbeat_pulse", "details": details})
-                    .to_string();
+            let params = serde_json::json!({"event_type": "heartbeat_pulse", "details": details})
+                .to_string();
             match guard
                 .dispatch(Statement::Act {
                     tool: "mesh_signal_event".to_string(),

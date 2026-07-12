@@ -38,12 +38,27 @@ pub enum FieldVerb {
     Dance,
 }
 
+/// One agent's capability record: the bearer token plus its issuance lineage —
+/// which minting path (origin) issued it and when. Lineage is what turns a
+/// Sybil ring visible: N identities minted from one compromised path share an
+/// origin even though each token is individually valid.
+struct Capability {
+    token: String,
+    origin: String,
+    issued_at: Instant,
+}
+
 /// Session-scoped capability tokens, issued by Èṣù when an agent is born and
 /// checked on every field write. Folded into the same dispatch that already
 /// gates think/act — the crossroads keeper decides who may leave scent.
+///
+/// Beyond per-call validity, the gate tracks issuance *lineage* so a
+/// same-origin cluster (a Sybil ring minted from one path in a burst) can be
+/// flagged even when every individual token is technically valid — the
+/// red-team's Sybil scenario is exactly this attack (round 2, #1).
 #[derive(Default)]
 pub struct CapabilityGate {
-    tokens: Mutex<HashMap<String, String>>, // agent id -> bearer token
+    caps: Mutex<HashMap<String, Capability>>, // agent id -> capability
 }
 
 impl CapabilityGate {
@@ -51,30 +66,75 @@ impl CapabilityGate {
         Self::default()
     }
 
-    /// Issue (or re-issue) an agent's field capability. Returns the token
-    /// the agent must present on every gated verb.
+    /// Issue an agent's field capability from an unnamed origin (the agent
+    /// itself). Prefer `issue_from` when a minting path is known.
     pub fn issue(&self, agent: &str) -> String {
+        self.issue_from(agent, agent)
+    }
+
+    /// Issue an agent's field capability, recording the minting `origin` so
+    /// lineage analysis can later cluster same-origin identities.
+    pub fn issue_from(&self, agent: &str, origin: &str) -> String {
         let token = format!("{:016x}{:016x}", fastrand_u64(), fastrand_u64());
-        self.tokens
-            .lock()
-            .unwrap()
-            .insert(agent.to_string(), token.clone());
+        self.caps.lock().unwrap().insert(
+            agent.to_string(),
+            Capability {
+                token: token.clone(),
+                origin: origin.to_string(),
+                issued_at: Instant::now(),
+            },
+        );
         token
     }
 
     /// Revoke an agent's capability (death, quarantine, misbehavior).
     pub fn revoke(&self, agent: &str) {
-        self.tokens.lock().unwrap().remove(agent);
+        self.caps.lock().unwrap().remove(agent);
     }
 
     /// Authorize one field verb. All four gated verbs share the one check;
     /// unknown agents and stale tokens are refused.
     pub fn authorize(&self, agent: &str, _verb: FieldVerb, token: &str) -> bool {
-        self.tokens
+        self.caps
             .lock()
             .unwrap()
             .get(agent)
-            .is_some_and(|t| constant_time_eq(t.as_bytes(), token.as_bytes()))
+            .is_some_and(|c| constant_time_eq(c.token.as_bytes(), token.as_bytes()))
+    }
+
+    /// Flag same-origin clusters: any minting origin that issued at least
+    /// `min_ring` capabilities within `window` is a suspected Sybil ring.
+    /// Returns (origin, [agent ids]) for each ring, so the caller can discount
+    /// their corroboration or quarantine the origin. This is the piece the
+    /// bare field can't do — the field sees N independent agents; Èṣù sees
+    /// they were all minted from one path in one burst.
+    pub fn suspected_rings(&self, window: Duration, min_ring: usize) -> Vec<(String, Vec<String>)> {
+        let caps = self.caps.lock().unwrap();
+        let now = Instant::now();
+        let mut by_origin: HashMap<&str, Vec<(&str, Instant)>> = HashMap::new();
+        for (agent, cap) in caps.iter() {
+            by_origin
+                .entry(cap.origin.as_str())
+                .or_default()
+                .push((agent.as_str(), cap.issued_at));
+        }
+        let mut rings = Vec::new();
+        for (origin, mut members) in by_origin {
+            // an origin issuing to itself only (origin == agent) is not a ring
+            if members.len() < min_ring || (members.len() == 1 && members[0].0 == origin) {
+                continue;
+            }
+            let burst: Vec<String> = members
+                .iter()
+                .filter(|(_, t)| now.duration_since(*t) <= window)
+                .map(|(a, _)| a.to_string())
+                .collect();
+            if burst.len() >= min_ring {
+                members.sort_by_key(|(_, t)| *t);
+                rings.push((origin.to_string(), burst));
+            }
+        }
+        rings
     }
 }
 
@@ -303,6 +363,37 @@ mod tests {
         let t2 = gate.issue("esu-child-1");
         assert!(gate.authorize("esu-child-1", FieldVerb::Release, &t2));
         assert!(!gate.authorize("esu-child-1", FieldVerb::Release, &token));
+    }
+
+    #[test]
+    fn suspected_rings_flags_same_origin_sybil() {
+        let gate = CapabilityGate::new();
+        // a compromised minting path issues 5 identities in a burst
+        for i in 0..5 {
+            gate.issue_from(&format!("sybil-{i}"), "compromised-path");
+        }
+        // plus a handful of honest agents, each its own origin
+        gate.issue("honest-a");
+        gate.issue("honest-b");
+
+        let rings = gate.suspected_rings(Duration::from_secs(60), 3);
+        assert_eq!(rings.len(), 1, "exactly one ring expected: {rings:?}");
+        let (origin, members) = &rings[0];
+        assert_eq!(origin, "compromised-path");
+        assert_eq!(members.len(), 5);
+        // honest self-origin agents are never a ring
+        assert!(!rings
+            .iter()
+            .any(|(o, _)| o == "honest-a" || o == "honest-b"));
+    }
+
+    #[test]
+    fn suspected_rings_ignores_small_or_slow_groups() {
+        let gate = CapabilityGate::new();
+        // only 2 from one origin: below the ring threshold
+        gate.issue_from("a", "shared");
+        gate.issue_from("b", "shared");
+        assert!(gate.suspected_rings(Duration::from_secs(60), 3).is_empty());
     }
 
     #[test]

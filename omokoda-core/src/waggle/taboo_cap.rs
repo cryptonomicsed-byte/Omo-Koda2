@@ -106,16 +106,23 @@ mod tests {
     // core/tabooauth_test.go pin. Same seed + same payload ⇒ same public key and
     // same signature, proving the issuer and verifier interoperate.
     const VECTOR_SEED: [u8; 32] = [1u8; 32];
-    const VECTOR_PUBKEY: &str =
-        "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c";
+    const VECTOR_PUBKEY: &str = "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c";
     const VECTOR_TOKEN: &str = "7b226167656e74223a226f626174616c612d6368696c642d31222c2273636f7065223a227461626f6f222c226c696e65616765223a226f626174616c613a7665726966696564222c22696174223a313030303030303030302c22657870223a323030303030303030307d.85aaac79be8c3f3cc232b10e4ecfa99e68261151faef1fc1fbd2568c15477d904413213d91429d341f2d2ad5667a7f13406504d48f1e5cec2ebe740171c02308";
 
     #[test]
     fn matches_go_vector() {
         let issuer = TabooCapIssuer::from_seed(&VECTOR_SEED);
         assert_eq!(issuer.public_key_hex(), VECTOR_PUBKEY, "public key drift");
-        let token = issuer.sign_payload("obatala-child-1", "obatala:verified", 1_000_000_000, 2_000_000_000);
-        assert_eq!(token, VECTOR_TOKEN, "signature/token drift from Go verifier");
+        let token = issuer.sign_payload(
+            "obatala-child-1",
+            "obatala:verified",
+            1_000_000_000,
+            2_000_000_000,
+        );
+        assert_eq!(
+            token, VECTOR_TOKEN,
+            "signature/token drift from Go verifier"
+        );
     }
 
     #[test]

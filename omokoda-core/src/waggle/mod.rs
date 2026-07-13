@@ -22,6 +22,9 @@ use serde_json::{json, Value};
 
 use crate::steward::gatekeeper::GatekeeperResult;
 
+pub mod taboo_cap;
+pub use taboo_cap::{is_obatala_lineage, TabooCapIssuer};
+
 fn waggle_url() -> String {
     std::env::var("WAGGLE_URL").unwrap_or_else(|_| "http://127.0.0.1:7777".to_string())
 }
@@ -205,11 +208,22 @@ impl Default for MarkThrottle {
 
 /// Thin async client for the substrate. Best-effort by contract: every call
 /// returns Option and swallows transport errors — no scent, no harm.
+/// The authority to leave taboos: Èṣù's signing key plus this agent's proven
+/// Ọbàtálá lineage. When present, taboo deposits self-attach a capability the
+/// daemon verifies; when absent, taboos go out unauthenticated (accepted only
+/// by a daemon not running the gate, or in its observe mode).
+struct TabooAuthority {
+    issuer: TabooCapIssuer,
+    lineage: String,
+    ttl_secs: i64,
+}
+
 pub struct WaggleField {
     http: reqwest::Client,
     base: String,
     agent: String,
     watch_id: Mutex<Option<String>>,
+    taboo_authority: Option<TabooAuthority>,
 }
 
 impl WaggleField {
@@ -222,7 +236,26 @@ impl WaggleField {
             base: waggle_url(),
             agent: agent.into(),
             watch_id: Mutex::new(None),
+            taboo_authority: None,
         }
+    }
+
+    /// Grant this field the authority to leave authenticated taboos, from
+    /// Èṣù's signing seed and this agent's verified lineage. A no-op (leaves
+    /// the field unable to mint taboos) unless the lineage clears the Ọbàtálá
+    /// bar — the same check the issuer enforces, surfaced early so a
+    /// misconfigured identity fails loudly at wiring time, not silently at
+    /// deposit time.
+    pub fn with_taboo_authority(mut self, seed: &[u8; 32], lineage: impl Into<String>) -> Self {
+        let lineage = lineage.into();
+        if is_obatala_lineage(&lineage) {
+            self.taboo_authority = Some(TabooAuthority {
+                issuer: TabooCapIssuer::from_seed(seed),
+                lineage,
+                ttl_secs: 300,
+            });
+        }
+        self
     }
 
     async fn post(&self, path: &str, body: Value) -> Option<Value> {
@@ -245,14 +278,21 @@ impl WaggleField {
         note: &str,
         meta: Value,
     ) -> Option<Value> {
-        self.post(
-            "/v1/signals",
-            json!({
-                "agent": self.agent, "resource": resource, "kind": kind,
-                "intensity": intensity, "note": note, "meta": meta,
-            }),
-        )
-        .await
+        let mut body = json!({
+            "agent": self.agent, "resource": resource, "kind": kind,
+            "intensity": intensity, "note": note, "meta": meta,
+        });
+        // taboo censors an action, so it self-authenticates: mint a fresh
+        // Èṣù capability for this deposit when we hold the authority. Other
+        // channels never carry one.
+        if kind == "taboo" {
+            if let Some(auth) = &self.taboo_authority {
+                if let Some(cap) = auth.issuer.issue(&self.agent, &auth.lineage, auth.ttl_secs) {
+                    body["capability"] = json!(cap);
+                }
+            }
+        }
+        self.post("/v1/signals", body).await
     }
 
     pub async fn sniff(&self, resource: &str, kind: &str) -> Option<Value> {

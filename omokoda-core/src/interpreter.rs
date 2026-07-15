@@ -940,7 +940,7 @@ impl Steward {
                         "index": reg_odu,
                         "name": odu_full.universal_name,
                         "archetype": odu_full.archetype,
-                        "orisha": odu_full.orisha,
+                        "archetypes": odu_full.archetypes,
                         "taboos": odu_full.taboos,
                         "prescriptions": odu_full.prescriptions,
                         "opcode": format!("{:?}", odu_full.opcode),

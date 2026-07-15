@@ -2296,7 +2296,7 @@ dependencies = [
 [[package]]
 name = "ifascript"
 version = "0.2.0"
-source = "git+https://github.com/cryptonomicsed-byte/If-Script?rev=53eea72afc23c6618594c59bb1007b03db5774d9#53eea72afc23c6618594c59bb1007b03db5774d9"
+source = "git+https://github.com/cryptonomicsed-byte/If-Script?rev=31198960d76b17e435645cfc5446e555714128c4#31198960d76b17e435645cfc5446e555714128c4"
 dependencies = [
  "chrono",
  "clap",

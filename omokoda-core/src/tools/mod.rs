@@ -13,6 +13,7 @@ pub mod mesh_tools;
 pub mod repl;
 pub mod retry;
 pub mod skills;
+pub mod skillforge;
 pub mod sovereign;
 pub mod streaming;
 pub mod structured_output;
@@ -44,6 +45,11 @@ pub trait Tool: Send + Sync {
     fn is_write_operation(&self) -> bool;
     fn params_schema(&self) -> Option<serde_json::Value> {
         None
+    }
+    /// Max seconds the registry allows this tool to run before timing out.
+    /// Default 60s; long-running tools (e.g. full security scans) raise it.
+    fn timeout_secs(&self) -> u64 {
+        60
     }
     async fn execute(
         &self,
@@ -189,6 +195,9 @@ impl ToolRegistry {
         registry.register(Box::new(skills::SkillsListTool::new(
             registry.external_skills.clone(),
         )));
+        registry.register(Box::new(skillforge::SkillForgeTool::new(
+            registry.external_skills.clone(),
+        )));
 
         registry
     }
@@ -199,6 +208,17 @@ impl ToolRegistry {
 
     /// Register one external service skill (a config-driven HTTP adapter). The
     /// skill becomes invocable as `act <name>` and appears in the `skills` list.
+    /// Hot-add a skill for the current session without `&mut self`. It becomes
+    /// invocable through `execute`/`is_allowed` immediately via dynamic
+    /// resolution and shows up in the `skills` discovery list. Used by
+    /// SkillForge to make a freshly forged skill usable in the same session.
+    pub fn add_session_skill(&self, entry: skills::SkillManifestEntry) {
+        if let Ok(mut g) = self.external_skills.lock() {
+            g.retain(|s| s.name != entry.name);
+            g.push(entry);
+        }
+    }
+
     pub fn register_skill(&mut self, entry: skills::SkillManifestEntry) {
         if let Ok(mut g) = self.external_skills.lock() {
             g.push(entry.clone());
@@ -220,9 +240,17 @@ impl ToolRegistry {
     }
 
     pub fn is_allowed(&self, name: &str, tier: u8) -> bool {
-        self.tools
-            .get(name)
-            .is_some_and(|t| tier >= t.required_tier())
+        if let Some(t) = self.tools.get(name) {
+            return tier >= t.required_tier();
+        }
+        // Skills forged during this session live in external_skills until the
+        // next registry load; honor their declared tier so they are invocable.
+        if let Ok(g) = self.external_skills.lock() {
+            if let Some(e) = g.iter().find(|e| e.name == name) {
+                return tier >= e.required_tier;
+            }
+        }
+        false
     }
 
     pub fn list_available(
@@ -272,10 +300,23 @@ impl ToolRegistry {
         policy: &crate::permissions::PermissionPolicy,
         prompter: Option<&mut (dyn crate::permissions::PermissionPrompter + Send)>,
     ) -> Result<(String, crate::usage::TokenUsage), String> {
-        let tool = self
-            .tools
-            .get(name)
-            .ok_or_else(|| format!("tool not found: {}", name))?;
+        // Resolve either a statically-registered tool or a skill forged during
+        // this session (present in external_skills but not yet in the tool map).
+        let dynamic_tool: Option<Box<dyn Tool>> = if self.tools.contains_key(name) {
+            None
+        } else {
+            self.external_skills
+                .lock()
+                .ok()
+                .and_then(|g| g.iter().find(|e| e.name == name).cloned())
+                .map(|entry| Box::new(skills::ExternalServiceTool::new(entry)) as Box<dyn Tool>)
+        };
+        let tool: &dyn Tool = match self.tools.get(name) {
+            Some(t) => t.as_ref(),
+            None => dynamic_tool
+                .as_deref()
+                .ok_or_else(|| format!("tool not found: {}", name))?,
+        };
 
         if context.tier < tool.required_tier() {
             return Err(format!(
@@ -316,11 +357,12 @@ impl ToolRegistry {
             return Err(format!("Permission denied: {}", reason));
         }
 
-        // 4. Execute with timeout and output limit
-        let timeout_duration = std::time::Duration::from_secs(60);
+        // 4. Execute with timeout and output limit (per-tool budget)
+        let secs = tool.timeout_secs();
+        let timeout_duration = std::time::Duration::from_secs(secs);
         let exec_res = tokio::time::timeout(timeout_duration, tool.execute(params, &context))
             .await
-            .map_err(|_| format!("Tool '{}' timed out after 60s", name))??;
+            .map_err(|_| format!("Tool '{}' timed out after {}s", name, secs))??;
 
         let (mut output, usage) = exec_res;
 

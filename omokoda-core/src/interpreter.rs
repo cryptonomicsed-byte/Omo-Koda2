@@ -876,6 +876,10 @@ impl Steward {
         match stmt {
             Statement::Birth { name, metadata } => {
                 // Phase 1-7: BIRTH = 7^1 (fractal depth 1)
+                let is_sovereign = metadata.iter().any(|p| {
+                    p.key == "sovereign"
+                        && (p.value.eq_ignore_ascii_case("true") || p.value == "1")
+                });
                 self.birth(name, metadata)?;
                 let agent = self.ensure_born()?;
                 let provider = agent.session().config.default_provider.clone();
@@ -886,6 +890,12 @@ impl Steward {
                     return Err(format!("unknown provider '{}' in birth metadata", provider));
                 }
                 self.auto_save();
+                if is_sovereign {
+                    // The owner's canonical identity — remember which agent id
+                    // this was so a restart can resurrect her instead of
+                    // minting a stranger. See try_load_owner().
+                    let _ = self.write_owner_pointer();
+                }
 
                 // Write broadcast template to vault on birth
                 let agent_id_for_vault = agent.id().as_str().to_string();
@@ -1626,9 +1636,10 @@ impl Steward {
                 let _ = self.event_bus.publish(event);
 
                 // Zàngbétò enforcement audit
-                {
+                let zangbeto_audit_passed = {
                     let state_bytes = hex::decode(&receipt.merkle_root).unwrap_or_default();
                     let audit = zangbeto_enforcement::audit_state(&state_bytes);
+                    let passed = audit.passed;
                     if audit.passed {
                         let audit_event = SovereignEvent {
                             event: Some(sovereign_event::Event::AuditPassed(
@@ -1653,7 +1664,20 @@ impl Steward {
                         };
                         let _ = self.event_bus.publish(denial);
                     }
-                }
+                    passed
+                };
+
+                // Ṣàngó receipt relay — fire-and-forget, fail-open when
+                // SANGO_URL is unset. Reports the same act this response is
+                // about to return, so an on-chain-anchored receipt trail can
+                // exist independent of local session state.
+                crate::bus::sango::write_receipt(
+                    agent_id.as_str(),
+                    &tool,
+                    hermetic_score as f32,
+                    if zangbeto_audit_passed { "approved" } else { "flagged" },
+                )
+                .await;
 
                 self.auto_save();
 
@@ -2477,6 +2501,35 @@ impl Steward {
                 let _ = secure_write(&path, content.as_bytes());
             }
         }
+    }
+
+    /// Path to the stable "who is the owner's agent" pointer — sibling to the
+    /// per-agent session directories, never versioned by agent id.
+    fn owner_pointer_path(&self) -> PathBuf {
+        self.session_dir.join("owner_agent_id")
+    }
+
+    /// Record the current agent as the owner's canonical identity. Called on
+    /// birth when the `sovereign` metadata flag is set.
+    fn write_owner_pointer(&self) -> Result<(), String> {
+        let agent = self.agent.as_ref().ok_or("no agent to record as owner")?;
+        std::fs::write(self.owner_pointer_path(), agent.id().as_str())
+            .map_err(|e| format!("failed to write owner pointer: {e}"))
+    }
+
+    /// On startup, resurrect the owner's agent from her last persisted state
+    /// instead of waiting to be reborn as a stranger. Returns true if an
+    /// existing identity was successfully restored.
+    pub fn try_load_owner(&mut self) -> bool {
+        let Ok(id_str) = std::fs::read_to_string(self.owner_pointer_path()) else {
+            return false;
+        };
+        let id_str = id_str.trim();
+        if id_str.is_empty() {
+            return false;
+        }
+        let agent_id = AgentId::from_str(id_str);
+        self.load_agent(&agent_id).is_ok()
     }
 
     pub fn load_agent(&mut self, agent_id: &AgentId) -> Result<(), String> {

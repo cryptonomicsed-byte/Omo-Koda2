@@ -8,8 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/omo-koda/oya/internal/flow"
-	"github.com/omo-koda/oya/internal/ratelimit"
+	"github.com/omo-koda/omokoda-go/internal/flow"
+	"github.com/omo-koda/omokoda-go/internal/ratelimit"
 )
 
 func main() {
@@ -22,7 +22,7 @@ func main() {
 		httpPort = "8080"
 	}
 
-	limiter := ratelimit.New()
+	limiter := ratelimit.New(0) // zero ttl → defaults to 1 hour idle-bucket expiry
 	svc := flow.NewService(limiter)
 	store := flow.NewPrimitiveStore()
 

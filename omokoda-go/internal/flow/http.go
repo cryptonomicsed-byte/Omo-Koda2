@@ -42,6 +42,23 @@ func cooldownDuration(primitive string) time.Duration {
 	}
 }
 
+// corsMiddleware allows the Axiom browser dashboard (a different origin/port)
+// to call this service directly, matching the permissive CORS the Rust
+// kernel (:7777), LOOM (:8889), the Julia memory service (:7778), and the
+// Elixir swarm (:4000) already use.
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // NewHTTPHandler returns an http.Handler for the ỌYA REST API.
 func NewHTTPHandler(store *PrimitiveStore) http.Handler {
 	mux := http.NewServeMux()
@@ -87,5 +104,5 @@ func NewHTTPHandler(store *PrimitiveStore) http.Handler {
 		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 	})
 
-	return mux
+	return corsMiddleware(mux)
 }

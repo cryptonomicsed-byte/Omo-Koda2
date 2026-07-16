@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/omo-koda/oya/internal/ratelimit"
+	"github.com/omo-koda/omokoda-go/internal/ratelimit"
 )
 
 // FlowService enforces rate limiting and Sabbath rhythm constraints.
@@ -21,8 +21,8 @@ func (s *FlowService) EnforceFlow(agentID string, tier int) error {
 	if isSabbath() {
 		return fmt.Errorf("rhythm_constraint: Saturday 00:00-01:00 UTC — Sabbath gate active, no actions allowed")
 	}
-	if !s.limiter.Allow(agentID, tier) {
-		return fmt.Errorf("rate_limit_exceeded: tier %d limit reached for agent %s", tier, agentID)
+	if err := s.limiter.Allow(agentID, uint8(tier)); err != nil {
+		return fmt.Errorf("rate_limit_exceeded: tier %d limit reached for agent %s: %w", tier, agentID, err)
 	}
 	return nil
 }

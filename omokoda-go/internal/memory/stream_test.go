@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/omo-koda/oya/internal/memory"
+	"github.com/omo-koda/omokoda-go/internal/memory"
 )
 
 func TestAppendAndSearch(t *testing.T) {

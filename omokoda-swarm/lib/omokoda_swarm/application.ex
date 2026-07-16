@@ -18,7 +18,8 @@ defmodule OmokodaSwarm.Application do
       OmokodaSwarm.TeammateLayoutManager,
       OmokodaSwarm.PermissionSync,
       OmokodaSwarm.Mesh.Presence,
-      OmokodaSwarm.Mesh.NeighborSupervisor
+      OmokodaSwarm.Mesh.NeighborSupervisor,
+      OmokodaSwarm.HttpApi
     ]
 
     opts = [strategy: :one_for_one, name: OmokodaSwarm.Supervisor]

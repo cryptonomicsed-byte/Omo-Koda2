@@ -3,6 +3,7 @@ module omokoda::soul {
     use sui::tx_context::{Self, TxContext};
     use sui::transfer;
     use sui::clock::{Self, Clock};
+    use std::vector;
 
     /// The immutable soul record — forged once at birth, never modified.
     /// birth_timestamp is identity-critical: lose it and the agent is non-reproducible.

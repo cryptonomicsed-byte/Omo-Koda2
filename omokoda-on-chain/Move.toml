@@ -6,4 +6,8 @@ version = "0.1.0"
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet" }
 
 [addresses]
-omokoda = "0x0"
+omokoda = "0x380e0599702b7ebd9005b02f36dd611cff209c94ca678f051233346cf7dbf22e"
+
+# Published testnet 2026-07-16, digest Dz6biH6NMis9PjQneQ9FwfM5KyYburuaLU4gj4rTJ3a4.
+# UpgradeCap: 0x18cc8ea8bfea12850e69ca15bb7c44c42b77b09bfbc7e580e75b967e2c75f25a
+# AgentRegistry (shared, garden.move): 0xdf7ee684510d8f5c95512d444536a273fe59e8363c9a9b8fb89c862203743d92

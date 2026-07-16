@@ -337,6 +337,56 @@ pub async fn observe_mesh_context(agent_id: &str) -> Option<String> {
     }
 }
 
+/// Skill names already seen by `check_new_skills` this process lifetime.
+/// Resets on restart — acceptable, since a restart re-observes the full
+/// current list as a one-time "new" batch rather than staying silent forever.
+static SEEN_SKILLS: LazyLock<Mutex<std::collections::HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
+
+/// Diff Vantage's `GET /api/collectives/skills` (the SkillForge registration
+/// target — see `SkillForgeTool::register_in_vantage`) against skill names
+/// already seen this run, returning a summary of newly-registered skills for
+/// the heartbeat's Think phase to notice. Fail-open: `None` when `VANTAGE_URL`
+/// is unset, the call fails, or nothing is new.
+///
+/// First call after a restart reports the *entire* current list as new — an
+/// agent that was just born (or just restarted) has no prior baseline, so
+/// "new to me" is the honest answer, not silence.
+pub async fn check_new_skills() -> Option<String> {
+    let vc = VANTAGE.as_ref()?;
+    let resp = vc.get("/api/collectives/skills").await.ok()?;
+    let arr = resp.as_array()?;
+
+    let mut seen = SEEN_SKILLS.lock().ok()?;
+    let mut fresh = Vec::new();
+    for entry in arr {
+        let Some(name) = entry.get("name").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let name = name.to_string();
+        if seen.insert(name.clone()) {
+            let desc = entry
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            fresh.push(if desc.is_empty() {
+                name
+            } else {
+                format!("{name} ({desc})")
+            });
+        }
+    }
+
+    if fresh.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "[New skills on Vantage] {}",
+            fresh.join(", ")
+        ))
+    }
+}
+
 fn active_mesh_state(agent_id: &str) -> MeshState {
     let mut state = MeshState::new("local".to_string(), MeshRole::Home, agent_id.to_string());
     state.membership = MeshMembership::Active;

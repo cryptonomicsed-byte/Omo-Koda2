@@ -479,11 +479,19 @@ fn spawn_heartbeat(steward: Arc<Mutex<Steward>>) {
             }
 
             // 1. PERCEIVE — pull her real situation from the Vantage mesh
-            //    (neighbors + trust + available resources). Fail-open to None.
+            //    (neighbors + trust + available resources), plus any skills
+            //    newly registered on Vantage since her last cycle (SkillForge
+            //    lands skills via POST /api/collectives/skills; nothing else
+            //    in the kernel ever re-checks that list). Fail-open to None.
             let perception = crate::tools::mesh_tools::observe_mesh_context(&agent_id).await;
-            let ctx = perception
+            let new_skills = crate::tools::mesh_tools::check_new_skills().await;
+            let mut ctx = perception
                 .clone()
                 .unwrap_or_else(|| "No neighbors or resources visible on the mesh yet.".to_string());
+            if let Some(skills_note) = &new_skills {
+                ctx.push_str("\n\n");
+                ctx.push_str(skills_note);
+            }
 
             // 2. THINK — reflect on what she perceives (routes through her BYOK
             //    key + identity anchor via the compiled-think path).

@@ -434,6 +434,28 @@ HTTP.register!(ROUTER, "POST", "/soma/reconstruct",    handle_soma_reconstruct)
 # Entry point
 # ---------------------------------------------------------------------------
 
+const CORS_HEADERS = [
+    "Access-Control-Allow-Origin" => "*",
+    "Access-Control-Allow-Methods" => "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers" => "Content-Type",
+]
+
+# Allows the Axiom browser dashboard (a different origin/port) to call this
+# service directly, matching the permissive CORS the Rust kernel (:7777)
+# and LOOM (:8889) already use.
+function cors_middleware(handler)
+    return function (req::HTTP.Request)
+        if req.method == "OPTIONS"
+            return HTTP.Response(204, CORS_HEADERS)
+        end
+        resp = handler(req)
+        for (k, v) in CORS_HEADERS
+            HTTP.setheader(resp, k => v)
+        end
+        resp
+    end
+end
+
 port = get_port()
 @info "Ọọ̀ Kọ́dà Memory server starting" port=port version=VERSION
-HTTP.serve(ROUTER, "0.0.0.0", port)
+HTTP.serve(cors_middleware(ROUTER), "0.0.0.0", port)

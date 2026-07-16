@@ -358,6 +358,40 @@ function run_battery(bits_input; m_block=128, m_apen=10, m_serial=16)::Vector{NI
 end
 
 """
+Not-yet-implemented NIST SP 800-22 tests. Each needs its own real statistical
+algorithm (binary matrix rank, DFT/spectral, template matching ×2, universal
+statistical, linear complexity, random excursions ×2) — these are stubs, not
+approximations, and are excluded from pass/fail via the p_value<0 sentinel
+`validate_odu_entropy` already filters on. Implement for real before treating
+`run_battery`'s output as the full 15-test battery the module docstring
+advertises.
+"""
+function test_binary_matrix_rank(bits::Vector{Int})::NISTResult
+    NISTResult("binary_matrix_rank", false, -1.0, 0.0, "not implemented")
+end
+function test_dft(bits::Vector{Int})::NISTResult
+    NISTResult("dft", false, -1.0, 0.0, "not implemented")
+end
+function test_non_overlapping(bits::Vector{Int})::NISTResult
+    NISTResult("non_overlapping", false, -1.0, 0.0, "not implemented")
+end
+function test_overlapping(bits::Vector{Int})::NISTResult
+    NISTResult("overlapping", false, -1.0, 0.0, "not implemented")
+end
+function test_universal(bits::Vector{Int})::NISTResult
+    NISTResult("universal", false, -1.0, 0.0, "not implemented")
+end
+function test_linear_complexity(bits::Vector{Int})::NISTResult
+    NISTResult("linear_complexity", false, -1.0, 0.0, "not implemented")
+end
+function test_random_excursions(bits::Vector{Int})::NISTResult
+    NISTResult("random_excursions", false, -1.0, 0.0, "not implemented")
+end
+function test_random_excursions_var(bits::Vector{Int})::NISTResult
+    NISTResult("random_excursions_var", false, -1.0, 0.0, "not implemented")
+end
+
+"""
     validate_odu_entropy(bitstream) → (all_passed, passed_count, results)
 
 High-level entry point for IfáScript Odu entropy validation.

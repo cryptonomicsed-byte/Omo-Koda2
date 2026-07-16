@@ -28,6 +28,9 @@ export
     run_battery, validate_odu_entropy, NISTResult,
     test_frequency, test_block_frequency, test_runs, test_longest_run,
     test_approx_entropy, test_cumulative_sums, test_serial,
+    test_binary_matrix_rank, test_dft, test_non_overlapping, test_overlapping,
+    test_universal, test_linear_complexity, test_random_excursions,
+    test_random_excursions_var,
 
     # Augury
     MemoryDAG, MemoryNode, add_snapshot!, walk_path,

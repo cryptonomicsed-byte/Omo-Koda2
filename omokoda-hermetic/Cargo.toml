@@ -9,3 +9,7 @@ blake3 = "1.5"
 hkdf = "0.12"
 sha2 = "0.10"
 chrono = { version = "0.4", features = ["serde"] }
+# Reuses bipon39::Macro as the single Orisha type across the whole
+# ecosystem instead of a second parallel enum -- pinned to the same rev
+# Omo-Koda2's own identity derivation and Zangbeto's guardian use.
+bipon39 = { git = "https://github.com/cryptonomicsed-byte/BIPON39", rev = "9d62b4de8e5b78199a1534ab7b45e08612620380" }

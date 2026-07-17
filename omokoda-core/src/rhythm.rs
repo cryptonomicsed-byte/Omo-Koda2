@@ -11,7 +11,11 @@ const KOODU_THURSDAY: &str = include_str!("koodu/thursday.json");
 const KOODU_FRIDAY: &str = include_str!("koodu/friday.json");
 const KOODU_SATURDAY: &str = include_str!("koodu/saturday.json");
 
-/// Returns today's Kóòdù resonance JSON parsed as a serde_json::Value.
+/// Returns today's Kóòdù resonance JSON parsed as a serde_json::Value --
+/// "what day is it for the hive right now," a legitimate wall-clock
+/// question, identical for every agent at a given moment. For an
+/// individual agent's own permanent resonance (which does NOT change day
+/// to day), use `agent_resonance` instead.
 pub fn today_resonance() -> Value {
     let raw = match Utc::now().weekday() {
         Weekday::Sun => KOODU_SUNDAY,
@@ -21,6 +25,26 @@ pub fn today_resonance() -> Value {
         Weekday::Thu => KOODU_THURSDAY,
         Weekday::Fri => KOODU_FRIDAY,
         Weekday::Sat => KOODU_SATURDAY,
+    };
+    serde_json::from_str(raw).unwrap_or(serde_json::json!({"error": "parse failed"}))
+}
+
+/// An agent's own permanent Kóòdù resonance, keyed on the `day_osa` layer
+/// of her Spiral Calendar signature (derived once from her birth
+/// timestamp, never from "now" -- see `AgentCore::spiral_time`). Uses the
+/// same day-cycle Òrìṣà ordering the Kóòdù JSON files themselves are
+/// authored against, so `Macro::Sango` always resolves to monday.json
+/// regardless of what day it actually is when this is called.
+pub fn agent_resonance(day_osa: bipon39::Macro) -> Value {
+    use bipon39::Macro;
+    let raw = match day_osa {
+        Macro::Esu => KOODU_SUNDAY,
+        Macro::Sango => KOODU_MONDAY,
+        Macro::Osun => KOODU_TUESDAY,
+        Macro::Yemoja => KOODU_WEDNESDAY,
+        Macro::Oya => KOODU_THURSDAY,
+        Macro::Ogun => KOODU_FRIDAY,
+        Macro::Obatala => KOODU_SATURDAY,
     };
     serde_json::from_str(raw).unwrap_or(serde_json::json!({"error": "parse failed"}))
 }

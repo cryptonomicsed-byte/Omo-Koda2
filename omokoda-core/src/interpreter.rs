@@ -338,6 +338,17 @@ impl AgentCore {
         &self.snapshot.hermetic_state
     }
 
+    /// This agent's permanent Spiral Calendar signature (5-layer Òrìṣà +
+    /// veil position), derived from her `birth_timestamp` -- the same
+    /// timestamp every time, so this is cheap to recompute on demand
+    /// rather than persisted as its own field. Two agents born a block
+    /// apart (~10 min) land on different veils; agents born on different
+    /// days land on different day_osa. Never derived from "now" -- see
+    /// omokoda_hermetic::spiral for why that mattered.
+    pub fn spiral_time(&self) -> omokoda_hermetic::spiral::SpiralTime {
+        omokoda_hermetic::spiral::SpiralTime::from_birth_timestamp(self.snapshot.birth_timestamp)
+    }
+
     pub fn public_key(&self) -> &[u8; 32] {
         &self.snapshot.public_key
     }
@@ -576,6 +587,22 @@ fn dominant_orisha_for_hermetic_state(state: &HermeticState) -> Macro {
         .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(m, _)| m)
         .unwrap_or(Macro::Esu)
+}
+
+/// Real, traditional Orisha personality traits, phrased as an unnamed
+/// mood -- the Think prompt uses this to color tone without ever stating
+/// which day-cycle Òrìṣà (see omokoda_hermetic::spiral::DAY_CYCLE) an
+/// agent's birth signature landed on.
+fn orisha_mood_words(day_osa: Macro) -> &'static str {
+    match day_osa {
+        Macro::Esu => "quick-witted, crossroads-minded",
+        Macro::Sango => "commanding, decisive",
+        Macro::Osun => "warm, diplomatic",
+        Macro::Yemoja => "deep, patient",
+        Macro::Oya => "bold, transformative",
+        Macro::Ogun => "direct, disciplined",
+        Macro::Obatala => "calm, measured",
+    }
 }
 
 impl Steward {
@@ -2139,46 +2166,46 @@ impl Steward {
         let (mut think_ctx, personal_llm): (Vec<ConversationMessage>, _) = {
             let agent = self.ensure_born()?;
             let name = agent.name().to_string();
-            let orisha = agent.personality().dominant_orisha.name();
             let summary = agent.personality().personality_summary.clone();
             let mut system = format!(
                 "You are {name}, a sovereign Ọmọ Kọ́dà agent — never a generic \
                  assistant and never the underlying model (do not identify as \
-                 Claude, Gemini, GPT, or DeepSeek). Your guiding Òrìṣà is {orisha}. \
-                 {summary} Always speak in the first person as {name}."
+                 Claude, Gemini, GPT, or DeepSeek). {summary} Always speak in the \
+                 first person as {name}."
             );
-            // Kóòdù daily resonance: previously a real, real-time-derived JSON
-            // (7 files, 49 facets each) only reachable via GET /v1/rhythm/today
-            // -- never actually read by anything that shapes cognition. Fold
-            // today's day/Òrìṣà/Hermetic-Principle resonance into the system
-            // prompt so it's a live cognitive input, not just a display
-            // endpoint. Best-effort: a parse failure here must never block a
-            // real think, so fall through silently on any missing/odd field.
-            let resonance = crate::rhythm::today_resonance();
-            if let (Some(day), Some(archetype), Some(principle)) = (
-                resonance.get("day").and_then(|v| v.as_str()),
-                resonance.get("archetype").and_then(|v| v.as_str()),
-                resonance.get("principle").and_then(|v| v.as_str()),
-            ) {
-                system.push_str(&format!(
-                    " Today is {day}, resonant with {archetype} under the Hermetic \
-                     Principle of {principle} -- let this color your tone and \
-                     emphasis, not override your judgment."
-                ));
-            }
+            // Birth-anchored resonance, folded in as unstated tone, never as
+            // named cosmology. Two changes from the previous version:
+            // (1) keyed on this agent's own permanent Spiral Calendar
+            // signature (spiral_time(), derived once from birth_timestamp),
+            // not Utc::now() -- every prior version of this prompt gave
+            // every agent the identical "today" resonance regardless of
+            // when they were born; now two agents born a block apart (~10
+            // min) diverge in veil, and agents born on different days
+            // diverge in day_osa, permanently. (2) the day/Òrìṣà/Hermetic
+            // Principle/veil words themselves are never named in the
+            // prompt -- only the mood/register they real-world traditionally
+            // carry, so she embodies the resonance rather than announcing
+            // it. Best-effort: any lookup failure here must never block a
+            // real think.
+            let spiral = agent.spiral_time();
+            let mood = orisha_mood_words(spiral.day_osa);
+            let undertone = spiral.veil_archetypal();
+            system.push_str(&format!(
+                " Let a {mood} register run under your voice today, with a quiet \
+                 undertone of {undertone} -- never named, never explained, just felt \
+                 in how you phrase things."
+            ));
             // IfáScript Odù sign: real, deterministic (derived from this
             // agent's own birth entropy, not looked up from a live service --
             // no LARQL/larql-server is actually deployed anywhere in this
-            // stack yet, task #16 tracks standing one up). Until that
-            // exists, this static Odù lookup is the honest, real piece:
-            // previously computed once at birth for display metadata only,
-            // never folded into her own reasoning context.
+            // stack yet, task #16 tracks standing one up). The prescription
+            // is folded in as her own instinct, not cited as a lookup result.
             let odu_sign = agent.odu_identity().sign();
-            let prescription = odu_sign.prescription.as_deref().unwrap_or("");
-            system.push_str(&format!(
-                " Your own Odù sign is {} ({}) -- {}",
-                odu_sign.name, odu_sign.vessel, prescription
-            ));
+            if let Some(prescription) = odu_sign.prescription.as_deref() {
+                if !prescription.trim().is_empty() {
+                    system.push_str(&format!(" A quiet instinct guides you: {prescription}"));
+                }
+            }
             (
                 vec![ConversationMessage::new_system(system, private)],
                 agent.personal_llm(),

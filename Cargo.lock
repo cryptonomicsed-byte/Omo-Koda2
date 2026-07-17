@@ -3059,6 +3059,7 @@ dependencies = [
 name = "omokoda-hermetic"
 version = "0.1.0"
 dependencies = [
+ "bipon39",
  "blake3",
  "chrono",
  "hkdf",

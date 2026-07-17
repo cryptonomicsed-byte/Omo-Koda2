@@ -8,6 +8,34 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+/// Strip any `<think>...</think>` (or `<thinking>...</thinking>`) block a
+/// reasoning model embedded directly in `message.content` rather than a
+/// separate `reasoning_content` field -- observed live with OmniRoute's
+/// default free model (a DeepSeek reasoning variant), which sometimes
+/// returns raw chain-of-thought as plain prose inside content with no tag
+/// at all. Tag-stripping only catches the tagged case; the untagged case
+/// is addressed separately via an explicit system-prompt instruction not
+/// to narrate reasoning. If stripping empties the string (a tag-only
+/// response), fall back to the original text rather than losing content.
+fn strip_reasoning_tags(text: &str) -> String {
+    let mut result = text.to_string();
+    for (open, close) in [("<think>", "</think>"), ("<thinking>", "</thinking>")] {
+        while let Some(start) = result.find(open) {
+            if let Some(end) = result[start..].find(close) {
+                result.replace_range(start..start + end + close.len(), "");
+            } else {
+                break;
+            }
+        }
+    }
+    let trimmed = result.trim().to_string();
+    if trimmed.is_empty() {
+        text.trim().to_string()
+    } else {
+        trimmed
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProviderClass {
     Local,
@@ -575,7 +603,7 @@ impl LlmProvider for OpenAIProvider {
         let message = &json["choices"][0]["message"];
         // Prefer the answer; if a reasoning model left content empty, fall back
         // to its reasoning so a thought is never silently lost.
-        let mut response = message["content"].as_str().unwrap_or("").trim().to_string();
+        let mut response = strip_reasoning_tags(message["content"].as_str().unwrap_or(""));
         if response.is_empty() {
             response = message["reasoning_content"]
                 .as_str()
@@ -773,7 +801,7 @@ impl LlmProvider for OpenAIProvider {
         }
 
         // Plain text (with reasoning fallback, mirroring generate()).
-        let mut content = message["content"].as_str().unwrap_or("").trim().to_string();
+        let mut content = strip_reasoning_tags(message["content"].as_str().unwrap_or(""));
         if content.is_empty() {
             content = message["reasoning_content"]
                 .as_str()
@@ -1132,5 +1160,50 @@ impl LlmProvider for MockProvider {
             content: self.response.clone(),
             usage,
         })
+    }
+}
+
+#[cfg(test)]
+mod reasoning_strip_tests {
+    use super::strip_reasoning_tags;
+
+    #[test]
+    fn strips_a_single_think_block() {
+        let raw = "<think>let me analyze this</think>The actual answer.";
+        assert_eq!(strip_reasoning_tags(raw), "The actual answer.");
+    }
+
+    #[test]
+    fn strips_thinking_variant_tag() {
+        let raw = "<thinking>step one, step two</thinking>Final answer here.";
+        assert_eq!(strip_reasoning_tags(raw), "Final answer here.");
+    }
+
+    #[test]
+    fn plain_answer_with_no_tags_is_untouched() {
+        let raw = "Just a normal response, no reasoning tags at all.";
+        assert_eq!(strip_reasoning_tags(raw), raw);
+    }
+
+    #[test]
+    fn tag_only_response_falls_back_to_original_rather_than_empty() {
+        let raw = "<think>only reasoning, no final answer</think>";
+        // Stripping would leave an empty string -- fall back to the
+        // original rather than silently discarding the only content a
+        // reasoning model produced.
+        assert_eq!(strip_reasoning_tags(raw), raw);
+    }
+
+    #[test]
+    fn untagged_scratchpad_prose_is_not_touched_by_this_layer() {
+        // The real-world case that motivated this fix (OmniRoute's
+        // default DeepSeek model) doesn't use tags at all -- it writes
+        // "Thinking. 1. **Analyze the Request:**..." as plain prose. This
+        // function intentionally does NOT try to heuristically detect
+        // that (too fragile/model-specific); the real fix for the
+        // untagged case is the system-prompt instruction not to narrate
+        // reasoning at all, applied in interpreter.rs.
+        let raw = "Thinking. 1. **Analyze the Request:** ...";
+        assert_eq!(strip_reasoning_tags(raw), raw);
     }
 }

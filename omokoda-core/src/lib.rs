@@ -6,6 +6,7 @@ pub mod bus;
 pub mod clients;
 pub mod compact;
 pub mod config;
+pub mod divination;
 pub mod dream;
 pub mod economics;
 pub mod emotion;

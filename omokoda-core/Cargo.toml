@@ -34,6 +34,13 @@ ed25519-dalek = "2.0"
 # ifascript-stub mirrored only the API shape and have since been removed).
 bipon39 = { git = "https://github.com/cryptonomicsed-byte/BIPON39", rev = "9d62b4de8e5b78199a1534ab7b45e08612620380" }
 ifascript = { git = "https://github.com/cryptonomicsed-byte/If-Script", rev = "31198960d76b17e435645cfc5446e555714128c4" }
+# Real LARQL-style graph queries (DESCRIBE/SELECT/WALK/INFER) over an
+# agent's own sealed memory -- the lightweight glyph-graph adapter, not
+# the full model-serving larql-server (needs multi-GB .vindex model data
+# that doesn't exist anywhere in this stack; not deployed here for that
+# reason). No plaintext is retained in the graph, only content-hash
+# derived glyph/odù metadata -- see divination.rs.
+larql-glyph = { git = "https://github.com/cryptonomicsed-byte/larql", rev = "fd3ea11b63247719c07347d6d30b86114eb5f556" }
 zangbeto-enforcement = { path = "../zangbeto-stub" }
 omokoda-mesh = { path = "../omokoda-mesh" }
 omokoda-hermetic = { path = "../omokoda-hermetic" }

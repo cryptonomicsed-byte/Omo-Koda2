@@ -2196,15 +2196,30 @@ impl Steward {
                  in how you phrase things."
             ));
             // IfáScript Odù sign: real, deterministic (derived from this
-            // agent's own birth entropy, not looked up from a live service --
-            // no LARQL/larql-server is actually deployed anywhere in this
-            // stack yet, task #16 tracks standing one up). The prescription
-            // is folded in as her own instinct, not cited as a lookup result.
+            // agent's own birth entropy, not looked up from a live service).
+            // The prescription is folded in as her own instinct, not cited
+            // as a lookup result.
             let odu_sign = agent.odu_identity().sign();
             if let Some(prescription) = odu_sign.prescription.as_deref() {
                 if !prescription.trim().is_empty() {
                     system.push_str(&format!(" A quiet instinct guides you: {prescription}"));
                 }
+            }
+            // Real LARQL-style divination over her own memory (larql-glyph,
+            // not the full model-serving larql-server -- that needs
+            // multi-GB .vindex model data that doesn't exist anywhere in
+            // this stack). Builds a content-hash graph from her own
+            // conversation history (no plaintext retained in the graph
+            // itself) and runs a real INFER pass for shared-Odù recurrence
+            // -- a genuine pattern signal, not a fabricated one, folded in
+            // the same unstated way as the rest of this prompt.
+            let memory_graph =
+                crate::divination::build_memory_graph(&agent.session().public_messages);
+            if crate::divination::recurrence_signal(&memory_graph).is_some() {
+                system.push_str(
+                    " Something in this conversation echoes a pattern you've carried before \
+                     -- let that quiet recognition inform you, without naming it.",
+                );
             }
             (
                 vec![ConversationMessage::new_system(system, private)],

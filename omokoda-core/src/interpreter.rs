@@ -1356,6 +1356,42 @@ impl Steward {
 
                 agent_mut.update_reputation(new_rep, ReputationChangeReason::Think);
 
+                // Real, non-blocking dNFT sync: if this agent has an
+                // on-chain object (see onchain.rs), push her real
+                // reputation/tier and glyph-index divination signal to it.
+                // Spawned rather than awaited -- a blockchain call is
+                // 1-3s, and no real think/act response should wait on it.
+                // Fail-open all the way through: onchain.rs's own
+                // functions already never propagate an error, this just
+                // doesn't bother computing anything if there's no minted
+                // object to update yet.
+                if let Some(nft_id) = agent_mut.onchain_nft_id().map(|s| s.to_string()) {
+                    let reputation = agent_mut.reputation();
+                    let tier = agent_mut.tier();
+                    let messages = agent_mut.session().public_messages.clone();
+                    tokio::spawn(async move {
+                        let _ = crate::onchain::update_onchain_stats(
+                            &nft_id,
+                            reputation.max(0.0) as u64,
+                            tier,
+                        )
+                        .await;
+                        let graph = crate::divination::build_memory_graph(&messages);
+                        if let Some(glyph) = crate::divination::dominant_glyph_byte(&graph) {
+                            let recurrence =
+                                crate::divination::recurrence_signal(&graph).unwrap_or(0) as u64;
+                            let now = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_secs())
+                                .unwrap_or(0);
+                            let _ = crate::onchain::update_onchain_glyph_signal(
+                                &nft_id, glyph, recurrence, now,
+                            )
+                            .await;
+                        }
+                    });
+                }
+
                 let receipt_payload = serde_json::json!({
                     "primitive": "think",
                     "class": compilation.class,

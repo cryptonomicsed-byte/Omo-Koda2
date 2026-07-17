@@ -60,6 +60,31 @@ pub fn build_memory_graph(messages: &[ConversationMessage]) -> GlyphGraph {
     graph
 }
 
+/// The most frequently occurring glyph across an agent's own memory
+/// graph, folded to a single byte for the on-chain glyph-signal field
+/// (see onchain.rs::update_onchain_glyph_signal). Each glyph char comes
+/// from a real, broad Unicode fold range (larql_glyph::glyph_fold), not
+/// guaranteed ASCII, so this uses `codepoint % 256` rather than a lossy
+/// truncation that would silently drop non-ASCII glyphs to garbage.
+/// `None` for an empty graph.
+pub fn dominant_glyph_byte(graph: &GlyphGraph) -> Option<u8> {
+    let nodes = graph.to_json().get("nodes")?.as_object()?.clone();
+    // BTreeMap, not HashMap: HashMap's iteration order is randomized
+    // per-process, so a tie in counts (e.g. two distinct glyphs each
+    // appearing once) would pick a different "dominant" byte on every
+    // run -- confirmed live as a real test flake before this fix.
+    // BTreeMap's ascending byte-value iteration makes ties break the
+    // same way every time.
+    let mut counts: std::collections::BTreeMap<u8, usize> = std::collections::BTreeMap::new();
+    for node in nodes.values() {
+        let glyph_str = node.get("glyph")?.as_str()?;
+        let ch = glyph_str.chars().next()?;
+        let byte = (ch as u32 % 256) as u8;
+        *counts.entry(byte).or_insert(0) += 1;
+    }
+    counts.into_iter().max_by_key(|(_, count)| *count).map(|(byte, _)| byte)
+}
+
 /// A real, minimal divinatory signal from an agent's own memory graph:
 /// how many shared-Odù recurrences exist. Returns `None` for an empty or
 /// pattern-free graph rather than a zero-value string, so callers can
@@ -125,5 +150,23 @@ mod tests {
         ];
         let graph = build_memory_graph(&messages);
         assert_eq!(graph.len(), 3);
+    }
+
+    #[test]
+    fn empty_graph_has_no_dominant_glyph() {
+        let graph = build_memory_graph(&[]);
+        assert_eq!(dominant_glyph_byte(&graph), None);
+    }
+
+    #[test]
+    fn dominant_glyph_is_deterministic_for_the_same_history() {
+        let messages = vec![
+            text_message("first thought", 1),
+            text_message("second thought", 2),
+        ];
+        let a = dominant_glyph_byte(&build_memory_graph(&messages));
+        let b = dominant_glyph_byte(&build_memory_graph(&messages));
+        assert!(a.is_some());
+        assert_eq!(a, b, "same conversation history must fold to the same glyph byte every time");
     }
 }

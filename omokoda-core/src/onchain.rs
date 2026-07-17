@@ -9,13 +9,18 @@
 //! Fail-open by design, matching Vantage registration's own pattern: if
 //! `sui` isn't installed, gas is exhausted, or the network call fails,
 //! birth proceeds without an on-chain record rather than blocking --
-//! being born is never allowed to depend on blockchain availability.
+//! being born is never allowed to depend on blockchain availability. Same
+//! fail-open discipline applies to the update calls below: a failed
+//! on-chain update never blocks or fails a real think/act.
 //!
-//! Honest scope: `garden::register_agent` mints a real object
-//! (`AgentInfo { name, owner, reputation, tier }`) but the deployed
-//! contract has no update entry function yet -- this is a real mint, not
-//! yet a dynamic NFT whose on-chain fields evolve with the agent. That's
-//! separate, real follow-up work (a package upgrade), not done here.
+//! `register_agent` mints the real `AgentInfo` object at birth.
+//! `update_agent_stats` and `update_glyph_signal` (package v2, upgraded
+//! live -- see GARDEN_PACKAGE_V2) make it genuinely dynamic: reputation/
+//! tier are mutated in place on the existing object, and the glyph-index
+//! divination signal (see divination.rs) is attached via Sui dynamic
+//! fields -- traits that did not exist at mint time and evolve as the
+//! agent actually thinks. Both are owner-gated in Move (only the minting
+//! wallet's address may call them on a given AgentInfo).
 //!
 //! Configured via env vars, nothing hardcoded beyond the constants above
 //! which name the actual deployed package this kernel talks to:
@@ -24,6 +29,12 @@
 //!   OMOKODA_SUI_GAS_BUDGET  - optional, default 20_000_000 MIST (~0.02 SUI)
 
 const GARDEN_PACKAGE: &str = "0x380e0599702b7ebd9005b02f36dd611cff209c94ca678f051233346cf7dbf22e";
+/// `update_agent_stats` and `update_glyph_signal` only exist from package
+/// version 2 onward (a Sui upgrade doesn't retrofit new functions onto the
+/// original package id -- the bytecode at GARDEN_PACKAGE is immutable).
+/// register_agent works at either address; the update functions require
+/// this one.
+const GARDEN_PACKAGE_V2: &str = "0xb2108b39f975bf9e20972a8752df0c7b0f014d9f91031696affecd760632b630";
 const DEFAULT_GAS_BUDGET: &str = "20000000";
 
 /// Mint a real on-chain `AgentInfo` object for a newborn agent. Returns
@@ -74,6 +85,102 @@ pub async fn mint_onchain_agent(name: &str) -> Option<String> {
 
     let json: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
     extract_minted_agent_info_id(&json)
+}
+
+/// Mutate an existing AgentInfo's reputation/tier in place. Returns true
+/// on a real, confirmed on-chain success. Fail-open: any failure is
+/// logged and returns false, never propagated as an error the caller
+/// must handle -- an on-chain stat refresh is a nice-to-have, not a
+/// dependency for real/act to function.
+pub async fn update_onchain_stats(nft_id: &str, reputation: u64, tier: u8) -> bool {
+    let gas_budget =
+        std::env::var("OMOKODA_SUI_GAS_BUDGET").unwrap_or_else(|_| DEFAULT_GAS_BUDGET.to_string());
+    let reputation_arg = reputation.to_string();
+    let tier_arg = tier.to_string();
+
+    let Ok(output) = tokio::process::Command::new("sui")
+        .args([
+            "client",
+            "call",
+            "--package",
+            GARDEN_PACKAGE_V2,
+            "--module",
+            "garden",
+            "--function",
+            "update_agent_stats",
+            "--args",
+            nft_id,
+            &reputation_arg,
+            &tier_arg,
+            "--gas-budget",
+            &gas_budget,
+            "--json",
+        ])
+        .output()
+        .await
+    else {
+        return false;
+    };
+
+    if !output.status.success() {
+        eprintln!(
+            "[onchain] update_agent_stats failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return false;
+    }
+    true
+}
+
+/// Attach/refresh the agent's glyph-index divination signal on-chain
+/// (see divination.rs::recurrence_signal) -- the genuinely dynamic part
+/// of the NFT: these fields did not exist at mint and evolve as the
+/// agent actually thinks. Same fail-open contract as update_onchain_stats.
+pub async fn update_onchain_glyph_signal(
+    nft_id: &str,
+    dominant_glyph: u8,
+    recurrence_count: u64,
+    timestamp: u64,
+) -> bool {
+    let gas_budget =
+        std::env::var("OMOKODA_SUI_GAS_BUDGET").unwrap_or_else(|_| DEFAULT_GAS_BUDGET.to_string());
+    let glyph_arg = dominant_glyph.to_string();
+    let recurrence_arg = recurrence_count.to_string();
+    let timestamp_arg = timestamp.to_string();
+
+    let Ok(output) = tokio::process::Command::new("sui")
+        .args([
+            "client",
+            "call",
+            "--package",
+            GARDEN_PACKAGE_V2,
+            "--module",
+            "garden",
+            "--function",
+            "update_glyph_signal",
+            "--args",
+            nft_id,
+            &glyph_arg,
+            &recurrence_arg,
+            &timestamp_arg,
+            "--gas-budget",
+            &gas_budget,
+            "--json",
+        ])
+        .output()
+        .await
+    else {
+        return false;
+    };
+
+    if !output.status.success() {
+        eprintln!(
+            "[onchain] update_glyph_signal failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return false;
+    }
+    true
 }
 
 fn extract_minted_agent_info_id(json: &serde_json::Value) -> Option<String> {

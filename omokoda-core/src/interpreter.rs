@@ -549,6 +549,35 @@ impl AgentCore {
     }
 }
 
+/// The canonical Orisha <-> Hermetic Principle correspondence (the "7
+/// Ascension Domains" table -- docs/256---65536.md, cross-checked in
+/// Ọ̀rúnmìlà.md and docs/audit/ARCHIVE_AUDIT.md). Locked design, not
+/// derived from anything -- each Orisha owns exactly one Principle:
+/// Èṣù/Mentalism, Ọ̀ṣun/Vibration, Yemọja/Correspondence, Ọbàtálá/Gender,
+/// Ògún/Polarity, Ọya/Rhythm, Ṣàngó/Cause & Effect.
+///
+/// Given an agent's [`HermeticState`] (7 independently HKDF-derived
+/// per-principle scores, unique per agent), returns the Orisha whose
+/// canonical principle scored highest -- so `dominant_orisha` is
+/// determined by the same entropy as the hermetic profile, rather than by
+/// bipon39::personality_profile's separate mnemonic hash.
+fn dominant_orisha_for_hermetic_state(state: &HermeticState) -> Macro {
+    let scores: [(Macro, f64); 7] = [
+        (Macro::Esu, state.mentalism()),
+        (Macro::Osun, state.vibration()),
+        (Macro::Yemoja, state.correspondence()),
+        (Macro::Obatala, state.gender()),
+        (Macro::Ogun, state.polarity()),
+        (Macro::Oya, state.rhythm()),
+        (Macro::Sango, state.cause_effect()),
+    ];
+    scores
+        .into_iter()
+        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(m, _)| m)
+        .unwrap_or(Macro::Esu)
+}
+
 impl Steward {
     pub fn birth(&mut self, name: String, metadata: Vec<MetadataPair>) -> Result<(), String> {
         use crate::identity::vault::SealVault;
@@ -577,13 +606,25 @@ impl Steward {
             primary_index,
             mnemonic: mnemonic.clone(),
         };
-        let personality = bipon39::personality_profile(&mnemonic)
+        let mut personality = bipon39::personality_profile(&mnemonic)
             .map_err(|e| format!("derive_personality failed: {e}"))?;
         let receipts = ReceiptStore::new();
 
         // Layer B: Hermetic Principle derivation via IfáScript entropy
         let hermetic_seed = OduEntropy::generate_hermetic_seed(&indices);
         let hermetic_state = HermeticState::from_odu_seed(&hermetic_seed);
+
+        // bipon39::personality_profile() picks dominant_orisha via its own
+        // independent hash of the mnemonic -- unrelated to hermetic_state's
+        // per-principle scores, so the two 7-folds could disagree (an agent
+        // "dominant" in Ṣàngó with a Mentalism-dominant hermetic profile,
+        // for instance). The canonical correspondence (docs/256---65536.md's
+        // "7 Ascension Domains" table, cross-checked in Ọ̀rúnmìlà.md and
+        // ARCHIVE_AUDIT.md) fixes one Orisha per Hermetic Principle, so
+        // override dominant_orisha here to whichever principle actually
+        // scored highest in hermetic_state -- makes the two systems agree
+        // by construction instead of by coincidence.
+        personality.dominant_orisha = dominant_orisha_for_hermetic_state(&hermetic_state);
 
         let pet_identity = PetIdentity::derive(&odu_identity, &hermetic_state, 0);
 

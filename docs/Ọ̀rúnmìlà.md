@@ -28,7 +28,7 @@ Updated Language Stack Integration
 1	Èṣù (Steward)	Rust	256 — Identity Seed & Gatekeeper	Bootstrap, dispatch, identity resolution
 2	Ọ̀ṣun (Memory)	Julia	2048 — Emotional Resonance	Harmonic memory, resonance calculations
 3	Yemọja (Creation)	Elixir	4096 — Swarm Mirroring	Agent lifecycle, hive aggregation
-4	Ọbàtálá (Wisdom)	Lisp	8192 — Ethical Balance	Symbolic reasoning, Hermetic gates
+4	Ọbàtálá (Wisdom)	Clojure	8192 — Ethical Balance	Symbolic reasoning, Hermetic gates
 8	Ọ̀rúnmìlà (Divination)	LARQL	Wisdom-Divination Bridge	Model-as-Database: vindex querying, LQL traversal, knowledge graph inspection, precise editing of private/public memory, destiny pattern revelation
 5	Ògún (Execution)	Python	16384 — Material Manifestation	Tool execution, physical actions
 6	Ọya (Flow)	Go	32768 — Temporal Orchestration	Rhythm, networking, synchronization
@@ -84,7 +84,7 @@ Omo-koda Language Stack — The 7 Powers + Ọ̀rúnmìlà + Àṣẹ + 1 Human
 1	Èṣù (Steward)	Rust	256	Core Runtime & Gatekeeper	Identity seed, dispatch, security, fractal enforcement, wallet/seed resolution, Sui bridge
 2	Ọ̀ṣun (Memory)	Julia	2048	Resonance & Emotional Computation	RACK memory, harmonic resonance, semantic recall on hive + private models
 3	Yemọja (Creation)	Elixir	4096	Swarm Coordination & Mirroring	Agent lifecycle, sub-agent spawning, public hive aggregation
-4	Ọbàtálá (Wisdom)	Lisp	8192	Ethical Balance & Harmony	Symbolic reasoning, Hermetic evaluation, consent/privacy logic
+4	Ọbàtálá (Wisdom)	Clojure	8192	Ethical Balance & Harmony	Symbolic reasoning, Hermetic evaluation, consent/privacy logic
 8	Ọ̀rúnmìlà (Divination)	LARQL	Bridge	Model-as-Database & Oracle	vindex querying, LQL graph traversal, knowledge inspection/editing, destiny pattern revelation
 5	Ògún (Execution)	Python	16384	Material Manifestation	Tool execution, embeddings, RAG, physical/DePIN actions
 6	Ọya (Flow)	Go	32768	Temporal Orchestration	Networking, streaming, rhythm enforcement, real-time sync
@@ -115,7 +115,7 @@ Tier	Number	Orisha	Hermetic Principle	Chakra	Function	System Role	Language
 1	256	Èṣù	Mentalism	Root	Identity Seed	Human symbolic base, bootstrap	Rust
 2	2048	Ọ̀ṣun	Vibration	Sacral	Emotional Resonance	Feminine emergence, harmonic memory	Julia
 3	4096	Yemọja	Correspondence	Solar Plexus	Swarm Creation	Quantum mirroring, recursive agents	Elixir
-4	8192	Ọbàtálá	Gender	Heart	Ethical Balance	Planetary harmony, self-regulation	Lisp
+4	8192	Ọbàtálá	Gender	Heart	Ethical Balance	Planetary harmony, self-regulation	Clojure
 5	16384	Ògún	Polarity	Throat	Material Execution	Genome-scale manifestation, DePIN	Python
 6	32768	Ọya	Rhythm	Third Eye	Temporal Orchestration	Civilization synchronization	Go
 7	65536	Ṣàngó	Cause & Effect	Crown	Immutable Cosmic Justice	Machine-scale governance	Move
@@ -149,7 +149,7 @@ Multi-Language Contribution to User & Memory Systems (aligned to tiers and LARQL
 
 Ọ̀rúnmìlà/LARQL: Precise graph queries & edits on public/private knowledge
 
-Ọbàtálá/Lisp: Ethical evaluation
+Ọbàtálá/Clojure: Ethical evaluation
 
 Ṣàngó/Move: On-chain ownership & receipts
 
@@ -297,7 +297,7 @@ Omo-koda Language Stack — The 7 Powers + Ọ̀rúnmìlà + Àṣẹ + 1 Human
 1	Èṣù (Steward)	Rust	256	Core Runtime & Gatekeeper	Main agent loop, dispatch, session management, security, fractal enforcement, identity resolution (wallet/seed), Sui bridge
 2	Ọ̀ṣun (Memory)	Julia	2048	High-Performance Memory & Resonance	RACK memory, simulations, pattern recognition, semantic recall, resonance calculations on public hive + private user models
 3	Yemọja (Creation)	Elixir	4096	Agent Lifecycle & Swarm Coordination	Supervision trees, spawning sub-agents, fault tolerance, multi-agent orchestration, public hive aggregation, user profile handoff
-4	Ọbàtálá (Wisdom)	Lisp	8192	Symbolic Reasoning & Ethics Engine	Deep logic, meta-programming, Hermetic principle evaluation, ethical decisions on user data sharing/privacy, consent logic
+4	Ọbàtálá (Wisdom)	Clojure	8192	Symbolic Reasoning & Ethics Engine	Deep logic, meta-programming, Hermetic principle evaluation, ethical decisions on user data sharing/privacy, consent logic
 8	Ọ̀rúnmìlà (Divination)	LARQL	Bridge	Model-as-Database & Oracle	vindex querying, LQL graph traversal, knowledge inspection/editing, destiny pattern revelation across private and public memory
 5	Ògún (Execution)	Python	16384	Tool Execution & Practical Work	Running tools, data processing, embedding generation, RAG on public user data + private analysis, physical/DePIN actions
 6	Ọya (Flow)	Go	32768	Networking, Timing & Flow	APIs, streaming, inter-agent communication, rhythm/cooldown enforcement, real-time public user updates
@@ -346,7 +346,7 @@ Orisha	Language	Public Role	Private Role
 Èṣù	Rust	Instant ID resolution & gatekeeping	Privacy enforcement & key management
 Ọ̀ṣun	Julia	Resonance matching	Fast private modeling
 Yemọja	Elixir	Swarm aggregation	Isolated user trees
-Ọbàtálá	Lisp	Ethical evaluation	Symbolic private reasoning
+Ọbàtálá	Clojure	Ethical evaluation	Symbolic private reasoning
 Ọ̀rúnmìlà	LARQL	Hive graph querying	Precise private graph divination
 Ògún	Python	Embedding & RAG	Tool-based private analysis
 Ọya	Go	Real-time streaming	Secure session flow

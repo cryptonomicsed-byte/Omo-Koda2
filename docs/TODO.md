@@ -441,7 +441,7 @@ Only start after the Rust core proves the full local flow.
 - [ ] If multi-language is kept, define stable IPC contracts before adding repos:
   - [ ] Julia/Ọ̀ṣun Memory
   - [ ] Elixir/Yemọja Creation
-  - [ ] Lisp/Ọbàtálá Wisdom
+  - [x] Clojure/Ọbàtálá Wisdom
   - [ ] Python/Ògún Execution
   - [ ] Go/Ọya Flow
   - [ ] Move/Ṣàngó Justice

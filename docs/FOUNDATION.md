@@ -13,7 +13,7 @@
 | 1 | **Èṣù** (Steward)     | **Rust**      | Core Runtime & Gatekeeper                               | Main agent loop, dispatch, session management, security, fractal enforcement, identity resolution (wallet/seed), Sui bridge. |
 | 2 | **Ọ̀ṣun** (Memory)    | **Julia**     | High-Performance Memory & Computation                   | RACK memory, resonance calculations, semantic recall on public hive + private user models. |
 | 3 | **Yemọja** (Creation) | **Elixir**    | Agent Lifecycle & Swarm Coordination                    | Supervision trees, spawning sub-agents, public hive aggregation, user profile handoff. |
-| 4 | **Ọbàtálá** (Wisdom)  | **Lisp**      | Symbolic Reasoning & Ethics Engine                      | Hermetic evaluation, ethical decisions on user data sharing/privacy, consent logic. |
+| 4 | **Ọbàtálá** (Wisdom)  | **Clojure**   | Symbolic Reasoning & Ethics Engine                      | Hermetic evaluation, ethical decisions on user data sharing/privacy, consent logic. |
 | 5 | **Ògún** (Execution)  | **Python**    | Tool Execution & Practical Work                         | Data processing, embedding generation, RAG on public user data + private analysis. |
 | 6 | **Ọya** (Flow)        | **Go**        | Networking, Timing & Flow                               | Real-time streaming of public user updates, inter-agent sync, rhythm enforcement. |
 | 7 | **Ṣàngó** (Justice)   | **Move**      | Economic Rules, On-Chain Accountability & Memory Ownership | Reputation, receipts, tokenomics, Sui contracts, user identity objects, Seal policies for private memory. |
@@ -63,7 +63,7 @@ Agents instantly "know" users through a shared public profile while maintaining 
 | Èṣù      | Rust     | Instant ID resolution & gatekeeping           | Enforces privacy modes & keys        |
 | Ọ̀ṣun    | Julia    | Resonance matching on public profiles         | Fast private user modeling           |
 | Yemọja   | Elixir   | Swarm user profile aggregation                | Isolated private user trees          |
-| Ọbàtálá  | Lisp     | Ethical evaluation of user data use           | Symbolic private reasoning           |
+| Ọbàtálá  | Clojure  | Ethical evaluation of user data use           | Symbolic private reasoning           |
 | Ògún     | Python   | Embedding & RAG on public user data           | Tool-based private analysis          |
 | Ọya      | Go       | Real-time public user update streaming        | Secure private session flow          |
 | Ṣàngó    | Move     | On-chain user objects & reputation            | Seal policies for private data       |
@@ -161,7 +161,7 @@ We are giving humanity reliable, sovereign digital partners — each with privat
 | Privacy Enforcer (provider/storage/hive gates) | Rust | omokoda-core/steward/privacy.rs | ✅ Implemented |
 | Primitive Dispatcher (birth/think/act validation) | Rust | omokoda-core/steward/dispatch.rs | ✅ Implemented |
 | Memory Service | Julia | omokoda-julia | 🔲 Planned (Wave 21) |
-| Wisdom / Ethics Service | Lisp | omokoda-lisp | 🔲 Planned (Wave 22) |
+| Wisdom / Ethics Service | Clojure | omokoda-clojure | ✅ Implemented (:4002) |
 | Private Memory (Walrus + MemWal) | Move/Rust | omokoda-sui + omokoda-core | 🔲 Planned |
 | Seal (private memory policy) | Move | omokoda-sui | 🔲 Planned |
 | Nautilus TEE processing | Rust/WASM | omokoda-core | 🔲 Planned |

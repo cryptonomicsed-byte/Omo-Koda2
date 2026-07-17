@@ -34,7 +34,7 @@ BIPỌ̀N39 → vanity2 → Ritual Codex → IfáScript (Ọ̀rúnmìlà) → Om
 | 1 | **Èṣù** (Steward) | **Rust** | 256 | Core Runtime & Gatekeeper | Bipon39-Rust + Omo-Koda2 |
 | 2 | **Ọ̀ṣun** (Memory) | **Julia** | 2048 | High-Performance Memory & Resonance | Ritual-codex-Julia |
 | 3 | **Yemọja** (Creation) | **Elixir** | 4096 | Agent Lifecycle & Swarm Coordination | Omo-Koda2 |
-| 4 | **Ọbàtálá** (Wisdom) | **Lisp** | 8192 | Symbolic Reasoning & Ethics Engine | Omo-Koda2 |
+| 4 | **Ọbàtálá** (Wisdom) | **Clojure** | 8192 | Symbolic Reasoning & Ethics Engine | Omo-Koda2 |
 | 8 | **Ọ̀rúnmìlà** (Divination) | **LARQL + IfáScript** | Bridge | Model-as-Database & Oracle | ifascript |
 | 5 | **Ògún** (Execution) | **Python** | 16384 | Tool Execution & Practical Work | Omo-Koda2 |
 | 6 | **Ọya** (Flow) | **Go** | 32768 | Networking, Timing & Flow | Omo-Koda2 |

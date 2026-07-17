@@ -880,6 +880,30 @@ impl Steward {
                     p.key == "sovereign"
                         && (p.value.eq_ignore_ascii_case("true") || p.value == "1")
                 });
+                // Refuse to mint a stranger over the owner's already-loaded
+                // identity. Without this, any repeat sovereign-birth call
+                // (e.g. a caller that always births on startup, or a retry)
+                // silently replaced a live agent's reputation/history with a
+                // brand new one -- confirmed live: 35+ orphaned agent.json
+                // snapshots from past restarts, each a full identity loss.
+                // AppState::new() already resumes the owner via
+                // try_load_owner() before any birth call can reach here, so
+                // self.agent being Some at this point for a sovereign birth
+                // request means she already exists.
+                if is_sovereign {
+                    if let Some(agent) = &self.agent {
+                        return Ok(ExecutionResult {
+                            receipt: None,
+                            private_mode: false,
+                            tool_output: Some(format!(
+                                "Owner identity already resumed: {} (reputation {:.3}, tier {}) — refusing to re-birth over her.",
+                                agent.id().as_str(),
+                                agent.reputation(),
+                                agent.tier()
+                            )),
+                        });
+                    }
+                }
                 self.birth(name, metadata)?;
                 let agent = self.ensure_born()?;
                 let provider = agent.session().config.default_provider.clone();

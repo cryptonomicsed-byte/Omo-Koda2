@@ -297,7 +297,9 @@ fn session_dir() -> PathBuf {
 }
 
 fn load_or_new_steward() -> Steward {
-    Steward::new()
+    let mut steward = Steward::new();
+    steward.try_load_owner();
+    steward
 }
 
 fn session_list() -> Result<()> {

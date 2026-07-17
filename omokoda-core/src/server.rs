@@ -36,8 +36,30 @@ impl AppState {
         let vault_base = std::env::var("VAULT_BASE")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from(".omokoda"));
+        let mut steward = Steward::new();
+        // Resurrect the owner's persisted identity instead of starting with
+        // no agent at all. Without this, every process restart left the
+        // kernel with agent=None until something (a birth-triggering caller)
+        // minted a brand new stranger -- confirmed live: a routine
+        // `systemctl restart` turned reputation-11.6 tier-5 "Ọmọ Kọ́dà" into
+        // a fresh reputation-0.0 agent with a different id, 35+ orphaned
+        // agent.json snapshots piling up in .omokoda/sessions from past
+        // restarts. try_load_owner() reads the stable owner_agent_id pointer
+        // (written on sovereign birth) and loads that agent's last saved
+        // snapshot; a no-op if no owner has ever been born yet.
+        let resumed = steward.try_load_owner();
+        if resumed {
+            if let Some(agent) = steward.agent_core() {
+                println!(
+                    "[startup] resumed owner identity {} (reputation {:.3}, tier {})",
+                    agent.id().as_str(),
+                    agent.reputation(),
+                    agent.tier()
+                );
+            }
+        }
         Self {
-            steward: Arc::new(Mutex::new(Steward::new())),
+            steward: Arc::new(Mutex::new(steward)),
             vault_base,
         }
     }

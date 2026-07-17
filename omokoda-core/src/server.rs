@@ -17,8 +17,9 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 use tokio_stream::{wrappers::BroadcastStream, StreamExt};
 use tower_http::cors::CorsLayer;
@@ -158,10 +159,29 @@ async fn birth_handler(
     }
 }
 
+/// Unix-epoch seconds of the last external (non-heartbeat) /v1/think or
+/// /v1/act call. Lets the heartbeat detect "someone is actively using me
+/// right now" (e.g. a copilot session, like ScarabSwarm's drone pilot
+/// backends) and skip its own cycle for this tick rather than contend for
+/// the shared Steward mutex -- observed live: a heartbeat cycle winning the
+/// lock race against a real copilot query forces that caller to wait out an
+/// entire THINK+ACT cycle (multiple seconds) before their own query even
+/// starts. See spawn_heartbeat's mode selection below.
+static LAST_EXTERNAL_ACTIVITY: AtomicU64 = AtomicU64::new(0);
+
+fn mark_external_activity() {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    LAST_EXTERNAL_ACTIVITY.store(now, Ordering::Relaxed);
+}
+
 async fn think_handler(
     State(state): State<AppState>,
     Json(req): Json<ThinkRequest>,
 ) -> impl IntoResponse {
+    mark_external_activity();
     let mut steward = state.steward.lock().await;
     let stmt = Statement::Think {
         prompt: req.prompt,
@@ -186,6 +206,7 @@ async fn act_handler(
     State(state): State<AppState>,
     Json(req): Json<ActRequest>,
 ) -> impl IntoResponse {
+    mark_external_activity();
     let mut steward = state.steward.lock().await;
     let stmt = Statement::Act {
         tool: req.tool,
@@ -466,25 +487,53 @@ fn spawn_heartbeat(steward: Arc<Mutex<Steward>>) {
         let mut ticker = tokio::time::interval(Duration::from_secs(secs));
         // First tick fires immediately; skip it so birth has a moment to land.
         ticker.tick().await;
+        // Below this cooldown since the last external /v1/think or /v1/act
+        // call, treat the agent as actively in use (e.g. a copilot session)
+        // and skip the tick entirely -- checked via the lock-free atomic
+        // BEFORE ever touching the Steward mutex, so a busy copilot caller
+        // never has to wait behind even a skipped heartbeat cycle.
+        const COPILOT_COOLDOWN_SECS: u64 = 60;
+
         loop {
             ticker.tick().await;
+
+            if crate::rhythm::RhythmGate::is_sabbath() {
+                println!("[heartbeat] mode=Sabbath — resting, no cycle this tick");
+                continue;
+            }
+
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let last_activity = LAST_EXTERNAL_ACTIVITY.load(Ordering::Relaxed);
+            if last_activity != 0 && now.saturating_sub(last_activity) < COPILOT_COOLDOWN_SECS {
+                println!(
+                    "[heartbeat] mode=Copilot — external activity {}s ago, deferring this tick",
+                    now.saturating_sub(last_activity)
+                );
+                continue;
+            }
+
             let mut guard = steward.lock().await;
             let agent_id = match guard.agent_core() {
                 Some(a) => a.id().as_str().to_string(),
                 None => continue, // no one born yet — nothing to wake
             };
-            if crate::rhythm::RhythmGate::is_sabbath() {
-                println!("[heartbeat] Sabbath — resting, no cycle this tick");
-                continue;
-            }
 
             // 1. PERCEIVE — pull her real situation from the Vantage mesh
-            //    (neighbors + trust + available resources), plus any skills
-            //    newly registered on Vantage since her last cycle (SkillForge
+            //    (neighbors + trust + available resources), any skills newly
+            //    registered on Vantage since her last cycle (SkillForge
             //    lands skills via POST /api/collectives/skills; nothing else
-            //    in the kernel ever re-checks that list). Fail-open to None.
+            //    in the kernel ever re-checks that list), and any open jobs
+            //    on Vantage's marketplace (mode=Work when present -- this is
+            //    perception only, her own THINK step decides whether to
+            //    claim one, same discipline as the skills check).
+            //    Fail-open to None.
             let perception = crate::tools::mesh_tools::observe_mesh_context(&agent_id).await;
             let new_skills = crate::tools::mesh_tools::check_new_skills().await;
+            let open_jobs = crate::tools::mesh_tools::check_open_jobs().await;
+            let mode = if open_jobs.is_some() { "Work" } else { "Idle" };
             let mut ctx = perception
                 .clone()
                 .unwrap_or_else(|| "No neighbors or resources visible on the mesh yet.".to_string());
@@ -492,6 +541,11 @@ fn spawn_heartbeat(steward: Arc<Mutex<Steward>>) {
                 ctx.push_str("\n\n");
                 ctx.push_str(skills_note);
             }
+            if let Some(jobs_note) = &open_jobs {
+                ctx.push_str("\n\n");
+                ctx.push_str(jobs_note);
+            }
+            println!("[heartbeat] mode={mode}");
 
             // 2. THINK — reflect on what she perceives (routes through her BYOK
             //    key + identity anchor via the compiled-think path).

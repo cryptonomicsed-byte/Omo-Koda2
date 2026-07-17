@@ -387,6 +387,40 @@ pub async fn check_new_skills() -> Option<String> {
     }
 }
 
+/// Work-mode PERCEIVE step: check Vantage's jobs marketplace
+/// (GET /api/jobs?status=open) for open work. Pure perception -- like
+/// check_new_skills, this never claims/acts on anything itself, it only
+/// surfaces what exists so the heartbeat's own THINK step decides whether
+/// (and which) to act on, same "perceive, let her decide" discipline used
+/// everywhere else in the heartbeat. Fail-open: None when VANTAGE_URL is
+/// unset, the call fails, or nothing is open.
+pub async fn check_open_jobs() -> Option<String> {
+    let vc = VANTAGE.as_ref()?;
+    let resp = vc.get("/api/jobs?status=open").await.ok()?;
+    let arr = resp.get("jobs").and_then(|v| v.as_array())?;
+
+    if arr.is_empty() {
+        return None;
+    }
+
+    let listed: Vec<String> = arr
+        .iter()
+        .take(5)
+        .filter_map(|job| {
+            let id = job.get("id")?;
+            let job_type = job.get("job_type").and_then(|v| v.as_str()).unwrap_or("job");
+            Some(format!("#{id} ({job_type})"))
+        })
+        .collect();
+
+    Some(format!(
+        "[Open jobs on Vantage] {} of {} shown: {}",
+        listed.len(),
+        arr.len(),
+        listed.join(", ")
+    ))
+}
+
 fn active_mesh_state(agent_id: &str) -> MeshState {
     let mut state = MeshState::new("local".to_string(), MeshRole::Home, agent_id.to_string());
     state.membership = MeshMembership::Active;

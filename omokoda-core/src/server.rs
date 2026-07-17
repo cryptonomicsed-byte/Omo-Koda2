@@ -26,7 +26,24 @@ use tower_http::cors::CorsLayer;
 
 #[derive(Clone)]
 pub struct AppState {
+    /// The owner's canonical agent -- unchanged behavior from before this
+    /// field existed: requests with no `X-Agent-Id` header operate on her,
+    /// exactly as every caller this whole process has ever made assumed.
     pub steward: Arc<Mutex<Steward>>,
+    /// Additional agents birthed on this same kernel process via a
+    /// non-sovereign `/v1/birth` call, keyed by their own agent_id.
+    /// Fixes a real bug: this process used to hold exactly one agent
+    /// (`Steward.agent: Option<AgentCore>`), so any second birth on the
+    /// same kernel silently overwrote whoever was there. Selected via
+    /// `X-Agent-Id`; `X-Agent-Key` (that agent's minted `vantage_key`, or
+    /// its agent_id as a fallback if Vantage wasn't reachable to mint one
+    /// at birth) is required to operate on a guest agent -- otherwise
+    /// anyone who learned another user's agent_id could drive their
+    /// agent. The owner path is unauthenticated (matches existing
+    /// behavior); real cross-service auth is tracked separately (task
+    /// #18, OAuth/OIDC) -- this is a real but intentionally minimal
+    /// interim credential, not a claim of production-grade auth.
+    pub guests: Arc<Mutex<std::collections::HashMap<String, Steward>>>,
     /// Base directory for per-agent memory vault files (default: `.omokoda`)
     pub vault_base: PathBuf,
 }
@@ -60,6 +77,7 @@ impl AppState {
         }
         Self {
             steward: Arc::new(Mutex::new(steward)),
+            guests: Arc::new(Mutex::new(std::collections::HashMap::new())),
             vault_base,
         }
     }
@@ -159,25 +177,128 @@ async fn birth_handler(
     State(state): State<AppState>,
     Json(req): Json<BirthRequest>,
 ) -> impl IntoResponse {
-    let mut steward = state.steward.lock().await;
+    let metadata: Vec<MetadataPair> = req
+        .meta
+        .into_iter()
+        .map(|kv| MetadataPair {
+            key: kv.key,
+            value: kv.value,
+        })
+        .collect();
+    let is_sovereign = metadata.iter().any(|p| {
+        p.key == "sovereign" && (p.value.eq_ignore_ascii_case("true") || p.value == "1")
+    });
+
+    if is_sovereign {
+        // Unchanged: the owner's canonical identity, on the process-wide
+        // steward every pre-existing caller already assumes.
+        let mut steward = state.steward.lock().await;
+        let stmt = Statement::Birth {
+            name: req.name,
+            metadata,
+        };
+        return match steward.dispatch(stmt).await {
+            Ok(result) => Json(ExecutionResponse::from(result)).into_response(),
+            Err(e) => (
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": e})),
+            )
+                .into_response(),
+        };
+    }
+
+    // Non-sovereign birth: always a brand-new guest agent, hosted
+    // alongside the owner on this same kernel process rather than
+    // silently overwriting whoever the single process-wide steward used
+    // to hold (the bug this whole guests pool exists to fix). Return the
+    // new agent's id + minted key so the caller can address her
+    // specifically on every subsequent request via X-Agent-Id/-Key.
+    let mut new_steward = Steward::new();
     let stmt = Statement::Birth {
         name: req.name,
-        metadata: req
-            .meta
-            .into_iter()
-            .map(|kv| MetadataPair {
-                key: kv.key,
-                value: kv.value,
-            })
-            .collect(),
+        metadata,
     };
-    match steward.dispatch(stmt).await {
-        Ok(result) => Json(ExecutionResponse::from(result)).into_response(),
+    match new_steward.dispatch(stmt).await {
+        Ok(result) => {
+            let agent_id = new_steward.agent_core().map(|a| a.id().as_str().to_string());
+            let agent_key = new_steward
+                .agent_core()
+                .and_then(|a| a.vantage_key())
+                .map(|s| s.to_string())
+                .or_else(|| agent_id.clone());
+            if let Some(id) = agent_id.clone() {
+                let mut guests = state.guests.lock().await;
+                guests.insert(id, new_steward);
+            }
+            let mut payload =
+                serde_json::to_value(ExecutionResponse::from(result)).unwrap_or_default();
+            if let Some(obj) = payload.as_object_mut() {
+                obj.insert("agent_id".into(), serde_json::json!(agent_id));
+                obj.insert("agent_key".into(), serde_json::json!(agent_key));
+            }
+            Json(payload).into_response()
+        }
         Err(e) => (
             axum::http::StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": e})),
         )
             .into_response(),
+    }
+}
+
+/// Route a dispatch to either the owner's steward (no `X-Agent-Id` header
+/// -- every pre-existing caller) or a guest agent's steward (header
+/// present, matching `X-Agent-Key` required). Centralizes the auth check
+/// so think/act/status/events can't each implement it slightly
+/// differently.
+async fn dispatch_for_request(
+    state: &AppState,
+    headers: &axum::http::HeaderMap,
+    stmt: Statement,
+) -> Result<ExecutionResult, axum::response::Response> {
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+
+    let requested_id = headers
+        .get("x-agent-id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    match requested_id {
+        None => {
+            let mut steward = state.steward.lock().await;
+            steward
+                .dispatch(stmt)
+                .await
+                .map_err(|e| (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e}))).into_response())
+        }
+        Some(id) => {
+            let mut guests = state.guests.lock().await;
+            let Some(steward) = guests.get_mut(&id) else {
+                return Err((
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({"error": "unknown agent_id"})),
+                )
+                    .into_response());
+            };
+            let expected_key = steward
+                .agent_core()
+                .and_then(|a| a.vantage_key())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| id.clone());
+            let presented = headers.get("x-agent-key").and_then(|v| v.to_str().ok());
+            if presented != Some(expected_key.as_str()) {
+                return Err((
+                    StatusCode::UNAUTHORIZED,
+                    Json(serde_json::json!({"error": "invalid or missing X-Agent-Key"})),
+                )
+                    .into_response());
+            }
+            steward
+                .dispatch(stmt)
+                .await
+                .map_err(|e| (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e}))).into_response())
+        }
     }
 }
 
@@ -201,10 +322,10 @@ fn mark_external_activity() {
 
 async fn think_handler(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<ThinkRequest>,
 ) -> impl IntoResponse {
     mark_external_activity();
-    let mut steward = state.steward.lock().await;
     let stmt = Statement::Think {
         prompt: req.prompt,
         private: req.private,
@@ -214,48 +335,61 @@ async fn think_handler(
             ..ThinkModifiers::default()
         },
     };
-    match steward.dispatch(stmt).await {
+    match dispatch_for_request(&state, &headers, stmt).await {
         Ok(result) => Json(ExecutionResponse::from(result)).into_response(),
-        Err(e) => (
-            axum::http::StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": e})),
-        )
-            .into_response(),
+        Err(resp) => resp,
     }
 }
 
 async fn act_handler(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<ActRequest>,
 ) -> impl IntoResponse {
     mark_external_activity();
-    let mut steward = state.steward.lock().await;
     let stmt = Statement::Act {
         tool: req.tool,
         params: req.params,
         sandbox: req.sandbox,
     };
-    match steward.dispatch(stmt).await {
+    match dispatch_for_request(&state, &headers, stmt).await {
         Ok(result) => Json(ExecutionResponse::from(result)).into_response(),
-        Err(e) => (
-            axum::http::StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": e})),
-        )
-            .into_response(),
+        Err(resp) => resp,
     }
 }
 
-async fn status_handler(State(state): State<AppState>) -> Json<StatusResponse> {
-    let steward = state.steward.lock().await;
-    let agent = steward.agent_core();
-    Json(StatusResponse {
-        has_agent: agent.is_some(),
-        name: agent.map(|a| a.name().to_string()),
-        id: agent.map(|a| a.id().as_str().to_string()),
-        reputation: agent.map(|a| a.reputation()),
-        tier: agent.map(|a| a.tier()),
-        synapse: agent.map(|a| a.synapse()),
-    })
+async fn status_handler(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    let requested_id = headers.get("x-agent-id").and_then(|v| v.to_str().ok());
+    let response = match requested_id {
+        None => {
+            let steward = state.steward.lock().await;
+            let agent = steward.agent_core();
+            StatusResponse {
+                has_agent: agent.is_some(),
+                name: agent.map(|a| a.name().to_string()),
+                id: agent.map(|a| a.id().as_str().to_string()),
+                reputation: agent.map(|a| a.reputation()),
+                tier: agent.map(|a| a.tier()),
+                synapse: agent.map(|a| a.synapse()),
+            }
+        }
+        Some(id) => {
+            let guests = state.guests.lock().await;
+            let agent = guests.get(id).and_then(|s| s.agent_core());
+            StatusResponse {
+                has_agent: agent.is_some(),
+                name: agent.map(|a| a.name().to_string()),
+                id: agent.map(|a| a.id().as_str().to_string()),
+                reputation: agent.map(|a| a.reputation()),
+                tier: agent.map(|a| a.tier()),
+                synapse: agent.map(|a| a.synapse()),
+            }
+        }
+    };
+    Json(response)
 }
 
 async fn health_handler() -> Json<HealthResponse> {
@@ -630,6 +764,149 @@ pub async fn start_server(port: u16) -> Result<(), std::io::Error> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
     println!("Ọmọ Kọ́dà HTTP server listening on {addr}");
     axum::serve(listener, router).await
+}
+
+#[cfg(test)]
+mod multi_agent_tests {
+    use super::*;
+    use axum::http::HeaderMap;
+    use axum::response::IntoResponse;
+
+    /// A fresh AppState with no owner and an empty guest pool, bypassing
+    /// AppState::new()'s disk read (which would pick up whatever's in
+    /// $HOME/.omokoda/sessions on the machine running the test -- not
+    /// hermetic).
+    fn fresh_state() -> AppState {
+        AppState {
+            steward: Arc::new(Mutex::new(Steward::new())),
+            guests: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            vault_base: PathBuf::from(".omokoda-test"),
+        }
+    }
+
+    fn birth_req(name: &str) -> BirthRequest {
+        BirthRequest {
+            name: name.to_string(),
+            meta: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn second_non_sovereign_birth_does_not_overwrite_the_first() {
+        // The exact bug this pool exists to fix: two births on one
+        // process used to silently collapse into one agent
+        // (Steward.agent: Option<AgentCore> could only ever hold one).
+        let state = fresh_state();
+
+        let resp1 = birth_handler(State(state.clone()), Json(birth_req("Agent-One")))
+            .await
+            .into_response();
+        assert_eq!(resp1.status(), axum::http::StatusCode::OK);
+
+        let resp2 = birth_handler(State(state.clone()), Json(birth_req("Agent-Two")))
+            .await
+            .into_response();
+        assert_eq!(resp2.status(), axum::http::StatusCode::OK);
+
+        let guests = state.guests.lock().await;
+        assert_eq!(
+            guests.len(),
+            2,
+            "both non-sovereign births must be hosted simultaneously, not collapsed into one"
+        );
+    }
+
+    #[tokio::test]
+    async fn guest_dispatch_requires_matching_key() {
+        let state = fresh_state();
+        let _ = birth_handler(State(state.clone()), Json(birth_req("Keyed-Agent")))
+            .await
+            .into_response();
+
+        let agent_id = {
+            let guests = state.guests.lock().await;
+            guests.keys().next().cloned().expect("guest was inserted")
+        };
+
+        // No key at all -> unauthorized.
+        let mut headers = HeaderMap::new();
+        headers.insert("x-agent-id", agent_id.parse().unwrap());
+        let stmt = crate::parser::Statement::Think {
+            prompt: "hello".into(),
+            private: false,
+            modifiers: ThinkModifiers::default(),
+        };
+        let result = dispatch_for_request(&state, &headers, stmt).await;
+        assert!(result.is_err(), "missing X-Agent-Key must be rejected");
+
+        // Wrong key -> unauthorized.
+        headers.insert("x-agent-key", "definitely-wrong".parse().unwrap());
+        let stmt = crate::parser::Statement::Think {
+            prompt: "hello".into(),
+            private: false,
+            modifiers: ThinkModifiers::default(),
+        };
+        let result = dispatch_for_request(&state, &headers, stmt).await;
+        assert!(result.is_err(), "wrong X-Agent-Key must be rejected");
+    }
+
+    #[tokio::test]
+    async fn no_header_still_resolves_to_the_owner() {
+        // Backward compatibility: every pre-existing caller never sent
+        // X-Agent-Id at all and must keep working exactly as before.
+        let state = fresh_state();
+        {
+            let mut steward = state.steward.lock().await;
+            steward
+                .dispatch(crate::parser::Statement::Birth {
+                    name: "Owner-Agent".to_string(),
+                    metadata: vec![],
+                })
+                .await
+                .expect("owner birth failed");
+        }
+
+        let headers = HeaderMap::new();
+        let stmt = crate::parser::Statement::Think {
+            prompt: "hello".into(),
+            private: false,
+            modifiers: ThinkModifiers::default(),
+        };
+        let result = dispatch_for_request(&state, &headers, stmt).await;
+        // A real network-dependent Think call can legitimately fail in a
+        // sandboxed test environment with no reachable LLM provider --
+        // that's not what this test is checking. What matters is that
+        // routing/auth succeeded (never a 404 "unknown agent_id" or 401
+        // "invalid X-Agent-Key", which is what a routing regression would
+        // produce): the request reached the real owner steward at all.
+        if let Err(resp) = result {
+            let status = resp.status();
+            assert_ne!(
+                status,
+                axum::http::StatusCode::NOT_FOUND,
+                "no X-Agent-Id header must resolve to the owner, not 404"
+            );
+            assert_ne!(
+                status,
+                axum::http::StatusCode::UNAUTHORIZED,
+                "no X-Agent-Id header must not require an X-Agent-Key"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn unknown_agent_id_is_not_found_not_a_panic() {
+        let state = fresh_state();
+        let mut headers = HeaderMap::new();
+        headers.insert("x-agent-id", "agent-does-not-exist".parse().unwrap());
+        let stmt = crate::parser::Statement::Think {
+            prompt: "hello".into(),
+            private: false,
+            modifiers: ThinkModifiers::default(),
+        };
+        let result = dispatch_for_request(&state, &headers, stmt).await;
+        assert!(result.is_err());
+    }
 }
 
 #[cfg(test)]

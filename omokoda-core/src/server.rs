@@ -152,6 +152,11 @@ pub struct StatusResponse {
     pub reputation: Option<f64>,
     pub tier: Option<u8>,
     pub synapse: Option<f64>,
+    /// Real Sui testnet object id from omokoda::garden::register_agent, if
+    /// the on-chain mint succeeded at birth (see onchain.rs). None if
+    /// unminted -- OMOKODA_SUI_REGISTRY unset, born before this existed,
+    /// or the chain call failed at the time.
+    pub onchain_nft_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -374,6 +379,7 @@ async fn status_handler(
                 reputation: agent.map(|a| a.reputation()),
                 tier: agent.map(|a| a.tier()),
                 synapse: agent.map(|a| a.synapse()),
+                onchain_nft_id: agent.and_then(|a| a.onchain_nft_id().map(|s| s.to_string())),
             }
         }
         Some(id) => {
@@ -386,6 +392,7 @@ async fn status_handler(
                 reputation: agent.map(|a| a.reputation()),
                 tier: agent.map(|a| a.tier()),
                 synapse: agent.map(|a| a.synapse()),
+                onchain_nft_id: agent.and_then(|a| a.onchain_nft_id().map(|s| s.to_string())),
             }
         }
     };

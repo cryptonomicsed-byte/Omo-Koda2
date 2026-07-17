@@ -218,6 +218,12 @@ pub struct AgentSnapshot {
     /// Vantage API key minted at birth, persisted for cross-restart reuse.
     #[serde(default)]
     pub vantage_key: Option<String>,
+    /// Real on-chain object id from omokoda::garden::register_agent
+    /// (Sui testnet), if minting succeeded at birth. None if OMOKODA_SUI_
+    /// REGISTRY was unset or the mint call failed -- fail-open, never
+    /// blocks a birth. See onchain.rs.
+    #[serde(default)]
+    pub onchain_nft_id: Option<String>,
     /// CloakSeed display-offset — derived from an optional birth passphrase.
     #[serde(default)]
     pub cloak_offset: Option<u8>,
@@ -359,6 +365,14 @@ impl AgentCore {
 
     pub fn set_vantage_key(&mut self, key: String) {
         self.snapshot.vantage_key = Some(key);
+    }
+
+    pub fn onchain_nft_id(&self) -> Option<&str> {
+        self.snapshot.onchain_nft_id.as_deref()
+    }
+
+    pub fn set_onchain_nft_id(&mut self, id: String) {
+        self.snapshot.onchain_nft_id = Some(id);
     }
 
     /// This agent's personal BYOK LLM provider, if one was supplied at birth.
@@ -747,6 +761,7 @@ impl Steward {
             act_counter: 0,
             mesh: None,
             vantage_key: None,
+            onchain_nft_id: None,
             cloak_offset,
             duress_phrase_hash,
             llm_api_key,
@@ -1077,6 +1092,20 @@ impl Steward {
                 if let Some(key) = minted_key {
                     if let Ok(core) = self.ensure_born_mut() {
                         core.set_vantage_key(key);
+                    }
+                    self.auto_save();
+                }
+
+                // Real, optional on-chain birth mint (omokoda::garden::
+                // register_agent, Sui testnet) -- fail-open by design,
+                // same as Vantage registration above: OMOKODA_SUI_REGISTRY
+                // unset, or any part of the chain call failing, means no
+                // on-chain record yet, never a reason to fail the birth
+                // itself. See onchain.rs for the honest scope note (real
+                // mint, not yet dynamic post-mint updates).
+                if let Some(nft_id) = crate::onchain::mint_onchain_agent(&reg_name).await {
+                    if let Ok(core) = self.ensure_born_mut() {
+                        core.set_onchain_nft_id(nft_id);
                     }
                     self.auto_save();
                 }

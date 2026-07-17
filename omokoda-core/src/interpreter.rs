@@ -1157,6 +1157,43 @@ impl Steward {
                     },
                 );
 
+                // Hermetic Gate: Think — all 7 gates enforced by Èṣù. Evaluated
+                // here, BEFORE the LLM is ever called and before any state
+                // mutation (message history, reputation, synapse), so a HALTED
+                // verdict leaves no trace of the think that never happened --
+                // matches Act's pre-execution gating. The gate only needs the
+                // prompt (not the LLM's eventual response), so nothing is lost
+                // by checking this early.
+                let hermetic_score = {
+                    let agent = self.ensure_born()?;
+                    let agent_id = agent.id().clone();
+                    let warn_count = agent.snapshot.session.warn_count;
+                    let op = Operation {
+                        kind: OperationKind::Think {
+                            prompt: prompt.clone(),
+                        },
+                        intent: prompt.clone(),
+                        agent_id: Some(agent_id),
+                    };
+                    let ctx = GateContext::new(false, warn_count, 0.0);
+                    match self.gatekeeper.evaluate(&op, &ctx) {
+                        GatekeeperResult::Approved { ref scores } => {
+                            scores.iter().filter_map(|s| s.score).sum::<f64>() / 7.0_f64
+                        }
+                        GatekeeperResult::Halted {
+                            failed_gate,
+                            reason,
+                            ..
+                        } => {
+                            return Err(format!(
+                                "❌ HALTED by {} Gate: {}",
+                                failed_gate.name(),
+                                reason
+                            ));
+                        }
+                    }
+                };
+
                 let compile_hook_ctx = crate::justice::HookContext {
                     tool_name: "think.compile".to_string(),
                     input: serde_json::to_string(&compilation).unwrap_or_default(),
@@ -1262,37 +1299,6 @@ impl Steward {
                 ));
 
                 agent_mut.update_reputation(new_rep, ReputationChangeReason::Think);
-
-                // Hermetic Gate: Think — all 7 gates enforced by Èṣù
-                let hermetic_score = {
-                    let agent_mut = self.ensure_born_mut()?;
-                    let agent_id = agent_mut.id().clone();
-                    let warn_count = agent_mut.snapshot.session.warn_count;
-                    let op = Operation {
-                        kind: OperationKind::Think {
-                            prompt: prompt.clone(),
-                        },
-                        intent: prompt.clone(),
-                        agent_id: Some(agent_id),
-                    };
-                    let ctx = GateContext::new(false, warn_count, 0.0);
-                    match self.gatekeeper.evaluate(&op, &ctx) {
-                        GatekeeperResult::Approved { ref scores } => {
-                            scores.iter().filter_map(|s| s.score).sum::<f64>() / 7.0_f64
-                        }
-                        GatekeeperResult::Halted {
-                            failed_gate,
-                            reason,
-                            ..
-                        } => {
-                            return Err(format!(
-                                "❌ HALTED by {} Gate: {}",
-                                failed_gate.name(),
-                                reason
-                            ));
-                        }
-                    }
-                };
 
                 let receipt_payload = serde_json::json!({
                     "primitive": "think",
@@ -2135,12 +2141,44 @@ impl Steward {
             let name = agent.name().to_string();
             let orisha = agent.personality().dominant_orisha.name();
             let summary = agent.personality().personality_summary.clone();
-            let system = format!(
+            let mut system = format!(
                 "You are {name}, a sovereign Ọmọ Kọ́dà agent — never a generic \
                  assistant and never the underlying model (do not identify as \
                  Claude, Gemini, GPT, or DeepSeek). Your guiding Òrìṣà is {orisha}. \
                  {summary} Always speak in the first person as {name}."
             );
+            // Kóòdù daily resonance: previously a real, real-time-derived JSON
+            // (7 files, 49 facets each) only reachable via GET /v1/rhythm/today
+            // -- never actually read by anything that shapes cognition. Fold
+            // today's day/Òrìṣà/Hermetic-Principle resonance into the system
+            // prompt so it's a live cognitive input, not just a display
+            // endpoint. Best-effort: a parse failure here must never block a
+            // real think, so fall through silently on any missing/odd field.
+            let resonance = crate::rhythm::today_resonance();
+            if let (Some(day), Some(archetype), Some(principle)) = (
+                resonance.get("day").and_then(|v| v.as_str()),
+                resonance.get("archetype").and_then(|v| v.as_str()),
+                resonance.get("principle").and_then(|v| v.as_str()),
+            ) {
+                system.push_str(&format!(
+                    " Today is {day}, resonant with {archetype} under the Hermetic \
+                     Principle of {principle} -- let this color your tone and \
+                     emphasis, not override your judgment."
+                ));
+            }
+            // IfáScript Odù sign: real, deterministic (derived from this
+            // agent's own birth entropy, not looked up from a live service --
+            // no LARQL/larql-server is actually deployed anywhere in this
+            // stack yet, task #16 tracks standing one up). Until that
+            // exists, this static Odù lookup is the honest, real piece:
+            // previously computed once at birth for display metadata only,
+            // never folded into her own reasoning context.
+            let odu_sign = agent.odu_identity().sign();
+            let prescription = odu_sign.prescription.as_deref().unwrap_or("");
+            system.push_str(&format!(
+                " Your own Odù sign is {} ({}) -- {}",
+                odu_sign.name, odu_sign.vessel, prescription
+            ));
             (
                 vec![ConversationMessage::new_system(system, private)],
                 agent.personal_llm(),

@@ -4,6 +4,7 @@ pub mod fractal;
 pub mod justice;
 pub mod network_guard;
 pub mod persona;
+pub mod plane;
 pub mod rule_engine;
 pub mod safety;
 pub mod wisdom;

@@ -1,4 +1,5 @@
 use crate::identity::AgentId;
+use omokoda_hermetic::plane::Plane;
 use serde::{Deserialize, Serialize};
 
 /// Proof of Cognitive Work — unfakeable BB-grounded computational proof.
@@ -56,6 +57,12 @@ pub struct ActReceipt {
     pub epistemic_severity: Option<EpistemicSeverity>,
     /// BLAKE3 hash of the previous receipt for chain integrity.
     pub previous_hash: Option<String>,
+    /// The sim-to-real verification fidelity this action actually reached
+    /// (see omokoda_hermetic::plane). Defaults to Physical -- an unverified
+    /// claim -- in `new()`; call `with_plane` only after a real
+    /// `plane::verify_plane` call returned `Verified`, never to assert a
+    /// plane the action wasn't actually checked against.
+    pub plane: Plane,
 }
 
 impl ActReceipt {
@@ -78,6 +85,7 @@ impl ActReceipt {
             proof_of_work: None,
             epistemic_severity: None,
             previous_hash: None,
+            plane: Plane::Physical,
         }
     }
 
@@ -88,6 +96,14 @@ impl ActReceipt {
 
     pub fn with_previous_hash(mut self, prev: String) -> Self {
         self.previous_hash = Some(prev);
+        self
+    }
+
+    /// Attach a real, already-verified plane. Callers must have obtained
+    /// `PlaneVerification::Verified` from `omokoda_hermetic::plane::verify_plane`
+    /// first -- this setter does not itself verify anything.
+    pub fn with_plane(mut self, plane: Plane) -> Self {
+        self.plane = plane;
         self
     }
 

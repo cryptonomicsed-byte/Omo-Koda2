@@ -14,7 +14,13 @@ defmodule OmokodaSwarm.Agent do
   use GenServer
   require Logger
 
-  defstruct [:id, :config, :state, :tasks, :steward_connected]
+  # guest_agent_id/guest_agent_key: set once this agent has a real guest
+  # identity on the Rust Steward (either passed in via `config` at start,
+  # e.g. by HttpApi's /spawn_agent route which births before starting this
+  # GenServer, or captured from a successful :birth dispatch below). Every
+  # subsequent :think/:act dispatch forwards these so it lands on THIS
+  # agent's own guest steward, not the process-wide owner.
+  defstruct [:id, :config, :state, :tasks, :steward_connected, :guest_agent_id, :guest_agent_key]
 
   # ---------------------------------------------------------------------------
   # Public API (unchanged surface so existing supervisor/tests still work)
@@ -60,7 +66,9 @@ defmodule OmokodaSwarm.Agent do
       config: config,
       state: :idle,
       tasks: [],
-      steward_connected: false
+      steward_connected: false,
+      guest_agent_id: Map.get(config, :guest_agent_id),
+      guest_agent_key: Map.get(config, :guest_agent_key)
     }
     {:ok, state}
   end
@@ -74,7 +82,8 @@ defmodule OmokodaSwarm.Agent do
       id: state.id,
       state: state.state,
       tasks: state.tasks,
-      steward_connected: state.steward_connected
+      steward_connected: state.steward_connected,
+      guest_agent_id: state.guest_agent_id
     }
     {:reply, {:ok, public}, state}
   end
@@ -88,7 +97,14 @@ defmodule OmokodaSwarm.Agent do
 
   @impl true
   def handle_info({:process_task, task}, state) do
-    result = dispatch(task, state.id)
+    result = dispatch(task, state)
+
+    # A successful non-sovereign :birth mints this agent's real guest
+    # identity on the Rust Steward -- capture it so every later :think/:act
+    # dispatch from this same GenServer addresses that guest specifically
+    # (see StewardClient.think/act's agent_id/agent_key params) instead of
+    # silently falling through to the process-wide owner.
+    {guest_id, guest_key} = extract_guest_credentials(task, result, state)
 
     # Publish result to TelemetryHub so observers can react.
     OmokodaSwarm.TelemetryHub.publish(state.id, %{
@@ -102,53 +118,71 @@ defmodule OmokodaSwarm.Agent do
       state
       | tasks: new_tasks,
         state: (if new_tasks == [], do: :idle, else: :busy),
-        steward_connected: steward_result?(result)
+        steward_connected: steward_result?(result),
+        guest_agent_id: guest_id,
+        guest_agent_key: guest_key
     }
 
     {:noreply, new_state}
   end
 
+  # Only a :birth task's *own* result can update guest credentials -- a
+  # think/act response never carries agent_id/agent_key, so this must not
+  # accidentally clear already-known credentials on every other task.
+  defp extract_guest_credentials(%{type: :birth}, {:ok, %{"agent_id" => id, "agent_key" => key}}, _state)
+       when is_binary(id) do
+    {id, key}
+  end
+  defp extract_guest_credentials(%{type: :birth}, _result, _state), do: {nil, nil}
+  defp extract_guest_credentials(_task, _result, state), do: {state.guest_agent_id, state.guest_agent_key}
+
   # ---------------------------------------------------------------------------
   # Task dispatch — Steward-aware
   # ---------------------------------------------------------------------------
 
-  # Birth primitive: forward to Rust Steward.
-  defp dispatch(%{type: :birth, name: name} = task, agent_id) do
+  # Birth primitive: forward to Rust Steward. Always a fresh birth call --
+  # if this agent already has a guest identity, re-birthing is a caller
+  # error, not something to silently no-op (matches Rust's own "second
+  # non-sovereign birth never overwrites" guarantee: it just mints another
+  # new guest, which would orphan the one already tracked here).
+  defp dispatch(%{type: :birth, name: name} = task, state) do
     meta = Map.get(task, :meta, [])
-    Logger.debug("[agent:#{agent_id}] birth #{name}")
+    Logger.debug("[agent:#{state.id}] birth #{name}")
 
     case OmokodaSwarm.StewardClient.birth(name, meta) do
       {:ok, result} -> {:ok, result}
-      {:error, reason} -> steward_fallback(:birth, reason, agent_id)
+      {:error, reason} -> steward_fallback(:birth, reason, state.id)
     end
   end
 
-  # Think primitive: forward to Rust Steward.
-  defp dispatch(%{type: :think, prompt: prompt} = task, agent_id) do
+  # Think primitive: forward to Rust Steward, addressed to this agent's own
+  # guest identity if it has one (nil/nil correctly falls through to the
+  # owner, matching pre-existing behavior for agents that never birthed).
+  defp dispatch(%{type: :think, prompt: prompt} = task, state) do
     private = Map.get(task, :private, false)
-    Logger.debug("[agent:#{agent_id}] think «#{String.slice(prompt, 0, 40)}»")
+    Logger.debug("[agent:#{state.id}] think «#{String.slice(prompt, 0, 40)}»")
 
-    case OmokodaSwarm.StewardClient.think(prompt, private) do
+    case OmokodaSwarm.StewardClient.think(prompt, private, state.guest_agent_id, state.guest_agent_key) do
       {:ok, result} -> {:ok, result}
-      {:error, reason} -> steward_fallback(:think, reason, agent_id)
+      {:error, reason} -> steward_fallback(:think, reason, state.id)
     end
   end
 
-  # Act primitive: forward to Rust Steward.
-  defp dispatch(%{type: :act, tool: tool} = task, agent_id) do
+  # Act primitive: forward to Rust Steward, same guest-addressing as think.
+  defp dispatch(%{type: :act, tool: tool} = task, state) do
     params = Map.get(task, :params, "{}")
     sandbox = Map.get(task, :sandbox, false)
-    Logger.debug("[agent:#{agent_id}] act #{tool}")
+    Logger.debug("[agent:#{state.id}] act #{tool}")
 
-    case OmokodaSwarm.StewardClient.act(tool, params, sandbox) do
+    case OmokodaSwarm.StewardClient.act(tool, params, sandbox, state.guest_agent_id, state.guest_agent_key) do
       {:ok, result} -> {:ok, result}
-      {:error, reason} -> steward_fallback(:act, reason, agent_id)
+      {:error, reason} -> steward_fallback(:act, reason, state.id)
     end
   end
 
   # Coordinator meta-tasks (strings or unknown maps) — simulate locally.
-  defp dispatch(task, agent_id) do
-    Logger.debug("[agent:#{agent_id}] local task: #{inspect(task)}")
+  defp dispatch(task, state) do
+    Logger.debug("[agent:#{state.id}] local task: #{inspect(task)}")
     Process.sleep(50)
     {:ok, %{simulated: true, task: inspect(task)}}
   end

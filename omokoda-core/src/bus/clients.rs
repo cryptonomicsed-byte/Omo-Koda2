@@ -122,6 +122,16 @@ pub trait OsunClient: Send + Sync {
     ) -> f64 {
         0.5
     }
+
+    /// Cross-agent Soma search: patterns matching `prompt` across the
+    /// explicit `share_with` list only -- never every agent Julia has ever
+    /// seen. `share_with` is the caller's own already-decided trust
+    /// boundary (e.g. `OduDirectory::swarm_agents()`), never computed or
+    /// assumed here. Default no-op so callers that never opt into swarm
+    /// sharing pay nothing; `HttpOsunClient` below is the real impl.
+    async fn query_swarm(&self, _share_with: &[String], _prompt: &str) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// Ọbàtálá (Lisp) client — Hermetic principle evaluation.
@@ -479,6 +489,33 @@ impl OsunClient for HttpOsunClient {
             _ => 0.5,
         }
     }
+
+    async fn query_swarm(&self, share_with: &[String], prompt: &str) -> Vec<String> {
+        if share_with.is_empty() {
+            return Vec::new();
+        }
+        let url = format!("{}/soma/query_swarm", self.base_url);
+        let body = serde_json::json!({
+            "agent_ids": share_with,
+            "prompt": prompt,
+        });
+        match http_client()
+            .post(&url)
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(3))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<serde_json::Value>()
+                .await
+                .ok()
+                .and_then(|v| v.get("patterns").cloned())
+                .and_then(|p| serde_json::from_value::<Vec<String>>(p).ok())
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        }
+    }
 }
 
 // ─── HttpOyaClient ── Ọya Go rhythm service at OYA_URL ───────────────────────
@@ -611,10 +648,17 @@ impl YemojaClient for HttpYemojaClient {
     async fn spawn_agent(&self, role: &str, budget_synapse: f64) -> Result<String, String> {
         let url = format!("{}/spawn_agent", self.base_url);
         let body = serde_json::json!({ "role": role, "budget_synapse": budget_synapse });
+        // 45s, not the usual few-second client timeout: spawn_agent's real
+        // path is Elixir -> StewardClient.birth -> this same kernel's own
+        // /v1/birth, which also tries a live Vantage registration call --
+        // observed live at ~24s under real DB contention (see the
+        // vantage.db lock-contention work earlier this session), so a
+        // short timeout here would false-negative a spawn that actually
+        // succeeded moments later.
         match http_client()
             .post(&url)
             .json(&body)
-            .timeout(std::time::Duration::from_secs(5))
+            .timeout(std::time::Duration::from_secs(45))
             .send()
             .await
         {

@@ -10,10 +10,24 @@ defmodule OmokodaSwarm.HttpApi do
   reach it directly from the browser.
 
   Routes:
-    GET  /health           -> {"ok": true}
-    GET  /status            -> OmokodaSwarm.Coordinator.get_status/0
-    GET  /rem/last_plan     -> OmokodaSwarm.Memory.RemCycle.last_plan/0
-    POST /rem/run_now       -> OmokodaSwarm.Memory.RemCycle.run_now/0
+    GET  /health             -> {"ok": true}
+    GET  /status              -> OmokodaSwarm.Coordinator.get_status/0
+    GET  /rem/last_plan       -> OmokodaSwarm.Memory.RemCycle.last_plan/0
+    POST /rem/run_now         -> OmokodaSwarm.Memory.RemCycle.run_now/0
+    POST /spawn_agent         -> real subagent: births a genuine guest
+                                  agent on the Rust Steward (see
+                                  StewardClient.birth/2), then registers a
+                                  supervised GenServer for it here so it's
+                                  independently crash-isolated and shows up
+                                  in /status like any other swarm agent.
+                                  Body: {"role": "...", "budget_synapse": N}
+                                  -> {"agent_id": "<real rust agent id>"}
+                                  This is the endpoint
+                                  omokoda-core::bus::clients::HttpYemojaClient
+                                  ::spawn_agent posts to -- previously
+                                  nonexistent, which meant that Rust-side
+                                  client's calls always 404'd.
+    GET  /agent_status/:id    -> OmokodaSwarm.Agent.get_state/1 for one agent
   """
 
   use GenServer
@@ -51,7 +65,7 @@ defmodule OmokodaSwarm.HttpApi do
   defp handle_conn(socket) do
     with {:ok, data} <- :gen_tcp.recv(socket, 0, 5_000),
          {:ok, method, path} <- parse_request_line(data) do
-      respond(socket, method, path)
+      respond(socket, method, path, extract_body(data))
     else
       _ -> :ok
     end
@@ -72,15 +86,27 @@ defmodule OmokodaSwarm.HttpApi do
     end
   end
 
-  defp respond(socket, "OPTIONS", _path) do
+  # Everything after the blank line separating headers from body. No
+  # Transfer-Encoding/chunked support and no re-read if the body arrives
+  # in a later TCP segment -- matches this module's existing "small local
+  # JSON request, one recv is enough" assumption (already relied on by
+  # every route here), just extended to also cover a request body.
+  defp extract_body(data) do
+    case String.split(data, "\r\n\r\n", parts: 2) do
+      [_headers, body] -> body
+      _ -> ""
+    end
+  end
+
+  defp respond(socket, "OPTIONS", _path, _body) do
     write(socket, 204, "")
   end
 
-  defp respond(socket, "GET", "/health") do
+  defp respond(socket, "GET", "/health", _body) do
     write_json(socket, 200, %{ok: true})
   end
 
-  defp respond(socket, "GET", "/status") do
+  defp respond(socket, "GET", "/status", _body) do
     try do
       status = OmokodaSwarm.Coordinator.get_status()
       write_json(socket, 200, safe_status(status))
@@ -89,14 +115,14 @@ defmodule OmokodaSwarm.HttpApi do
     end
   end
 
-  defp respond(socket, "GET", "/rem/last_plan") do
+  defp respond(socket, "GET", "/rem/last_plan", _body) do
     plan = OmokodaSwarm.Memory.RemCycle.last_plan()
     write_json(socket, 200, %{plan: plan})
   catch
     :exit, reason -> write_json(socket, 503, %{error: "rem cycle unavailable: #{inspect(reason)}"})
   end
 
-  defp respond(socket, "POST", "/rem/run_now") do
+  defp respond(socket, "POST", "/rem/run_now", _body) do
     case OmokodaSwarm.Memory.RemCycle.run_now() do
       {:ok, plan} -> write_json(socket, 200, %{plan: plan})
       {:error, reason} -> write_json(socket, 502, %{error: inspect(reason)})
@@ -105,7 +131,56 @@ defmodule OmokodaSwarm.HttpApi do
     :exit, reason -> write_json(socket, 503, %{error: "rem cycle unavailable: #{inspect(reason)}"})
   end
 
-  defp respond(socket, _method, _path) do
+  # Real subagent spawn: births a genuine guest agent on the Rust Steward
+  # (StewardClient.birth/2, non-sovereign -- see server.rs's birth_handler),
+  # then registers a supervised GenServer here pre-populated with the real
+  # agent_id/agent_key so its own future :think/:act dispatches (if driven
+  # through Agent.delegate_task) address that same guest. Synchronous:
+  # the caller (Rust's HttpYemojaClient::spawn_agent) needs the real
+  # agent_id back in the HTTP response, not delivered later via telemetry.
+  defp respond(socket, "POST", "/spawn_agent", body) do
+    case OmokodaSwarm.JSON.decode(body) do
+      {:ok, %{"role" => role} = params} ->
+        budget = Map.get(params, "budget_synapse", 0)
+        suffix = :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)
+        birth_name = "subagent-#{role}-#{suffix}"
+
+        case OmokodaSwarm.StewardClient.birth(birth_name, [%{key: "spawned_via", value: "swarm"}]) do
+          {:ok, %{"agent_id" => agent_id} = birth_result} when is_binary(agent_id) ->
+            agent_key = Map.get(birth_result, "agent_key", agent_id)
+
+            OmokodaSwarm.SwarmSupervisor.start_agent(agent_id, %{
+              role: String.to_atom(role),
+              budget_synapse: budget,
+              guest_agent_id: agent_id,
+              guest_agent_key: agent_key
+            })
+
+            write_json(socket, 200, %{agent_id: agent_id})
+
+          {:ok, _malformed} ->
+            write_json(socket, 502, %{error: "birth succeeded but response had no agent_id"})
+
+          {:error, reason} ->
+            write_json(socket, 502, %{error: "steward birth failed: #{inspect(reason)}"})
+        end
+
+      {:ok, _no_role} ->
+        write_json(socket, 422, %{error: "\"role\" is required"})
+
+      {:error, reason} ->
+        write_json(socket, 422, %{error: "invalid JSON body: #{inspect(reason)}"})
+    end
+  end
+
+  defp respond(socket, "GET", "/agent_status/" <> agent_id, _body) when agent_id != "" do
+    case OmokodaSwarm.Agent.get_state(agent_id) do
+      {:ok, public} -> write_json(socket, 200, safe_status(public))
+      {:error, :agent_not_found} -> write_json(socket, 404, %{error: "unknown agent_id"})
+    end
+  end
+
+  defp respond(socket, _method, _path, _body) do
     write_json(socket, 404, %{error: "not found"})
   end
 

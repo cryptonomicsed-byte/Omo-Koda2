@@ -874,6 +874,14 @@ impl Tool for WasmTool {
     }
 }
 
+/// Real subagent spawning via the Elixir swarm (Yemọja). Params: JSON
+/// `{"role": "...", "budget_synapse": N}`. Posts to `{YEMOJA_URL}/spawn_agent`
+/// (see omokoda-swarm's http_api.ex), which births a genuine guest agent on
+/// this same Rust kernel process (`AppState.guests`, keyed by its own
+/// agent_id -- see server.rs's `birth_handler`) and registers a supervised
+/// OTP GenServer for it. Fail-open like every other cross-language client in
+/// this codebase: no `YEMOJA_URL` configured means orchestration is simply
+/// unavailable, not a crash.
 struct AgentOrchestrationTool;
 #[async_trait]
 impl Tool for AgentOrchestrationTool {
@@ -881,7 +889,7 @@ impl Tool for AgentOrchestrationTool {
         "agent_orchestration"
     }
     fn description(&self) -> &str {
-        "Orchestrate other agents"
+        "Spawn a real subagent via the Elixir swarm. Params: JSON {\"role\": \"...\", \"budget_synapse\": N}"
     }
     fn required_tier(&self) -> u8 {
         4
@@ -891,11 +899,35 @@ impl Tool for AgentOrchestrationTool {
     }
     async fn execute(
         &self,
-        _params: &str,
+        params: &str,
         _context: &ExecutionContext,
     ) -> Result<(String, crate::usage::TokenUsage), String> {
+        let Ok(base_url) = std::env::var("YEMOJA_URL") else {
+            return Err(
+                "agent_orchestration unavailable: YEMOJA_URL not configured".to_string(),
+            );
+        };
+        let parsed: serde_json::Value = serde_json::from_str(params)
+            .map_err(|e| format!("invalid params JSON: {e}"))?;
+        let role = parsed
+            .get("role")
+            .and_then(|v| v.as_str())
+            .ok_or("params must include a \"role\" string")?;
+        let budget_synapse = parsed
+            .get("budget_synapse")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        let client = crate::bus::clients::HttpYemojaClient::new(base_url);
+        let agent_id = crate::bus::clients::YemojaClient::spawn_agent(
+            &client,
+            role,
+            budget_synapse,
+        )
+        .await?;
+
         Ok((
-            "orchestration complete".to_string(),
+            format!("spawned subagent {agent_id} (role={role})"),
             crate::usage::TokenUsage::default(),
         ))
     }

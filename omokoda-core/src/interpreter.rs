@@ -1229,18 +1229,24 @@ impl Steward {
                         );
                     }
 
+                    // An in-process mock provider (tests) is local by
+                    // definition — nothing leaves the process — so it may
+                    // serve private thoughts even though default_provider is
+                    // still the `default` sentinel.
                     let config = &agent.session().config;
                     let provider_name = config.default_provider.as_str();
-                    match provider_name {
-                        // larql serves locally-decompiled weights (larql-server)
-                        // — private-eligible like the other local engines.
-                        "webllm" | "ollama" | "larql" => {} // allowed
-                        _ => {
-                            return Err(format!(
-                                "Private thoughts require a local provider. Current: {}. \
-                             Allowed: webllm, ollama, larql. Blocked: openai, anthropic, gemini, etc.",
-                                provider_name
-                            ))
+                    if !self.providers.has_mock() {
+                        match provider_name {
+                            // larql serves locally-decompiled weights
+                            // (larql-server) — private-eligible.
+                            "webllm" | "ollama" | "larql" => {} // allowed
+                            _ => {
+                                return Err(format!(
+                                    "Private thoughts require a local provider. Current: {}. \
+                                 Allowed: webllm, ollama, larql. Blocked: openai, anthropic, gemini, etc.",
+                                    provider_name
+                                ))
+                            }
                         }
                     }
                 }

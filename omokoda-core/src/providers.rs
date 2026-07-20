@@ -97,12 +97,17 @@ pub trait LlmProvider: Send + Sync {
 
 pub struct ProviderRegistry {
     pub providers: Vec<Box<dyn LlmProvider>>,
+    /// True when an in-process mock provider is active (tests). Private
+    /// thoughts may use it — it never leaves the process — unlike a remote
+    /// `default` provider, which the local-only gate below rejects.
+    has_mock: bool,
 }
 
 impl ProviderRegistry {
     pub fn new() -> Self {
         let mut registry = Self {
             providers: Vec::new(),
+            has_mock: false,
         };
         registry.register(Box::new(OllamaProvider::new(
             "http://localhost:11434".to_string(),
@@ -169,9 +174,16 @@ impl ProviderRegistry {
     pub fn with_mock(response: String) -> Self {
         let mut registry = Self {
             providers: Vec::new(),
+            has_mock: false,
         };
         registry.register(Box::new(MockProvider::new(response)));
+        registry.has_mock = true;
         registry
+    }
+
+    /// Whether an in-process mock provider is active (test mode).
+    pub fn has_mock(&self) -> bool {
+        self.has_mock
     }
 
     pub fn register(&mut self, provider: Box<dyn LlmProvider>) {

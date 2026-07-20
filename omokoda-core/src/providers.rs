@@ -127,8 +127,8 @@ impl ProviderRegistry {
                 .unwrap_or_else(|_| "oc/deepseek-v4-flash-free".to_string());
             // OmniRoute needs no key; send a non-empty dummy to avoid an empty
             // Authorization: Bearer header being rejected by some frontends.
-            let token = std::env::var("OMNIROUTE_TOKEN")
-                .unwrap_or_else(|_| "omniroute-free".to_string());
+            let token =
+                std::env::var("OMNIROUTE_TOKEN").unwrap_or_else(|_| "omniroute-free".to_string());
             registry.register(Box::new(OpenAIProvider::compatible(
                 "omniroute",
                 ProviderClass::External,

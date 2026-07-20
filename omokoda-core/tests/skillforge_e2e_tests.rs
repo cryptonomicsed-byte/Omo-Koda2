@@ -38,36 +38,63 @@ mod skillforge_e2e {
 
         // store defaults true → repo is created in Gitea and scanned.
         let params = r#"{"url":"https://github.com/octocat/Hello-World.git","sandbox":false,"approve":true}"#;
-        let (out, _usage) = tool.execute(params, &ctx()).await.expect("forge should run");
+        let (out, _usage) = tool
+            .execute(params, &ctx())
+            .await
+            .expect("forge should run");
 
         let receipt: serde_json::Value = serde_json::from_str(&out).unwrap();
         // stored in Gitea + security scan ran
         let storage = &receipt["storage"];
-        assert!(storage["repo"].as_str().unwrap_or("").contains("/skill-"),
-                "expected gitea repo, got: {out}");
-        assert!(storage["pushed"].as_array().map(|a| !a.is_empty()).unwrap_or(false),
-                "expected pushed files, got: {out}");
+        assert!(
+            storage["repo"].as_str().unwrap_or("").contains("/skill-"),
+            "expected gitea repo, got: {out}"
+        );
+        assert!(
+            storage["pushed"]
+                .as_array()
+                .map(|a| !a.is_empty())
+                .unwrap_or(false),
+            "expected pushed files, got: {out}"
+        );
         // full Strix pentest dispatched (scan_id present)
-        assert!(storage["security_scan"]["strix"]["scan_id"].is_number(),
-                "expected strix scan dispatched, got: {out}");
+        assert!(
+            storage["security_scan"]["strix"]["scan_id"].is_number(),
+            "expected strix scan dispatched, got: {out}"
+        );
         // registered in Vantage platform skill registry
-        assert!(receipt["vantage_registry"]["registered"].as_bool().unwrap_or(false),
-                "expected vantage registry registration, got: {out}");
+        assert!(
+            receipt["vantage_registry"]["registered"]
+                .as_bool()
+                .unwrap_or(false),
+            "expected vantage registry registration, got: {out}"
+        );
         // native nuclei file scan ran as part of analysis (works now, no docker)
-        assert_eq!(receipt["analysis"]["nuclei"]["ran"], true,
-                   "expected nuclei scan to run, got: {out}");
+        assert_eq!(
+            receipt["analysis"]["nuclei"]["ran"], true,
+            "expected nuclei scan to run, got: {out}"
+        );
         // transformation ran and added agent-native surfaces
         let surfaces = &receipt["transformation"]["added_surfaces"];
-        assert!(surfaces.is_array() && !surfaces.as_array().unwrap().is_empty(),
-                "expected transformation surfaces, got: {out}");
+        assert!(
+            surfaces.is_array() && !surfaces.as_array().unwrap().is_empty(),
+            "expected transformation surfaces, got: {out}"
+        );
         // approved → registered live in the shared registry
         assert_eq!(receipt["status"], "registered_with_override");
         let guard = skills.lock().unwrap();
-        assert!(guard.iter().any(|s| s.name == receipt["skill"]["name"].as_str().unwrap()),
-                "forged skill should be hot-added to the live registry");
+        assert!(
+            guard
+                .iter()
+                .any(|s| s.name == receipt["skill"]["name"].as_str().unwrap()),
+            "forged skill should be hot-added to the live registry"
+        );
         // gateway routes present (mcp discovery/invoke)
         let routes = &receipt["skill"]["routes"];
-        assert!(routes.get("mcp_discover").is_some(), "gateway routes missing: {out}");
+        assert!(
+            routes.get("mcp_discover").is_some(),
+            "gateway routes missing: {out}"
+        );
     }
 
     /// Fail-closed: if the full Strix audit does not complete in the window,
@@ -88,17 +115,26 @@ mod skillforge_e2e {
 
         // no "approve" → must be held because the full audit is incomplete
         let params = r#"{"url":"https://github.com/octocat/Hello-World.git","sandbox":false}"#;
-        let (out, _usage) = tool.execute(params, &ctx()).await.expect("forge should run");
+        let (out, _usage) = tool
+            .execute(params, &ctx())
+            .await
+            .expect("forge should run");
         let receipt: serde_json::Value = serde_json::from_str(&out).unwrap();
 
         assert_eq!(receipt["status"], "pending_human_review", "got: {out}");
-        assert_eq!(receipt["storage"]["security_scan"]["audit_complete"], false,
-                   "expected incomplete audit, got: {out}");
+        assert_eq!(
+            receipt["storage"]["security_scan"]["audit_complete"], false,
+            "expected incomplete audit, got: {out}"
+        );
         let reasons = receipt["audit"]["reasons"].to_string();
-        assert!(reasons.contains("Strix") || reasons.contains("audit"),
-                "expected audit reason, got: {out}");
+        assert!(
+            reasons.contains("Strix") || reasons.contains("audit"),
+            "expected audit reason, got: {out}"
+        );
         // not hot-added to the live registry while held
-        assert!(skills.lock().unwrap().is_empty(),
-                "held skill must not be registered live, got: {out}");
+        assert!(
+            skills.lock().unwrap().is_empty(),
+            "held skill must not be registered live, got: {out}"
+        );
     }
 }

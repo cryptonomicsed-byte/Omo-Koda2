@@ -182,7 +182,10 @@ mod tests {
     #[test]
     fn physical_always_verifies() {
         let evidence = PlaneEvidence::default();
-        assert_eq!(verify_plane(Plane::Physical, &evidence), PlaneVerification::Verified);
+        assert_eq!(
+            verify_plane(Plane::Physical, &evidence),
+            PlaneVerification::Verified
+        );
     }
 
     #[test]
@@ -206,7 +209,10 @@ mod tests {
             gender_score: Some(0.9),
             ..Default::default()
         };
-        assert_eq!(verify_plane(Plane::Buddhic, &high), PlaneVerification::Verified);
+        assert_eq!(
+            verify_plane(Plane::Buddhic, &high),
+            PlaneVerification::Verified
+        );
     }
 
     #[test]
@@ -230,7 +236,10 @@ mod tests {
             onchain_receipt_hash: Some("0xabc123".to_string()),
             ..Default::default()
         };
-        assert_eq!(verify_plane(Plane::Logoic, &real), PlaneVerification::Verified);
+        assert_eq!(
+            verify_plane(Plane::Logoic, &real),
+            PlaneVerification::Verified
+        );
     }
 
     #[test]

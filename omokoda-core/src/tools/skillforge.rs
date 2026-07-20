@@ -22,8 +22,8 @@
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::io::Write;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 
@@ -196,10 +196,7 @@ impl SkillForgeTool {
         };
 
         // A write flag is inferred from any mutating route or risk signal.
-        let write = a
-            .candidate_routes
-            .values()
-            .any(|r| !r.starts_with("GET"))
+        let write = a.candidate_routes.values().any(|r| !r.starts_with("GET"))
             || !a.risk_signals.is_empty();
 
         let mut routes = a.candidate_routes.clone();
@@ -310,7 +307,9 @@ impl SkillForgeTool {
         {
             Ok(o) => serde_json::from_slice(&o.stdout)
                 .unwrap_or_else(|_| serde_json::json!({"ok": false, "error": "sandbox non-JSON"})),
-            Err(e) => serde_json::json!({"ok": false, "error": format!("sandbox launch failed: {e}")}),
+            Err(e) => {
+                serde_json::json!({"ok": false, "error": format!("sandbox launch failed: {e}")})
+            }
         }
     }
 
@@ -378,10 +377,7 @@ impl SkillForgeTool {
             || hay.contains("web3")
         {
             "security/security-blockchain-security-auditor.md"
-        } else if hay.contains("cloud")
-            || hay.contains("kubernetes")
-            || hay.contains("terraform")
-        {
+        } else if hay.contains("cloud") || hay.contains("kubernetes") || hay.contains("terraform") {
             "security/security-cloud-security-architect.md"
         } else if !a.risk_signals.is_empty() {
             "security/security-penetration-tester.md"
@@ -424,8 +420,8 @@ impl SkillForgeTool {
                 return Some(v);
             }
         }
-        let dotenv = std::env::var("SKILLFORGE_DOTENV")
-            .unwrap_or_else(|_| "/opt/ares/.env".to_string());
+        let dotenv =
+            std::env::var("SKILLFORGE_DOTENV").unwrap_or_else(|_| "/opt/ares/.env".to_string());
         let text = std::fs::read_to_string(dotenv).ok()?;
         for line in text.lines() {
             if let Some(rest) = line.strip_prefix(&format!("{key}=")) {
@@ -496,8 +492,8 @@ impl SkillForgeTool {
         forge_dir: Option<&str>,
         files: &[String],
     ) -> serde_json::Value {
-        let base = std::env::var("VANTAGE_URL")
-            .unwrap_or_else(|_| "http://localhost:8001".to_string());
+        let base =
+            std::env::var("VANTAGE_URL").unwrap_or_else(|_| "http://localhost:8001".to_string());
         let key = match self.vantage_key() {
             Some(k) => k,
             None => {
@@ -518,8 +514,8 @@ impl SkillForgeTool {
             }))
             .send()
             .await;
-        let mut owner = std::env::var("SKILLFORGE_GITEA_OWNER")
-            .unwrap_or_else(|_| "vantage".to_string());
+        let mut owner =
+            std::env::var("SKILLFORGE_GITEA_OWNER").unwrap_or_else(|_| "vantage".to_string());
         if let Ok(resp) = create {
             if let Ok(j) = resp.json::<serde_json::Value>().await {
                 if let Some(full) = j.get("repo").and_then(|v| v.as_str()) {
@@ -531,8 +527,8 @@ impl SkillForgeTool {
         }
 
         // 2) register the security webhook on the correct owner (before pushes)
-        let gitea_url = Self::env_or_dotenv("GITEA_URL")
-            .unwrap_or_else(|| "http://localhost:3001".to_string());
+        let gitea_url =
+            Self::env_or_dotenv("GITEA_URL").unwrap_or_else(|| "http://localhost:3001".to_string());
         let gitea_token = Self::env_or_dotenv("GITEA_TOKEN").unwrap_or_default();
         let webhook_ok = if gitea_token.is_empty() {
             false
@@ -578,7 +574,9 @@ impl SkillForgeTool {
 
         // 4a) fast synchronous regex pre-scan (immediate signal)
         let regex_scan = client
-            .post(format!("{base}/api/code/repo/{owner}/{repo}/scan?engine=regex"))
+            .post(format!(
+                "{base}/api/code/repo/{owner}/{repo}/scan?engine=regex"
+            ))
             .header("X-Agent-Key", &key)
             .send()
             .await;
@@ -588,7 +586,11 @@ impl SkillForgeTool {
                 let total = j
                     .get("total_findings")
                     .and_then(|v| v.as_u64())
-                    .or_else(|| j.get("findings").and_then(|f| f.as_array()).map(|a| a.len() as u64))
+                    .or_else(|| {
+                        j.get("findings")
+                            .and_then(|f| f.as_array())
+                            .map(|a| a.len() as u64)
+                    })
                     .unwrap_or(0);
                 let critical = j.get("critical").and_then(|v| v.as_u64()).unwrap_or(0);
                 (total, critical, true)
@@ -605,7 +607,9 @@ impl SkillForgeTool {
         let mut strix_total: u64 = 0;
         let mut strix_critical: u64 = 0;
         let strix_dispatch = client
-            .post(format!("{base}/api/code/repo/{owner}/{repo}/scan?engine=strix"))
+            .post(format!(
+                "{base}/api/code/repo/{owner}/{repo}/scan?engine=strix"
+            ))
             .header("X-Agent-Key", &key)
             .send()
             .await;
@@ -621,8 +625,7 @@ impl SkillForgeTool {
                 .ok()
                 .and_then(|w| w.parse().ok())
                 .unwrap_or(20);
-            let deadline =
-                std::time::Instant::now() + std::time::Duration::from_secs(wait_secs);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(wait_secs);
             while std::time::Instant::now() < deadline {
                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
                 let poll = client
@@ -632,7 +635,10 @@ impl SkillForgeTool {
                     .await;
                 if let Ok(r) = poll {
                     if let Ok(j) = r.json::<serde_json::Value>().await {
-                        let st = j.get("status").and_then(|v| v.as_str()).unwrap_or("running");
+                        let st = j
+                            .get("status")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("running");
                         if st == "complete" || st == "error" {
                             strix_status = st.to_string();
                             if let Some(f) = j.get("findings").and_then(|f| f.as_array()) {
@@ -640,9 +646,11 @@ impl SkillForgeTool {
                                 strix_critical = f
                                     .iter()
                                     .filter(|x| {
-                                        x.get("severity").and_then(|s| s.as_f64()).unwrap_or(0.0) >= 0.90
+                                        x.get("severity").and_then(|s| s.as_f64()).unwrap_or(0.0)
+                                            >= 0.90
                                     })
-                                    .count() as u64;
+                                    .count()
+                                    as u64;
                             }
                             break;
                         }
@@ -653,7 +661,11 @@ impl SkillForgeTool {
 
         // Effective gate: prefer Strix when it completed, else the regex verdict.
         let strix_completed = strix_status == "complete";
-        let critical = if strix_completed { strix_critical } else { regex_critical };
+        let critical = if strix_completed {
+            strix_critical
+        } else {
+            regex_critical
+        };
         let scan_ran = regex_ran || strix_scan_id.is_some();
 
         serde_json::json!({
@@ -682,8 +694,8 @@ impl SkillForgeTool {
     /// every Vantage-born agent can discover it. Idempotent (409 = already
     /// registered is treated as success).
     async fn register_in_vantage(&self, entry: &SkillManifestEntry) -> serde_json::Value {
-        let base = std::env::var("VANTAGE_URL")
-            .unwrap_or_else(|_| "http://localhost:8001".to_string());
+        let base =
+            std::env::var("VANTAGE_URL").unwrap_or_else(|_| "http://localhost:8001".to_string());
         let key = match self.vantage_key() {
             Some(k) => k,
             None => return serde_json::json!({"registered": false, "error": "no vantage key"}),
@@ -755,7 +767,10 @@ impl SkillForgeTool {
             "reasons": audit.reasons,
         });
         let path = self.review_dir.join(format!("{}.review.json", entry.name));
-        let _ = std::fs::write(&path, serde_json::to_string_pretty(&ticket).unwrap_or_default());
+        let _ = std::fs::write(
+            &path,
+            serde_json::to_string_pretty(&ticket).unwrap_or_default(),
+        );
         path.to_string_lossy().to_string()
     }
 }
@@ -868,7 +883,10 @@ impl Tool for SkillForgeTool {
                         let report = self.sandbox(&name, &t);
                         // A real failure (ran but not ok) trips the review gate;
                         // a skip (no docker) does not.
-                        let ran = report.get("sandboxed").and_then(|b| b.as_bool()).unwrap_or(false);
+                        let ran = report
+                            .get("sandboxed")
+                            .and_then(|b| b.as_bool())
+                            .unwrap_or(false);
                         let ok = report.get("ok").and_then(|b| b.as_bool()).unwrap_or(false);
                         sandbox_failed = ran && !ok;
                         sandbox_receipt = report;
@@ -892,7 +910,10 @@ impl Tool for SkillForgeTool {
             store_receipt = self
                 .store_and_scan(&name, &entry, forge_output_dir.as_deref(), &forge_files)
                 .await;
-            let ok = store_receipt.get("ok").and_then(|b| b.as_bool()).unwrap_or(false);
+            let ok = store_receipt
+                .get("ok")
+                .and_then(|b| b.as_bool())
+                .unwrap_or(false);
             let critical = store_receipt
                 .pointer("/security_scan/critical")
                 .and_then(|c| c.as_u64())
@@ -922,7 +943,10 @@ impl Tool for SkillForgeTool {
         if security_gate {
             audit.requires_review = true;
             audit.risk_score += 3;
-            let _ok = store_receipt.get("ok").and_then(|b| b.as_bool()).unwrap_or(false);
+            let _ok = store_receipt
+                .get("ok")
+                .and_then(|b| b.as_bool())
+                .unwrap_or(false);
             let crit = store_receipt
                 .pointer("/security_scan/critical")
                 .and_then(|c| c.as_u64())

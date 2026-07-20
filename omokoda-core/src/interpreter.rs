@@ -1050,8 +1050,7 @@ impl Steward {
             Statement::Birth { name, metadata } => {
                 // Phase 1-7: BIRTH = 7^1 (fractal depth 1)
                 let is_sovereign = metadata.iter().any(|p| {
-                    p.key == "sovereign"
-                        && (p.value.eq_ignore_ascii_case("true") || p.value == "1")
+                    p.key == "sovereign" && (p.value.eq_ignore_ascii_case("true") || p.value == "1")
                 });
                 // Refuse to mint a stranger over the owner's already-loaded
                 // identity. Without this, any repeat sovereign-birth call
@@ -2068,7 +2067,11 @@ impl Steward {
                     agent_id.as_str(),
                     &tool,
                     hermetic_score as f32,
-                    if zangbeto_audit_passed { "approved" } else { "flagged" },
+                    if zangbeto_audit_passed {
+                        "approved"
+                    } else {
+                        "flagged"
+                    },
                 )
                 .await;
 
@@ -3283,10 +3286,16 @@ impl Steward {
                     {
                         Ok(Ok(r)) => r,
                         Ok(Err(e)) => {
-                            return Err(format!("Provider error on turn {} (byok): {}", turn_count, e))
+                            return Err(format!(
+                                "Provider error on turn {} (byok): {}",
+                                turn_count, e
+                            ))
                         }
                         Err(_) => {
-                            return Err(format!("Provider error on turn {} (byok): timed out", turn_count))
+                            return Err(format!(
+                                "Provider error on turn {} (byok): timed out",
+                                turn_count
+                            ))
                         }
                     }
                 }

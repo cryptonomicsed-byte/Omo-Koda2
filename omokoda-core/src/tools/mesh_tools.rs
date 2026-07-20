@@ -373,10 +373,7 @@ pub async fn check_new_skills() -> Option<String> {
     if fresh.is_empty() {
         None
     } else {
-        Some(format!(
-            "[New skills on Vantage] {}",
-            fresh.join(", ")
-        ))
+        Some(format!("[New skills on Vantage] {}", fresh.join(", ")))
     }
 }
 
@@ -401,7 +398,10 @@ pub async fn check_open_jobs() -> Option<String> {
         .take(5)
         .filter_map(|job| {
             let id = job.get("id")?;
-            let job_type = job.get("job_type").and_then(|v| v.as_str()).unwrap_or("job");
+            let job_type = job
+                .get("job_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("job");
             Some(format!("#{id} ({job_type})"))
         })
         .collect();

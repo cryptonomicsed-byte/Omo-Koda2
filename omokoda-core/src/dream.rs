@@ -170,9 +170,20 @@ pub struct RemReport {
 /// false-positive markers, same "small and honest" scope as the rest of
 /// this module.
 const SUPERSESSION_MARKERS: &[&str] = &[
-    "actually", "correction", "wrong", "mistaken", "instead", "no longer",
-    "not anymore", "changed to", "updated to", "deprecated", "outdated",
-    "superseded", "reversed", "retracted",
+    "actually",
+    "correction",
+    "wrong",
+    "mistaken",
+    "instead",
+    "no longer",
+    "not anymore",
+    "changed to",
+    "updated to",
+    "deprecated",
+    "outdated",
+    "superseded",
+    "reversed",
+    "retracted",
 ];
 
 fn has_supersession_marker(content: &str) -> bool {
@@ -187,11 +198,17 @@ fn has_supersession_marker(content: &str) -> bool {
 fn shared_topic_word(a: &str, b: &str) -> Option<String> {
     let words_a: std::collections::HashSet<String> = a
         .split_whitespace()
-        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase())
+        .map(|w| {
+            w.trim_matches(|c: char| !c.is_alphanumeric())
+                .to_lowercase()
+        })
         .filter(|w| w.len() >= 4)
         .collect();
     b.split_whitespace()
-        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase())
+        .map(|w| {
+            w.trim_matches(|c: char| !c.is_alphanumeric())
+                .to_lowercase()
+        })
         .find(|w| w.len() >= 4 && words_a.contains(w))
 }
 
@@ -477,9 +494,10 @@ impl DreamEngine {
             // this macro node claims to represent, catchable even if the
             // archive is corrupted or truncated by something outside this
             // fold path.
-            folded
-                .tags
-                .push(format!("fold-integrity:{}", crate::memory::memdir::fold_commitment(&micro)));
+            folded.tags.push(format!(
+                "fold-integrity:{}",
+                crate::memory::memdir::fold_commitment(&micro)
+            ));
             dir.insert(folded);
             // Lossless fold: the micro entries move to the archive, keyed by
             // the macro node, so `unfold` can restore the full sub-graph.
@@ -700,7 +718,11 @@ mod dream_tests {
         let mut engine = DreamEngine::new(DreamConfig::default());
         let mut dir = OduDirectory::new();
 
-        let mut old = OduEntry::new("old", "the deploy uses staging credentials", "topics/deploy");
+        let mut old = OduEntry::new(
+            "old",
+            "the deploy uses staging credentials",
+            "topics/deploy",
+        );
         old.importance = 0.2;
         old.created_at = 100;
         dir.insert(old);

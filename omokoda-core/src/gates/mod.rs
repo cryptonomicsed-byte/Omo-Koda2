@@ -36,9 +36,16 @@ pub struct Operation {
 
 #[derive(Debug, Clone)]
 pub enum OperationKind {
-    Birth { name: String },
-    Think { prompt: String },
-    Act { tool: String, params: String },
+    Birth {
+        name: String,
+    },
+    Think {
+        prompt: String,
+    },
+    Act {
+        tool: String,
+        params: String,
+    },
     /// A memory-graph rewrite: dream.rs's consolidation sweep or Sabbath
     /// REM fold/prune cycle against `AgentSnapshot::odu_dir`. LARQL
     /// (divination.rs / OduDirectory::recall) is the *query* side —
@@ -48,7 +55,10 @@ pub enum OperationKind {
     /// Èṣù before it commits (CORE validates), same as any Think or Act.
     /// `kind` is "consolidate" or "rem_cycle"; `detail` is a short
     /// human-readable summary of what would be folded/pruned.
-    MemoryRewrite { kind: String, detail: String },
+    MemoryRewrite {
+        kind: String,
+        detail: String,
+    },
 }
 
 impl Operation {

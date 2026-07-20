@@ -98,11 +98,13 @@ pub fn execute(query: &MemoryQuery, dir: &OduDirectory) -> MemoryAnswer {
             } else {
                 format!("✗ entity \"{entity}\" not found in memory")
             }];
-            summary.extend(
-                hits.iter()
-                    .take(3)
-                    .map(|e| format!("  e.g. [{}] {}", e.path, e.content.chars().take(80).collect::<String>())),
-            );
+            summary.extend(hits.iter().take(3).map(|e| {
+                format!(
+                    "  e.g. [{}] {}",
+                    e.path,
+                    e.content.chars().take(80).collect::<String>()
+                )
+            }));
             MemoryAnswer {
                 summary,
                 passed: Some(passed),
@@ -142,7 +144,13 @@ pub fn execute(query: &MemoryQuery, dir: &OduDirectory) -> MemoryAnswer {
             let clusters = dir.duplicate_clusters();
             let summary = clusters
                 .iter()
-                .map(|(_, ids)| format!("{} entries share identical content: {}", ids.len(), ids.join(", ")))
+                .map(|(_, ids)| {
+                    format!(
+                        "{} entries share identical content: {}",
+                        ids.len(),
+                        ids.join(", ")
+                    )
+                })
                 .collect();
             MemoryAnswer {
                 summary,

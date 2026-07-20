@@ -52,11 +52,10 @@ impl OduEntry {
 /// entries for IDF alone to suppress them. Not exhaustive -- just the
 /// highest-frequency offenders.
 const STOPWORDS: &[&str] = &[
-    "that", "this", "with", "have", "from", "they", "will", "would", "could",
-    "should", "about", "there", "their", "which", "when", "what", "were",
-    "been", "your", "just", "like", "then", "than", "here", "some", "into",
-    "over", "such", "only", "also", "very", "more", "most", "these", "those",
-    "does", "each", "other", "because", "while",
+    "that", "this", "with", "have", "from", "they", "will", "would", "could", "should", "about",
+    "there", "their", "which", "when", "what", "were", "been", "your", "just", "like", "then",
+    "than", "here", "some", "into", "over", "such", "only", "also", "very", "more", "most",
+    "these", "those", "does", "each", "other", "because", "while",
 ];
 
 /// Real, deterministic per-agent vocabulary learner -- no neural weights,
@@ -80,7 +79,10 @@ pub struct WordLearner {
 impl WordLearner {
     fn tokenize(text: &str) -> std::collections::HashSet<String> {
         text.split_whitespace()
-            .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase())
+            .map(|w| {
+                w.trim_matches(|c: char| !c.is_alphanumeric())
+                    .to_lowercase()
+            })
             .filter(|w| w.len() >= 4 && !STOPWORDS.contains(&w.as_str()))
             .collect()
     }
@@ -124,7 +126,8 @@ fn extract_entities(content: &str) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
     for raw_word in content.split_whitespace() {
-        let word = raw_word.trim_matches(|c: char| !c.is_alphanumeric() && c != '/' && c != '.' && c != '_');
+        let word = raw_word
+            .trim_matches(|c: char| !c.is_alphanumeric() && c != '/' && c != '.' && c != '_');
         if word.len() < 3 {
             continue;
         }
@@ -666,7 +669,11 @@ mod memdir_tests {
     fn recall_finds_entries_matching_the_query() {
         let mut dir = OduDirectory::new();
         dir.insert(content_entry("e1", "the vantage database uses sqlite", 0.5));
-        dir.insert(content_entry("e2", "trading strategy backtest results", 0.5));
+        dir.insert(content_entry(
+            "e2",
+            "trading strategy backtest results",
+            0.5,
+        ));
         let hits = dir.recall("tell me about the vantage database", 5);
         assert_eq!(hits.len(), 1);
         assert!(hits[0].contains("sqlite"));
@@ -681,7 +688,11 @@ mod memdir_tests {
         dir.insert(content_entry("common1", "message about weather today", 0.5));
         dir.insert(content_entry("common2", "message about lunch plans", 0.5));
         dir.insert(content_entry("common3", "message about the weekend", 0.5));
-        dir.insert(content_entry("rare", "message about zangbeto receipts", 0.5));
+        dir.insert(content_entry(
+            "rare",
+            "message about zangbeto receipts",
+            0.5,
+        ));
 
         let hits = dir.recall("message zangbeto", 1);
         assert_eq!(hits.len(), 1);
@@ -736,6 +747,10 @@ mod memdir_tests {
         let hits = dir.recall("zangbeto signing", 5);
         assert!(hits.iter().any(|c| c.contains("detail one")));
         assert!(hits.iter().any(|c| c.contains("detail two")));
-        assert_eq!(dir.archived_fold_count(), 0, "fold should have been consumed by unfold");
+        assert_eq!(
+            dir.archived_fold_count(),
+            0,
+            "fold should have been consumed by unfold"
+        );
     }
 }

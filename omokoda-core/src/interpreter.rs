@@ -1525,7 +1525,9 @@ impl Steward {
                         let op = Operation {
                             kind: OperationKind::MemoryRewrite {
                                 kind: "rem_cycle".to_string(),
-                                detail: format!("sabbath fractal fold over {dir_len} odu_dir entries"),
+                                detail: format!(
+                                    "sabbath fractal fold over {dir_len} odu_dir entries"
+                                ),
                             },
                             intent: "dream engine background maintenance".to_string(),
                             agent_id: Some(agent_id),
@@ -1568,10 +1570,9 @@ impl Steward {
                     // stand-in 1.0 (no persisted energy state feeds this
                     // yet) so only the MessageCount/TimeSecs triggers can
                     // fire -- EnergyBelow simply never trips, not a bug.
-                    let _ = self.auto_compactor.compact_if_needed(
-                        &mut self.agent.as_mut().unwrap().snapshot.session,
-                        1.0,
-                    );
+                    let _ = self
+                        .auto_compactor
+                        .compact_if_needed(&mut self.agent.as_mut().unwrap().snapshot.session, 1.0);
                 }
 
                 // Re-borrow: the dream-engine step above needed a disjoint
@@ -2344,8 +2345,10 @@ impl Steward {
                         let agent = self.ensure_born()?;
                         let output = match crate::memory::larql_query::parse_query(query_text) {
                             Ok(q) => {
-                                let answer =
-                                    crate::memory::larql_query::execute(&q, &agent.snapshot.odu_dir);
+                                let answer = crate::memory::larql_query::execute(
+                                    &q,
+                                    &agent.snapshot.odu_dir,
+                                );
                                 answer.summary.join("\n")
                             }
                             Err(e) => format!("LARQL parse error: {e}"),
@@ -2598,9 +2601,7 @@ impl Steward {
                 use crate::bus::clients::{HttpOsunClient, OsunClient};
                 let client = HttpOsunClient::new(osun_url);
                 let emotion = crate::emotion::EmotionState::birth();
-                let soma = client
-                    .reconstruct_soma(agent.id(), prompt, &emotion)
-                    .await;
+                let soma = client.reconstruct_soma(agent.id(), prompt, &emotion).await;
                 if soma.has_content() {
                     ctx.push(ConversationMessage::new_system(
                         soma.render_section(),

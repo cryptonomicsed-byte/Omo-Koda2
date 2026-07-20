@@ -239,7 +239,10 @@ pub fn default_manifest() -> SkillManifest {
                     ),
                     ("react", "POST /api/agents/broadcasts/{broadcast_id}/react"),
                     // send_message: path {"recipient_name"}, body {"content",...}
-                    ("send_message", "POST /api/agents/messages/send/{recipient_name}"),
+                    (
+                        "send_message",
+                        "POST /api/agents/messages/send/{recipient_name}",
+                    ),
                     ("inbox", "GET /api/agents/messages/inbox"),
                     ("follow", "POST /api/agents/follow/{agent_name}"),
                     ("following", "GET /api/agents/me/following"),
@@ -837,7 +840,14 @@ mod tests {
             s.routes.get("guild_note").map(String::as_str),
             Some("POST /api/guilds/{slug}/vault/note")
         );
-        for r in ["comment", "react", "inbox", "follow", "following", "guild_galaxy"] {
+        for r in [
+            "comment",
+            "react",
+            "inbox",
+            "follow",
+            "following",
+            "guild_galaxy",
+        ] {
             assert!(s.routes.contains_key(r), "missing {r}");
         }
     }
@@ -855,7 +865,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(method, "POST");
-        assert_eq!(url, "http://vantage:8080/api/agents/messages/send/Hermes-Ares");
+        assert_eq!(
+            url,
+            "http://vantage:8080/api/agents/messages/send/Hermes-Ares"
+        );
     }
 
     #[test]

@@ -159,10 +159,22 @@ impl PermissionPolicy {
 
         // ── Read-only: pure reads / discovery, safe to run without escalation ──
         for t in [
-            "read_file", "web_search", "glob", "grep",
-            "skills", "session_status", "sessions_list", "sessions_history",
-            "agents_list", "nodes", "todo_read", "config_read", "structured_output",
-            "mesh_query_neighbors", "mesh_query_resources", "mesh_query_trust",
+            "read_file",
+            "web_search",
+            "glob",
+            "grep",
+            "skills",
+            "session_status",
+            "sessions_list",
+            "sessions_history",
+            "agents_list",
+            "nodes",
+            "todo_read",
+            "config_read",
+            "structured_output",
+            "mesh_query_neighbors",
+            "mesh_query_resources",
+            "mesh_query_trust",
             "mesh_discover_capabilities",
         ] {
             policy = policy.with_tool_requirement(t, PermissionMode::ReadOnly);
@@ -170,11 +182,23 @@ impl PermissionPolicy {
 
         // ── Workspace-write: mutations within the agent's own sphere ──
         for t in [
-            "note_taking", "todo_write", "edit_file", "apply_patch", "config_write",
-            "message", "canvas", "image", "cron", "skillforge",
-            "mesh_propose", "mesh_respond", "mesh_signal_event",
-            "mesh_reserve_resource", "mesh_release_resource",
-            "sessions_send", "sessions_spawn",
+            "note_taking",
+            "todo_write",
+            "edit_file",
+            "apply_patch",
+            "config_write",
+            "message",
+            "canvas",
+            "image",
+            "cron",
+            "skillforge",
+            "mesh_propose",
+            "mesh_respond",
+            "mesh_signal_event",
+            "mesh_reserve_resource",
+            "mesh_release_resource",
+            "sessions_send",
+            "sessions_spawn",
         ] {
             policy = policy.with_tool_requirement(t, PermissionMode::WorkspaceWrite);
         }

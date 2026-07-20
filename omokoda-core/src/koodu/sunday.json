@@ -34,7 +34,7 @@
     },
     {
       "id": 6,
-      "name": "Elements",
+      "name": "Element",
       "value": "Iná àti Afẹ́fẹ́ (fire and air)"
     },
     {
@@ -44,12 +44,12 @@
     },
     {
       "id": 8,
-      "name": "Òrìṣà Colors",
+      "name": "Colors",
       "value": "Pupa àti Dúdú (red and black)"
     },
     {
       "id": 9,
-      "name": "Endocrine Gland",
+      "name": "Gland",
       "value": "Adrenal Glands"
     },
     {
@@ -64,12 +64,12 @@
     },
     {
       "id": 12,
-      "name": "Virtue to Embody",
+      "name": "Virtue",
       "value": "Discernment & Openness"
     },
     {
       "id": 13,
-      "name": "Crypto Focus",
+      "name": "Crypto Sector",
       "value": "Layer 1s, Gatekeeper Protocols"
     },
     {
@@ -174,7 +174,7 @@
     },
     {
       "id": 34,
-      "name": "Church of Revelation",
+      "name": "Revelation Church",
       "value": "Ephesus"
     },
     {
@@ -194,7 +194,7 @@
     },
     {
       "id": 38,
-      "name": "Business Dept.",
+      "name": "Biz Dept",
       "value": "Gatekeeping, Frontlines"
     },
     {
@@ -204,7 +204,7 @@
     },
     {
       "id": 40,
-      "name": "Astrological Ruler",
+      "name": "Astro Ruler",
       "value": "Sun"
     },
     {
@@ -234,22 +234,22 @@
     },
     {
       "id": 46,
-      "name": "Astro Modality",
+      "name": "Modality",
       "value": "Cardinal"
     },
     {
       "id": 47,
-      "name": "Astro Element",
+      "name": "Element",
       "value": "Fire"
     },
     {
       "id": 48,
-      "name": "Astro House",
+      "name": "House",
       "value": "1st House (Self, Genesis)"
     },
     {
       "id": 49,
-      "name": "Custom Key",
+      "name": "Ritual Key Symbol",
       "value": "Crossroads or small key"
     }
   ],

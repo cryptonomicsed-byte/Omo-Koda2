@@ -1487,7 +1487,12 @@ impl Steward {
                         path,
                     );
                     entry.importance = hermetic_score.clamp(0.0, 1.0);
-                    agent_mut.snapshot.odu_dir.insert(entry);
+                    // Private thoughts must never persist as plaintext in the odu
+                    // memory graph; they live only in the sealed private_data (see
+                    // /seal). Recording them here leaked plaintext to disk on save.
+                    if !private {
+                        agent_mut.snapshot.odu_dir.insert(entry);
+                    }
 
                     // Èṣù gates the rewrite, LARQL only ever queries: this
                     // mirrors the OSOVM 3-layer model (VEIL suggests / LARQL

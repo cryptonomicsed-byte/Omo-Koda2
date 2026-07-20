@@ -203,8 +203,42 @@ pub struct OduDirectory {
     /// *wants* dedup (e.g. a future dream.rs consolidation pass) can find
     /// exact-duplicate clusters explicitly, on purpose, without recall or
     /// insert ever doing it implicitly.
-    #[serde(default)]
+    #[serde(default, with = "hex_key_index")]
     content_hash_index: HashMap<[u8; 32], Vec<String>>,
+}
+
+/// Serde adapter for `content_hash_index`. serde_json cannot serialize a map
+/// with `[u8; 32]` keys ("key must be a string"), which silently broke agent
+/// auto-save the moment this index held any entry (e.g. after a private thought
+/// or /seal). Persist the keys as hex strings; the values are unchanged.
+mod hex_key_index {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::HashMap;
+
+    pub fn serialize<S: Serializer>(
+        map: &HashMap<[u8; 32], Vec<String>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        let as_hex: HashMap<String, &Vec<String>> =
+            map.iter().map(|(k, v)| (hex::encode(k), v)).collect();
+        as_hex.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<HashMap<[u8; 32], Vec<String>>, D::Error> {
+        let as_hex = HashMap::<String, Vec<String>>::deserialize(deserializer)?;
+        as_hex
+            .into_iter()
+            .map(|(k, v)| {
+                let bytes = hex::decode(&k).map_err(serde::de::Error::custom)?;
+                let arr: [u8; 32] = bytes.try_into().map_err(|_| {
+                    serde::de::Error::custom("content_hash_index key must be 32 bytes")
+                })?;
+                Ok((arr, v))
+            })
+            .collect()
+    }
 }
 
 impl OduDirectory {

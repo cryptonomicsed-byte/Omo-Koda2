@@ -131,11 +131,21 @@ impl MemoryEngine {
                 match block {
                     crate::session::ContentBlock::ToolResult { output, .. } => {
                         if output.len() > 2000 {
-                            *output = format!("{}... [TRUNCATED]", &output[..2000]);
+                            // Floor to a char boundary — fixed byte offsets panic
+                            // mid-UTF-8 (very common with Yorùbá diacritics/em-dashes).
+                            let mut end = 2000;
+                            while end > 0 && !output.is_char_boundary(end) {
+                                end -= 1;
+                            }
+                            *output = format!("{}... [TRUNCATED]", &output[..end]);
                         }
                     }
                     crate::session::ContentBlock::Text { text } if text.len() > 5000 => {
-                        *text = format!("{}... [TRUNCATED]", &text[..5000]);
+                        let mut end = 5000;
+                        while end > 0 && !text.is_char_boundary(end) {
+                            end -= 1;
+                        }
+                        *text = format!("{}... [TRUNCATED]", &text[..end]);
                     }
                     _ => {}
                 }

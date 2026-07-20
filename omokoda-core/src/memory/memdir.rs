@@ -291,7 +291,7 @@ impl OduDirectory {
             return Vec::new();
         };
         let mut hits: Vec<&OduEntry> = ids.iter().filter_map(|id| self.entries.get(id)).collect();
-        hits.sort_by(|a, b| b.last_accessed.cmp(&a.last_accessed));
+        hits.sort_by_key(|b| std::cmp::Reverse(b.last_accessed));
         hits
     }
 

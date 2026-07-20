@@ -1450,7 +1450,7 @@ impl Steward {
                 // Private turns are never sent, matching the public_messages
                 // privacy gate this same function relies on above.
                 if !private {
-                    if let Some(osun_url) = std::env::var("OSUN_URL").ok() {
+                    if let Ok(osun_url) = std::env::var("OSUN_URL") {
                         use crate::bus::clients::{HttpOsunClient, OsunClient};
                         let agent_id = agent_mut.id().clone();
                         let text = format!("{prompt}\n{response}");
@@ -2597,7 +2597,7 @@ impl Steward {
             // is unset or the service is unreachable -- reconstruct_soma
             // returns an empty SomaContext in that case and render_section
             // returns None, so nothing is added to the prompt.
-            if let Some(osun_url) = std::env::var("OSUN_URL").ok() {
+            if let Ok(osun_url) = std::env::var("OSUN_URL") {
                 use crate::bus::clients::{HttpOsunClient, OsunClient};
                 let client = HttpOsunClient::new(osun_url);
                 let emotion = crate::emotion::EmotionState::birth();

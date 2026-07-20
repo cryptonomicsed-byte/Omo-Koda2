@@ -56,11 +56,10 @@ impl AgentDefinition {
     pub fn from_markdown(content: &str, path: &Path) -> Option<Self> {
         let content = content.trim();
 
-        let (fm_str, body) = if let Some(rest) = content.strip_prefix("---") {
+        let (fm_str, body) = {
+            let rest = content.strip_prefix("---")?;
             let end = rest.find("\n---")?;
             (rest[..end].to_string(), rest[end + 4..].trim().to_string())
-        } else {
-            return None;
         };
 
         let mut frontmatter: HashMap<String, String> = HashMap::new();

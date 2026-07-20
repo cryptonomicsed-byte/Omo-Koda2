@@ -175,7 +175,7 @@ impl SkillForgeTool {
         // collision → suffix a version until unique
         for v in 2..1000 {
             let candidate = format!("{proposed}-v{v}");
-            if !existing.iter().any(|n| *n == candidate) {
+            if !existing.contains(&candidate) {
                 return candidate;
             }
         }

@@ -239,6 +239,20 @@ impl ToolRegistry {
         Ok(n)
     }
 
+    /// Whether a tool by this name exists at all (statically registered or a
+    /// session-forged skill) — regardless of tier. Lets callers give an accurate
+    /// "unknown tool" error instead of a misleading reputation message.
+    pub fn exists(&self, name: &str) -> bool {
+        if self.tools.contains_key(name) {
+            return true;
+        }
+        self.external_skills
+            .lock()
+            .ok()
+            .map(|g| g.iter().any(|e| e.name == name))
+            .unwrap_or(false)
+    }
+
     pub fn is_allowed(&self, name: &str, tier: u8) -> bool {
         if let Some(t) = self.tools.get(name) {
             return tier >= t.required_tier();

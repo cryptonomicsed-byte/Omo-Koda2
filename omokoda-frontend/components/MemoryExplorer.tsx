@@ -56,16 +56,28 @@ export default function MemoryExplorer({ agentId }: MemoryExplorerProps) {
     setError(null)
     setData(null)
 
-    fetch(`/api/agents/${agentId}/memory`)
+    // The kernel exposes memory via the vault galaxy (there is no per-agent SOMA
+    // HTTP endpoint). Adapt galaxy stars → memory cells and nebulae → scenes.
+    fetch('/v1/vault/galaxy')
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json() as Promise<MemoryResponse>
+        return res.json()
       })
-      .then((json) => {
-        if (!cancelled) {
-          setData(json)
-          setLoading(false)
+      .then((galaxy) => {
+        if (cancelled) return
+        const stars: { id: string; label: string; kind?: string }[] = galaxy?.stars ?? []
+        const nebulae: string[] = galaxy?.nebulae ?? []
+        const adapted: MemoryResponse = {
+          cells: stars.map((s) => ({
+            id: s.id,
+            text: s.label,
+            importance: 0.5,
+            emotion: { score: 0, valence: 'neutral' as const },
+          })),
+          scenes: nebulae.map((n) => ({ theme: n, summary: '', strength: 1 })),
         }
+        setData(adapted)
+        setLoading(false)
       })
       .catch((err) => {
         if (!cancelled) {

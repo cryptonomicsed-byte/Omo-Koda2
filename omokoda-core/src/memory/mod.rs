@@ -1,9 +1,11 @@
 pub mod dag;
 pub mod engine;
+pub mod larql_query;
 pub mod memdir;
 pub mod odu_keys;
 pub mod reflection;
 pub mod router;
+pub mod seal_bridge;
 pub mod soma;
 pub mod tee;
 pub mod walrus;

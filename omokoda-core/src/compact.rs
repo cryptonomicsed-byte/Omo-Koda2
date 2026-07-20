@@ -323,6 +323,15 @@ pub struct AutoCompactor {
 }
 
 impl AutoCompactor {
+    /// Default instance for `Steward`'s `#[serde(skip, default = ...)]`
+    /// field — a plain function path, since serde's `default` attribute
+    /// can't call `AutoCompactor::default()` through a `Default` impl this
+    /// type doesn't derive (its `CompactionEngine`/`MicroCompactEngine`
+    /// fields have their own explicit construction here, not `#[derive]`).
+    pub fn default_engine() -> Self {
+        Self::new(AutoCompactConfig::default())
+    }
+
     pub fn new(config: AutoCompactConfig) -> Self {
         Self {
             config,

@@ -202,7 +202,17 @@ fn parse_slash_cmd(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
 
     // Built-in slash commands route to the SlashCmd handler.
     if VALID_SLASH_COMMANDS.contains(&command.as_str()) {
-        let arg = tokens.next_word().filter(|s| !s.is_empty());
+        // "memory" is the one built-in whose argument is a real multi-word
+        // LARQL query (e.g. `VERIFY WHERE entity = "Vantage"`), not a
+        // single subcommand token like "sessions list" -- every other
+        // slash command's arg fits in one word.
+        let arg = if command == "memory" {
+            let rest = tokens.consume_rest_of_input_with_current_word();
+            tokens.pos = tokens.input.len(); // consumes the rest of the line, like the skill-slash path below
+            (!rest.is_empty()).then_some(rest)
+        } else {
+            tokens.next_word().filter(|s| !s.is_empty())
+        };
         return Ok(Statement::SlashCmd { command, arg });
     }
 
@@ -506,6 +516,28 @@ mod slash_tests {
     fn builtin_slash_still_routes_to_slashcmd() {
         match one("/skills") {
             Statement::SlashCmd { command, .. } => assert_eq!(command, "skills"),
+            other => panic!("expected SlashCmd, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn memory_slash_arg_captures_the_full_larql_query() {
+        match one(r#"/memory VERIFY WHERE entity = "Vantage""#) {
+            Statement::SlashCmd { command, arg } => {
+                assert_eq!(command, "memory");
+                assert_eq!(arg.as_deref(), Some(r#"VERIFY WHERE entity = "Vantage""#));
+            }
+            other => panic!("expected SlashCmd, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn memory_slash_with_no_arg_is_none() {
+        match one("/memory") {
+            Statement::SlashCmd { command, arg } => {
+                assert_eq!(command, "memory");
+                assert_eq!(arg, None);
+            }
             other => panic!("expected SlashCmd, got {other:?}"),
         }
     }

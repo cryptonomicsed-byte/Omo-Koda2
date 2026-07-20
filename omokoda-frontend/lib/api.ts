@@ -1,4 +1,4 @@
-const BASE = process.env.NEXT_PUBLIC_OMOKODA_URL || 'http://localhost:7400'
+const BASE = process.env.NEXT_PUBLIC_OMOKODA_URL || 'http://localhost:7777'
 
 // ─── Legacy ────────────────────────────────────────────────────────────────
 
@@ -38,10 +38,13 @@ export interface VaultConfig {
   auto_export: boolean
 }
 
-export async function vaultListFiles(): Promise<VaultFileEntry[]> {
-  const r = await fetch(`${BASE}/v1/vault/files`)
-  if (!r.ok) throw new Error(`vault/files: ${r.status}`)
-  return r.json()
+export async function vaultListFiles(dir = '.'): Promise<VaultFileEntry[]> {
+  // The kernel exposes vault listing at /v1/vault/ls (there is no /vault/files),
+  // returning { dir, files: [...] }.
+  const r = await fetch(`${BASE}/v1/vault/ls?dir=${encodeURIComponent(dir)}`)
+  if (!r.ok) throw new Error(`vault/ls: ${r.status}`)
+  const data = await r.json()
+  return Array.isArray(data?.files) ? data.files : []
 }
 
 export async function vaultReadFile(path: string): Promise<{ path: string; content: string }> {

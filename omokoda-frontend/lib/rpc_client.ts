@@ -144,8 +144,15 @@ export class RustRpcClient {
   // --- Privacy control ---
 
   async setPrivacyMode(mode: PrivacyMode): Promise<void> {
+    // Privacy mode is applied locally to every subsequent think/act (see think()),
+    // so it always takes effect even when the optional WS runtime is absent.
+    // Notifying the runtime is best-effort — never let its absence block the UI.
     this.privacyMode = mode;
-    await this.sendRequest('set_privacy_mode', { mode });
+    try {
+      await this.sendRequest('set_privacy_mode', { mode });
+    } catch {
+      /* no WS runtime — local mode already set, nothing more to do */
+    }
   }
 
   getPrivacyMode(): PrivacyMode {
@@ -155,7 +162,11 @@ export class RustRpcClient {
   // --- Memory ---
 
   async forget(): Promise<void> {
-    await this.sendRequest('forget', {});
+    try {
+      await this.sendRequest('forget', {});
+    } catch {
+      throw new Error('memory runtime not connected — cannot forget right now');
+    }
   }
 
   // --- Lifecycle ---

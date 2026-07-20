@@ -152,6 +152,47 @@ pub struct RemReport {
     /// Residual noise entries pruned outright.
     pub nodes_pruned: usize,
     pub timestamp: u64,
+    /// Possible belief supersessions noticed while folding: `(newer_id,
+    /// older_id, shared_topic_word)` for entry pairs in the same
+    /// path-cluster that share real topical overlap but where the newer
+    /// entry carries a supersession marker (see [`SUPERSESSION_MARKERS`])
+    /// the older one lacks -- e.g. "actually the deploy uses X" folded
+    /// alongside an older "the deploy uses Y". This is REM's bounded
+    /// answer to temporal reasoning: cheaper and less rigorous than a real
+    /// temporal knowledge graph, but a real, non-fabricated signal that a
+    /// folded belief may be stale, surfaced instead of silently
+    /// compressing a contradiction away.
+    pub possible_supersessions: Vec<(String, String, String)>,
+}
+
+/// Words that mark a statement as revising/superseding a prior one, rather
+/// than merely adding to it. Not exhaustive -- the highest-signal, lowest
+/// false-positive markers, same "small and honest" scope as the rest of
+/// this module.
+const SUPERSESSION_MARKERS: &[&str] = &[
+    "actually", "correction", "wrong", "mistaken", "instead", "no longer",
+    "not anymore", "changed to", "updated to", "deprecated", "outdated",
+    "superseded", "reversed", "retracted",
+];
+
+fn has_supersession_marker(content: &str) -> bool {
+    let lower = content.to_lowercase();
+    SUPERSESSION_MARKERS.iter().any(|m| lower.contains(m))
+}
+
+/// Real, cheap topical-overlap check: words >= 4 chars shared between two
+/// entries, minus a small stopword set -- same tokenization family as
+/// `memdir::WordLearner`, kept independent here since dream.rs must not
+/// depend on memdir's private internals.
+fn shared_topic_word(a: &str, b: &str) -> Option<String> {
+    let words_a: std::collections::HashSet<String> = a
+        .split_whitespace()
+        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase())
+        .filter(|w| w.len() >= 4)
+        .collect();
+    b.split_whitespace()
+        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase())
+        .find(|w| w.len() >= 4 && words_a.contains(w))
 }
 
 // ── ConsolidationLock ─────────────────────────────────────────────────────────
@@ -372,6 +413,7 @@ impl DreamEngine {
 
         let mut clusters_folded = 0usize;
         let mut nodes_folded = 0usize;
+        let mut possible_supersessions: Vec<(String, String, String)> = Vec::new();
         for (path, mut ids) in clusters {
             if ids.len() < self.rem_config.min_fold_cluster {
                 continue;
@@ -387,6 +429,30 @@ impl DreamEngine {
                     }
                     max_importance = max_importance.max(e.importance);
                     micro.push(e);
+                }
+            }
+
+            // Supersession scan over this cluster only (bounded by
+            // min_fold_cluster/max_entries_per_run, so O(n^2) here is
+            // small in practice): a newer entry with a supersession
+            // marker, sharing a real topic word with an older entry in
+            // the same cluster, is flagged rather than silently folded
+            // away alongside it.
+            for i in 0..micro.len() {
+                if !has_supersession_marker(&micro[i].content) {
+                    continue;
+                }
+                for j in 0..micro.len() {
+                    if i == j || micro[j].created_at >= micro[i].created_at {
+                        continue;
+                    }
+                    if let Some(word) = shared_topic_word(&micro[i].content, &micro[j].content) {
+                        possible_supersessions.push((
+                            micro[i].id.clone(),
+                            micro[j].id.clone(),
+                            word,
+                        ));
+                    }
                 }
             }
             let macro_id = format!("rem:{path}:{now}");
@@ -405,6 +471,15 @@ impl DreamEngine {
             // residual prune below, so it starts at least at the noise line.
             folded.importance = (max_importance + 0.1).max(self.rem_config.noise_importance);
             folded.tags.push("rem-fold".to_string());
+            // Keyless structural commitment (see
+            // memdir::fold_commitment/verify_fold_integrity) -- a second,
+            // independent check that the archive genuinely matches what
+            // this macro node claims to represent, catchable even if the
+            // archive is corrupted or truncated by something outside this
+            // fold path.
+            folded
+                .tags
+                .push(format!("fold-integrity:{}", crate::memory::memdir::fold_commitment(&micro)));
             dir.insert(folded);
             // Lossless fold: the micro entries move to the archive, keyed by
             // the macro node, so `unfold` can restore the full sub-graph.
@@ -423,6 +498,7 @@ impl DreamEngine {
             nodes_folded,
             nodes_pruned,
             timestamp: now,
+            possible_supersessions,
         };
 
         self.last_rem = Some(now);
@@ -617,6 +693,67 @@ mod dream_tests {
         // The fold is lossless: all four micro entries sit in the archive.
         assert_eq!(dir.archived_fold_count(), 1);
         assert_eq!(dir.archived_entry_count(), 4);
+    }
+
+    #[test]
+    fn rem_cycle_flags_a_possible_supersession_in_a_folded_cluster() {
+        let mut engine = DreamEngine::new(DreamConfig::default());
+        let mut dir = OduDirectory::new();
+
+        let mut old = OduEntry::new("old", "the deploy uses staging credentials", "topics/deploy");
+        old.importance = 0.2;
+        old.created_at = 100;
+        dir.insert(old);
+
+        let mut newer = OduEntry::new(
+            "newer",
+            "actually the deploy uses production credentials now",
+            "topics/deploy",
+        );
+        newer.importance = 0.2;
+        newer.created_at = 200;
+        dir.insert(newer);
+
+        // A third, unrelated noise entry so the cluster meets min_fold_cluster (3).
+        let mut filler = OduEntry::new("filler", "unrelated noise chatter here", "topics/deploy");
+        filler.importance = 0.2;
+        filler.created_at = 150;
+        dir.insert(filler);
+
+        let report = engine
+            .try_rem_cycle(&mut dir, SABBATH)
+            .expect("REM runs on the Sabbath");
+
+        assert_eq!(report.possible_supersessions.len(), 1);
+        let (newer_id, older_id, word) = &report.possible_supersessions[0];
+        assert_eq!(newer_id, "newer");
+        assert_eq!(older_id, "old");
+        assert_eq!(word, "deploy");
+    }
+
+    #[test]
+    fn rem_fold_carries_a_verifiable_integrity_commitment() {
+        let mut engine = DreamEngine::new(DreamConfig::default());
+        let mut dir = OduDirectory::new();
+        for i in 0..4 {
+            dir.insert(noise_entry(&format!("n{i}"), "topics/pleasantries", 0.2));
+        }
+        engine.try_rem_cycle(&mut dir, SABBATH).unwrap();
+        let macro_id = format!("rem:topics/pleasantries:{SABBATH}");
+
+        assert!(
+            dir.verify_fold_integrity(&macro_id).is_ok(),
+            "a freshly folded, untampered archive must verify"
+        );
+
+        // Tamper with the archive directly (simulating corruption
+        // independent of dream.rs's own folding path) and confirm the
+        // keyless audit actually catches it.
+        dir.archived_folds.get_mut(&macro_id).unwrap().pop();
+        assert!(
+            dir.verify_fold_integrity(&macro_id).is_err(),
+            "a truncated archive must fail the integrity check"
+        );
     }
 
     #[test]

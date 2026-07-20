@@ -251,6 +251,14 @@ pub struct AgentSnapshot {
     /// grant survives restarts.
     #[serde(default)]
     pub sovereign: bool,
+    /// Real Odù memory directory backing the Dream/Consolidation Engine
+    /// (see dream.rs). Every think turn adds one entry here; consolidation
+    /// (every 30 min) sweeps stale entries, and the Sabbath REM cycle
+    /// fractally folds noise clusters into macro nodes. Was previously
+    /// built but never referenced by any live agent -- this field is what
+    /// wires it in.
+    #[serde(default)]
+    pub odu_dir: crate::memory::memdir::OduDirectory,
 }
 
 #[derive(Debug, Clone)]
@@ -260,6 +268,16 @@ pub struct AgentCore {
     pub k_root: [u8; 32],
     pub current_memory_key: [u8; 32],
     pub memory: Vec<MemoryEntry>,
+    /// This agent's real Sui Seal DEK, fetched via `memory::seal_bridge`
+    /// and refreshed on each memory-key rotation (see
+    /// `refresh_seal_dek`/`increment_act_counter`) -- not persisted, and
+    /// not written to the vault: a raw key must never touch disk, same
+    /// discipline as `llm_api_key`. Re-fetched fresh on every restart.
+    /// `None` whenever Seal is unconfigured or the fetch fails --
+    /// `encrypt_memory_entry` falls back to `TeeSealer::from_env`'s
+    /// static key, then to software-only, never blocking a real memory
+    /// write on Seal's availability.
+    pub seal_dek_cache: Option<[u8; 32]>,
 }
 
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -300,6 +318,7 @@ impl AgentCore {
             k_root,
             current_memory_key,
             memory: Vec::new(),
+            seal_dek_cache: None,
         }
     }
 
@@ -514,10 +533,24 @@ impl AgentCore {
             .encrypt(nonce, text.as_bytes())
             .map_err(|e| format!("memory encryption failed: {e}"))?;
 
-        // Tier-1 TEE envelope (Nautilus/Seal): when an attested enclave key
-        // is present, the software ciphertext is sealed a second time, bound
-        // to this agent's id. Fail-open — no enclave means software-only.
-        let ciphertext = match crate::memory::tee::TeeSealer::from_env() {
+        // Tier-1 TEE envelope (Nautilus/Seal): when a key is available, the
+        // software ciphertext is sealed a second time, bound to this
+        // agent's id. Three-tier fallback, each fully fail-open:
+        //   1. seal_dek_cache -- real Sui Seal DEK, refreshed on each
+        //      memory-key rotation (see refresh_seal_dek). Preferred: the
+        //      only tier with decentralized custody + an on-chain policy.
+        //   2. TeeSealer::from_env -- static NAUTILUS_SEAL_KEY, the
+        //      pre-Seal injection point (still real, just centralized).
+        //   3. software-only -- no enclave/Seal configured at all.
+        // Attestation-sourced keys (TeeSealer::from_attestation) are built
+        // once, right after a completed Nautilus handshake, not looked up
+        // per-entry here -- there is no live TeeQuote sitting around to
+        // recheck on every write.
+        let sealer = self
+            .seal_dek_cache
+            .map(crate::memory::tee::TeeSealer::from_seal_dek)
+            .or_else(crate::memory::tee::TeeSealer::from_env);
+        let ciphertext = match sealer {
             Some(sealer) => sealer.seal_bytes(&ciphertext, self.snapshot.id.as_str())?,
             None => ciphertext,
         };
@@ -528,10 +561,43 @@ impl AgentCore {
         Ok(())
     }
 
-    pub fn increment_act_counter(&mut self) {
+    /// Returns true if this increment triggered a memory-key rotation --
+    /// callers in an async context use that to also refresh the Seal DEK
+    /// cache (see `refresh_seal_dek`), keeping the two rotations on the
+    /// same cadence without making this function itself async.
+    pub fn increment_act_counter(&mut self) -> bool {
         self.snapshot.act_counter += 1;
         if self.snapshot.act_counter.is_multiple_of(100) {
             self.rotate_memory_key();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Refresh `seal_dek_cache` from Sui Seal's key servers (see
+    /// `memory::seal_bridge::SealBridge`), gated by
+    /// `seal_approve_agent_memory` on-chain (the request-building step
+    /// SEAL_REQUEST_CMD invokes is what actually embeds this agent's
+    /// identity/package id into the signed request -- see seal_bridge.rs
+    /// module docs for why that step can't be parameterized from here).
+    /// Only attempted once this agent has a real on-chain object
+    /// (`onchain_nft_id`) for the policy to check ownership against.
+    /// Fail-open: any failure (Seal unconfigured, no on-chain object yet,
+    /// network error) just leaves the cache as-is (stale-but-usable, or
+    /// `None`) -- a real memory write must never block on Seal's
+    /// availability. Async because the fetch shells out to `seal-cli`;
+    /// call from an async context after a key rotation, never from the
+    /// sync `encrypt_memory_entry` path itself.
+    pub async fn refresh_seal_dek(&mut self) {
+        let Some(bridge) = crate::memory::seal_bridge::SealBridge::from_env() else {
+            return;
+        };
+        if self.snapshot.onchain_nft_id.is_none() {
+            return;
+        }
+        if let Ok(dek) = bridge.fetch_dek().await {
+            self.seal_dek_cache = Some(dek);
         }
     }
 
@@ -768,6 +834,7 @@ impl Steward {
             llm_endpoint,
             llm_model,
             sovereign,
+            odu_dir: crate::memory::memdir::OduDirectory::new(),
         };
         let mut core = AgentCore::from_snapshot(snapshot, k_root);
         core.private_data = Some(private_data);
@@ -834,6 +901,27 @@ pub struct Steward {
     pub permission_prompter: Option<Box<dyn crate::permissions::PermissionPrompter + Send>>,
     #[serde(skip, default = "SovereignEventBus::default")]
     pub event_bus: SovereignEventBus,
+    /// Dream/Consolidation Engine runtime state (lock + last-run timestamps).
+    /// Not persisted -- like `usage_tracker`/`gatekeeper` below, this is
+    /// ephemeral control state; a restart just means the 30-min/Sabbath
+    /// clocks restart too, never a correctness issue since `should_*`
+    /// checks are `None`-safe. The actual memory it operates on
+    /// (`AgentSnapshot::odu_dir`) IS persisted.
+    #[serde(skip, default = "default_dream_engine")]
+    dream_engine: crate::dream::DreamEngine,
+    /// Auto-compaction: was previously wired only to the manual `"compact"`
+    /// command (CompactionEngine::compact called directly). This engine
+    /// triggers the same summarization automatically once a session grows
+    /// past its message-count threshold, so long-running agents don't rely
+    /// on a human remembering to run `/compact`. Not persisted -- like
+    /// `dream_engine`, only its last-run bookkeeping resets on restart,
+    /// never a correctness issue.
+    #[serde(skip, default = "crate::compact::AutoCompactor::default_engine")]
+    auto_compactor: crate::compact::AutoCompactor,
+}
+
+fn default_dream_engine() -> crate::dream::DreamEngine {
+    crate::dream::DreamEngine::new(crate::dream::DreamConfig::default())
 }
 
 impl serde::Serialize for AgentCore {
@@ -888,6 +976,8 @@ impl Steward {
             rhythm_tracker: crate::rhythm::CooldownTracker::new(),
             dopamine_pool: crate::economics::DopaminePool::default(),
             gatekeeper: EsuGatekeeper::new(),
+            dream_engine: default_dream_engine(),
+            auto_compactor: crate::compact::AutoCompactor::default_engine(),
         }
     }
 
@@ -1354,7 +1444,142 @@ impl Steward {
                     private,
                 ));
 
+                // Persist this turn into the real Julia Soma DAG (see
+                // bus/clients.rs::HttpOsunClient, omokoda-memory/src/soma_bridge.jl).
+                // Spawned + fail-open, matching the onchain sync below -- a
+                // memory-write failure never blocks a real think response.
+                // Private turns are never sent, matching the public_messages
+                // privacy gate this same function relies on above.
+                if !private {
+                    if let Some(osun_url) = std::env::var("OSUN_URL").ok() {
+                        use crate::bus::clients::{HttpOsunClient, OsunClient};
+                        let agent_id = agent_mut.id().clone();
+                        let text = format!("{prompt}\n{response}");
+                        let importance = (hermetic_score as f32).clamp(0.0, 1.0);
+                        tokio::spawn(async move {
+                            let client = HttpOsunClient::new(osun_url);
+                            let emotion = crate::emotion::EmotionState::birth();
+                            client
+                                .store_memcell(&agent_id, &text, &emotion, importance)
+                                .await;
+                        });
+                    }
+                }
+
                 agent_mut.update_reputation(new_rep, ReputationChangeReason::Think);
+
+                // Dream/Consolidation Engine: record this turn as a real Odù
+                // entry, then give the engine a chance to run its two
+                // rhythms in-process (pure local computation over the
+                // directory -- no I/O, safe to run synchronously here,
+                // unlike the network calls below which are spawned).
+                // `path` buckets by intent class so REM's noise clusters
+                // group by topic rather than by raw chronological chunks.
+                {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    let entry_id = format!("think:{now}:{}", agent_mut.snapshot.act_counter);
+                    let path = format!("think/{:?}", compilation.class).to_lowercase();
+                    let mut entry = crate::memory::memdir::OduEntry::new(
+                        entry_id,
+                        format!("{prompt}\n{response}"),
+                        path,
+                    );
+                    entry.importance = hermetic_score.clamp(0.0, 1.0);
+                    agent_mut.snapshot.odu_dir.insert(entry);
+
+                    // Èṣù gates the rewrite, LARQL only ever queries: this
+                    // mirrors the OSOVM 3-layer model (VEIL suggests / LARQL
+                    // -- read-only, see OduDirectory::recall above --
+                    // RUNTIME executes the patch / Zero's role, CORE
+                    // validates / Èṣù) applied to memory instead of
+                    // think/act. dream.rs decides *what* to fold or prune;
+                    // it never commits until the same 7-gate evaluate()
+                    // every Think/Act already goes through says yes.
+                    let dir_len = agent_mut.snapshot.odu_dir.len();
+                    let agent_id = agent_mut.id().clone();
+                    let warn_count = agent_mut.snapshot.session.warn_count;
+                    let gate_ctx = GateContext::new(false, warn_count, 0.0);
+
+                    if self.dream_engine.should_consolidate(now) {
+                        let op = Operation {
+                            kind: OperationKind::MemoryRewrite {
+                                kind: "consolidate".to_string(),
+                                detail: format!("stale sweep over {dir_len} odu_dir entries"),
+                            },
+                            intent: "dream engine background maintenance".to_string(),
+                            agent_id: Some(agent_id.clone()),
+                        };
+                        if matches!(
+                            self.gatekeeper.evaluate(&op, &gate_ctx),
+                            GatekeeperResult::Approved { .. }
+                        ) {
+                            let _ = self.dream_engine.try_consolidate(
+                                &mut self.agent.as_mut().unwrap().snapshot.odu_dir,
+                                now,
+                            );
+                        }
+                    }
+                    if self.dream_engine.should_rem(now) {
+                        let op = Operation {
+                            kind: OperationKind::MemoryRewrite {
+                                kind: "rem_cycle".to_string(),
+                                detail: format!("sabbath fractal fold over {dir_len} odu_dir entries"),
+                            },
+                            intent: "dream engine background maintenance".to_string(),
+                            agent_id: Some(agent_id),
+                        };
+                        if matches!(
+                            self.gatekeeper.evaluate(&op, &gate_ctx),
+                            GatekeeperResult::Approved { .. }
+                        ) {
+                            if let Some(report) = self.dream_engine.try_rem_cycle(
+                                &mut self.agent.as_mut().unwrap().snapshot.odu_dir,
+                                now,
+                            ) {
+                                // Surface REM's possible-supersession
+                                // findings as real, queryable odu_dir
+                                // entries (not just a discarded report
+                                // field) -- so a later
+                                // `/memory VERIFY WHERE path CONTAINS
+                                // "meta/supersession"` or plain recall can
+                                // actually surface "this may be outdated,"
+                                // rather than the signal only existing for
+                                // one call-site's lifetime.
+                                let dir = &mut self.agent.as_mut().unwrap().snapshot.odu_dir;
+                                for (newer_id, older_id, word) in &report.possible_supersessions {
+                                    let note = crate::memory::memdir::OduEntry::new(
+                                        format!("supersession:{now}:{newer_id}:{older_id}"),
+                                        format!(
+                                            "possible supersession: entry '{newer_id}' may revise \
+                                             entry '{older_id}' (shared topic: {word})"
+                                        ),
+                                        "meta/supersession",
+                                    );
+                                    dir.insert(note);
+                                }
+                            }
+                        }
+                    }
+
+                    // Auto-compaction: was previously only reachable via
+                    // the manual "compact" command. energy_ratio is a
+                    // stand-in 1.0 (no persisted energy state feeds this
+                    // yet) so only the MessageCount/TimeSecs triggers can
+                    // fire -- EnergyBelow simply never trips, not a bug.
+                    let _ = self.auto_compactor.compact_if_needed(
+                        &mut self.agent.as_mut().unwrap().snapshot.session,
+                        1.0,
+                    );
+                }
+
+                // Re-borrow: the dream-engine step above needed a disjoint
+                // borrow of `self.dream_engine` alongside `self.agent`,
+                // which required the earlier `agent_mut` borrow to have
+                // already ended.
+                let agent_mut = self.ensure_born_mut()?;
 
                 // Real, non-blocking dNFT sync: if this agent has an
                 // on-chain object (see onchain.rs), push her real
@@ -1475,6 +1700,9 @@ impl Steward {
                     )
                 };
 
+                if !self.tools.exists(&tool) {
+                    return Err(format!("unknown tool '{}'", tool));
+                }
                 if !self.tools.is_allowed(&tool, tier) {
                     return Err(format!(
                         "Tool '{}' requires higher reputation (current tier: {})",
@@ -1719,7 +1947,9 @@ impl Steward {
                 let burn_amount = (5_000.0 + tool_usage.compute_synapse_burn()).max(5000.0);
                 agent_mut.burn_synapse(burn_amount)?;
                 agent_mut.update_reputation(new_rep, ReputationChangeReason::Act);
-                agent_mut.increment_act_counter();
+                if agent_mut.increment_act_counter() {
+                    agent_mut.refresh_seal_dek().await;
+                }
 
                 // Busy Beaver settlement: the call itself plus its token volume
                 // count as productive steps; a token-heavy act on a young agent
@@ -2094,12 +2324,46 @@ impl Steward {
                     }
                 }
                 "memory" => {
+                    // With no argument: the legacy summary (private
+                    // MemoryEntry vault, distinct from odu_dir). With a
+                    // LARQL-over-memory query (see
+                    // memory::larql_query -- VERIFY/DESCRIBE against her
+                    // own odu_dir, not the static Òdù corpus), execute it
+                    // and return the real answer. Read-only either way --
+                    // LARQL only ever queries, never rewrites (dream.rs +
+                    // Èṣù's MemoryRewrite gate own the rewrite side).
+                    let query_text = arg.as_deref().unwrap_or("").trim();
+                    let looks_like_query = {
+                        let upper = query_text.to_ascii_uppercase();
+                        upper.starts_with("VERIFY") || upper.starts_with("DESCRIBE")
+                    };
+                    if looks_like_query {
+                        let agent = self.ensure_born()?;
+                        let output = match crate::memory::larql_query::parse_query(query_text) {
+                            Ok(q) => {
+                                let answer =
+                                    crate::memory::larql_query::execute(&q, &agent.snapshot.odu_dir);
+                                answer.summary.join("\n")
+                            }
+                            Err(e) => format!("LARQL parse error: {e}"),
+                        };
+                        return Ok(ExecutionResult {
+                            receipt: None,
+                            private_mode: false,
+                            tool_output: Some(output),
+                        });
+                    }
+
                     let agent = self.ensure_born()?;
                     let count = agent.memory.len();
                     let total_importance: f32 = agent.memory.iter().map(|m| m.importance).sum();
                     let output = format!(
-                        "Memory entries: {}\nTotal importance mass: {:.2}\nAct counter: {}",
-                        count, total_importance, agent.snapshot.act_counter,
+                        "Memory entries: {}\nTotal importance mass: {:.2}\nAct counter: {}\nodu_dir entries: {}\nKnown entities: {}\n(query with /memory VERIFY WHERE entity = \"X\" or /memory DESCRIBE entities)",
+                        count,
+                        total_importance,
+                        agent.snapshot.act_counter,
+                        agent.snapshot.odu_dir.len(),
+                        agent.snapshot.odu_dir.known_entities().len(),
                     );
                     Ok(ExecutionResult {
                         receipt: None,
@@ -2229,7 +2493,7 @@ impl Steward {
         // Prepend a system message drawn from her sovereign identity so she
         // always speaks as herself, whatever backend answers.
         let (mut think_ctx, personal_llm): (Vec<ConversationMessage>, _) = {
-            let agent = self.ensure_born()?;
+            let agent = self.ensure_born_mut()?;
             let name = agent.name().to_string();
             let summary = agent.personality().personality_summary.clone();
             let mut system = format!(
@@ -2290,10 +2554,83 @@ impl Steward {
                      -- let that quiet recognition inform you, without naming it.",
                 );
             }
-            (
-                vec![ConversationMessage::new_system(system, private)],
-                agent.personal_llm(),
-            )
+            let mut ctx = vec![ConversationMessage::new_system(system, private)];
+            // Real short-term memory: without this, every think call was
+            // stateless from the LLM's actual point of view -- prior turns
+            // were persisted to public_messages but never sent back. Last
+            // RECENT_HISTORY_TURNS messages only (not the full history) to
+            // bound prompt size; public_messages already excludes private
+            // messages (Session::add_message gates on !is_private), so no
+            // extra filtering is needed here.
+            const RECENT_HISTORY_TURNS: usize = 20;
+            let history = &agent.session().public_messages;
+            let start = history.len().saturating_sub(RECENT_HISTORY_TURNS);
+            ctx.extend(history[start..].iter().cloned());
+
+            // Long-term recall: word-overlap search over this agent's own
+            // odu_dir (see memory/memdir.rs::OduDirectory::recall), scoped
+            // to the current prompt rather than blind recency. Reaches
+            // back past RECENT_HISTORY_TURNS, and transparently unfolds
+            // any REM-folded macro node that scores as relevant so old,
+            // compressed detail comes back instead of staying summarized.
+            let recalled = agent.snapshot.odu_dir.recall(prompt, 3);
+            if !recalled.is_empty() {
+                let section = format!(
+                    "## Recalled from memory\n{}",
+                    recalled
+                        .iter()
+                        .map(|c| format!("- {}", c.chars().take(400).collect::<String>()))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                );
+                ctx.push(ConversationMessage::new_system(section, private));
+            }
+
+            // Soma: real cross-session memory via the Julia Ọ̀ṣun service
+            // (see bus/clients.rs::HttpOsunClient). Fail-open when OSUN_URL
+            // is unset or the service is unreachable -- reconstruct_soma
+            // returns an empty SomaContext in that case and render_section
+            // returns None, so nothing is added to the prompt.
+            if let Some(osun_url) = std::env::var("OSUN_URL").ok() {
+                use crate::bus::clients::{HttpOsunClient, OsunClient};
+                let client = HttpOsunClient::new(osun_url);
+                let emotion = crate::emotion::EmotionState::birth();
+                let soma = client
+                    .reconstruct_soma(agent.id(), prompt, &emotion)
+                    .await;
+                if soma.has_content() {
+                    ctx.push(ConversationMessage::new_system(
+                        soma.render_section(),
+                        private,
+                    ));
+                }
+
+                // Cross-agent Soma search: the multi-agent counterpart to
+                // reconstruct_soma above. share_with is never computed or
+                // assumed here -- it's exactly OduDirectory::swarm_agents(),
+                // the real, already-decided set of agents this one has
+                // explicitly shared memory with (see
+                // OduDirectory::share_to_swarm). No opt-in list means no
+                // query, by construction.
+                let share_with: Vec<String> = agent
+                    .snapshot
+                    .odu_dir
+                    .swarm_agents()
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect();
+                if !share_with.is_empty() {
+                    let swarm_patterns = client.query_swarm(&share_with, prompt).await;
+                    if !swarm_patterns.is_empty() {
+                        ctx.push(ConversationMessage::new_system(
+                            format!("## Swarm Memory\n{}", swarm_patterns.join("\n")),
+                            private,
+                        ));
+                    }
+                }
+            }
+
+            (ctx, agent.personal_llm())
         };
         think_ctx.extend(observe_ctx);
 
@@ -2379,6 +2716,9 @@ impl Steward {
             crate::justice::HookDecision::Allow => {}
         }
 
+        if !self.tools.exists(&call.tool) {
+            return Err(format!("unknown tool '{}'", call.tool));
+        }
         if !self.tools.is_allowed(&call.tool, tier) {
             return Err(format!(
                 "Tool '{}' requires higher reputation (current tier: {})",
@@ -2533,7 +2873,9 @@ impl Steward {
             let burn_amount = (5_000.0 + tool_usage.compute_synapse_burn()).max(5000.0);
             agent_mut.burn_synapse(burn_amount)?;
             agent_mut.update_reputation(new_rep, ReputationChangeReason::Act);
-            agent_mut.increment_act_counter();
+            if agent_mut.increment_act_counter() {
+                agent_mut.refresh_seal_dek().await;
+            }
         }
 
         let receipt = self.record_receipt(&call.tool, &call.params, tool_usage)?;
@@ -3083,6 +3425,9 @@ impl Steward {
             )
         };
 
+        if !self.tools.exists(tool_name) {
+            return Err(format!("unknown tool '{}'", tool_name));
+        }
         if !self.tools.is_allowed(tool_name, tier) {
             return Err(format!(
                 "Tool '{}' requires higher tier (current: {})",

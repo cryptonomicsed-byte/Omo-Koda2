@@ -19,7 +19,7 @@ pub use correspondence::CorrespondenceGate;
 pub use gender::GenderGate;
 pub use mentalism::MentalismGate;
 pub use polarity::PolarityGate;
-pub use rhythm::RhythmGate;
+pub use rhythm::HermeticRhythmGate;
 pub use vibration::VibrationGate;
 
 use crate::identity::AgentId;
@@ -39,6 +39,16 @@ pub enum OperationKind {
     Birth { name: String },
     Think { prompt: String },
     Act { tool: String, params: String },
+    /// A memory-graph rewrite: dream.rs's consolidation sweep or Sabbath
+    /// REM fold/prune cycle against `AgentSnapshot::odu_dir`. LARQL
+    /// (divination.rs / OduDirectory::recall) is the *query* side —
+    /// read-only, ungated, matching how VEIL only ever suggests. This is
+    /// the *rewrite* side: dream.rs decides what to fold or prune (Zero's
+    /// role — the deterministic patch), and every such patch must clear
+    /// Èṣù before it commits (CORE validates), same as any Think or Act.
+    /// `kind` is "consolidate" or "rem_cycle"; `detail` is a short
+    /// human-readable summary of what would be folded/pruned.
+    MemoryRewrite { kind: String, detail: String },
 }
 
 impl Operation {
@@ -48,6 +58,7 @@ impl Operation {
             OperationKind::Birth { name } => format!("birth {}", name),
             OperationKind::Think { prompt } => prompt.clone(),
             OperationKind::Act { tool, params } => format!("{} {}", tool, params),
+            OperationKind::MemoryRewrite { kind, detail } => format!("memory {} {}", kind, detail),
         };
         format!("{} {}", self.intent, op_text).to_lowercase()
     }

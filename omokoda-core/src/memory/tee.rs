@@ -56,6 +56,39 @@ impl TeeSealer {
         Self { seal_key }
     }
 
+    /// Build from a verified Nautilus attestation quote. This is the real
+    /// connection the module doc comment above has described since before
+    /// this function existed -- `verify_quote` was fully implemented but
+    /// never actually called from anywhere in this crate; this closes
+    /// that gap the same way `dream.rs`/`walrus.rs` were wired to their
+    /// callers earlier in this memory-system build.
+    ///
+    /// Still honest about what it verifies: `nautilus_integration::
+    /// attestation::verify_quote` checks `quote.code_measurement` against
+    /// an expected value and derives a key from the quote's own fields --
+    /// it does not verify a real hardware attestation signature (SGX/TDX)
+    /// yet, since no real enclave is deployed. Once one is, `TeeQuote`'s
+    /// fields come from that hardware and this call site does not need to
+    /// change at all -- the seam is already correct, only the quote's
+    /// provenance upgrades.
+    pub fn from_attestation(
+        quote: &nautilus_integration::attestation::TeeQuote,
+        expected_measurement: &[u8; 32],
+    ) -> Result<Self, String> {
+        let result = nautilus_integration::attestation::verify_quote(quote, expected_measurement)
+            .map_err(|e| format!("Nautilus attestation failed: {e}"))?;
+        Ok(Self {
+            seal_key: result.seal_key,
+        })
+    }
+
+    /// Build from a real Sui Seal fetch (see `memory::seal_bridge`) --
+    /// the DEK Seal's key servers released after the on-chain
+    /// `seal_approve_agent_memory` policy passed for this specific agent.
+    pub fn from_seal_dek(dek: [u8; 32]) -> Self {
+        Self { seal_key: dek }
+    }
+
     /// Seal software ciphertext into a TEE envelope, bound to `agent_id`.
     pub fn seal_bytes(&self, ciphertext: &[u8], agent_id: &str) -> Result<Vec<u8>, String> {
         let sealed = seal(ciphertext, &self.seal_key, agent_id)
@@ -133,5 +166,50 @@ mod tests {
     fn from_env_disabled_without_flag() {
         std::env::remove_var("OMOKODA_TEE_SEAL");
         assert!(TeeSealer::from_env().is_none());
+    }
+
+    #[test]
+    fn from_attestation_seals_and_unseals_when_measurement_matches() {
+        use nautilus_integration::attestation::TeeQuote;
+
+        let measurement = [9u8; 32];
+        let quote = TeeQuote {
+            enclave_id: [1u8; 32],
+            code_measurement: measurement,
+            nonce: [2u8; 16],
+            signature: vec![3u8; 8],
+        };
+        let sealer = TeeSealer::from_attestation(&quote, &measurement)
+            .expect("matching measurement must succeed");
+        let enveloped = sealer.seal_bytes(b"attested secret", "agent-luna").unwrap();
+        assert_eq!(
+            sealer.unseal_bytes(&enveloped, "agent-luna").unwrap(),
+            b"attested secret"
+        );
+    }
+
+    #[test]
+    fn from_attestation_rejects_measurement_mismatch() {
+        use nautilus_integration::attestation::TeeQuote;
+
+        let quote = TeeQuote {
+            enclave_id: [1u8; 32],
+            code_measurement: [9u8; 32],
+            nonce: [2u8; 16],
+            signature: vec![3u8; 8],
+        };
+        let wrong_expected = [8u8; 32];
+        assert!(TeeSealer::from_attestation(&quote, &wrong_expected).is_err());
+    }
+
+    #[test]
+    fn from_seal_dek_round_trips() {
+        let dek = [5u8; 32];
+        let sealer = TeeSealer::from_seal_dek(dek);
+        let enveloped = sealer.seal_bytes(b"seal-sourced secret", "agent-luna").unwrap();
+        assert_eq!(
+            sealer.unseal_bytes(&enveloped, "agent-luna").unwrap(),
+            b"seal-sourced secret"
+        );
     }
 }

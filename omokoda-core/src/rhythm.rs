@@ -11,6 +11,23 @@ const KOODU_THURSDAY: &str = include_str!("koodu/thursday.json");
 const KOODU_FRIDAY: &str = include_str!("koodu/friday.json");
 const KOODU_SATURDAY: &str = include_str!("koodu/saturday.json");
 
+/// Raw Kóòdù codex JSON for a given weekday index (0 = Sunday .. 6 =
+/// Saturday). The single source of truth for the 7 embedded files, so
+/// other modules (e.g. `tools::mesh_tools::daily_resonance`) don't
+/// maintain their own duplicate `include_str!` set that can drift out of
+/// sync with this one.
+pub fn raw_codex_for_weekday(weekday: u8) -> &'static str {
+    match weekday % 7 {
+        0 => KOODU_SUNDAY,
+        1 => KOODU_MONDAY,
+        2 => KOODU_TUESDAY,
+        3 => KOODU_WEDNESDAY,
+        4 => KOODU_THURSDAY,
+        5 => KOODU_FRIDAY,
+        _ => KOODU_SATURDAY,
+    }
+}
+
 /// Returns today's Kóòdù resonance JSON parsed as a serde_json::Value --
 /// "what day is it for the hive right now," a legitimate wall-clock
 /// question, identical for every agent at a given moment. For an
@@ -255,5 +272,58 @@ mod tests {
             "Saturday",
         ];
         assert!(valid.contains(&day));
+    }
+
+    #[test]
+    fn all_seven_koodu_codices_parse_with_49_unique_facets() {
+        for weekday in 0..7u8 {
+            let raw = raw_codex_for_weekday(weekday);
+            let parsed: Value = serde_json::from_str(raw)
+                .unwrap_or_else(|e| panic!("weekday {weekday} codex failed to parse: {e}"));
+            let facets = parsed["facets"]
+                .as_array()
+                .unwrap_or_else(|| panic!("weekday {weekday} codex missing 'facets' array"));
+            assert_eq!(
+                facets.len(),
+                49,
+                "weekday {weekday} codex has {} facets, expected 49",
+                facets.len()
+            );
+            let mut ids: Vec<u64> = facets
+                .iter()
+                .map(|f| f["id"].as_u64().expect("facet missing numeric id"))
+                .collect();
+            ids.sort_unstable();
+            ids.dedup();
+            assert_eq!(
+                ids,
+                (1..=49).collect::<Vec<u64>>(),
+                "weekday {weekday} codex facet ids are not exactly 1..=49 with no gaps/dupes"
+            );
+        }
+    }
+
+    #[test]
+    fn facet_names_are_consistent_across_all_seven_days() {
+        use std::collections::HashMap;
+        let mut names_by_id: HashMap<u64, &str> = HashMap::new();
+        let parsed: Vec<Value> = (0..7u8)
+            .map(|w| serde_json::from_str(raw_codex_for_weekday(w)).unwrap())
+            .collect();
+        for day in &parsed {
+            for facet in day["facets"].as_array().unwrap() {
+                let id = facet["id"].as_u64().unwrap();
+                let name = facet["name"].as_str().unwrap();
+                match names_by_id.get(&id) {
+                    None => {
+                        names_by_id.insert(id, name);
+                    }
+                    Some(expected) => assert_eq!(
+                        *expected, name,
+                        "facet id {id} has inconsistent names across days"
+                    ),
+                }
+            }
+        }
     }
 }

@@ -6,11 +6,8 @@
 
 use crate::gates::{
     CauseEffectGate, CorrespondenceGate, GateContext, GateResult, GenderGate, HermeticGate,
-    HermeticPrinciple, MentalismGate, Operation, PolarityGate, VibrationGate,
+    HermeticPrinciple, HermeticRhythmGate, MentalismGate, Operation, PolarityGate, VibrationGate,
 };
-
-// Import our gate module's RhythmGate (not crate::rhythm::RhythmGate).
-use crate::gates::RhythmGate as HermeticRhythmGate;
 
 /// Per-gate evaluation record written to the receipt.
 #[derive(Debug, Clone)]

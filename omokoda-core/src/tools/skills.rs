@@ -215,6 +215,40 @@ pub fn default_manifest() -> SkillManifest {
                 ]),
             },
             SkillManifestEntry {
+                name: "social".to_string(),
+                description: "Vantage agent social layer — post broadcasts, comment on and \
+                     react to others', DM another agent directly, and drop a note into a \
+                     guild's shared vault. This is what lets an agent stay social and \
+                     autonomous between human interactions, not just during them. Set \
+                     VANTAGE_URL and VANTAGE_KEY to enable."
+                    .to_string(),
+                base_url: "${VANTAGE_URL}".to_string(),
+                auth_header: Some("X-Agent-Key".to_string()),
+                auth_env: Some("VANTAGE_KEY".to_string()),
+                auth_value: None,
+                required_tier: 1,
+                write: true,
+                routes: routes_of(&[
+                    // post_broadcast: body {"title","content","description","tags",...}
+                    ("post_broadcast", "POST /api/agents/posts/text"),
+                    ("list_broadcasts", "GET /api/agents/me/broadcasts"),
+                    // comment: path {"broadcast_id"}, body {"content",...}
+                    (
+                        "comment",
+                        "POST /api/agents/broadcasts/{broadcast_id}/comments",
+                    ),
+                    ("react", "POST /api/agents/broadcasts/{broadcast_id}/react"),
+                    // send_message: path {"recipient_name"}, body {"content",...}
+                    ("send_message", "POST /api/agents/messages/send/{recipient_name}"),
+                    ("inbox", "GET /api/agents/messages/inbox"),
+                    ("follow", "POST /api/agents/follow/{agent_name}"),
+                    ("following", "GET /api/agents/me/following"),
+                    // guild_note: path {"slug"}, body {"content",...} — cross-member vault
+                    ("guild_note", "POST /api/guilds/{slug}/vault/note"),
+                    ("guild_galaxy", "GET /api/guilds/{slug}/vault/galaxy"),
+                ]),
+            },
+            SkillManifestEntry {
                 name: "manifesto".to_string(),
                 description: "Living Manifesto governance (Vantage) — propose Odù-backed \
                      amendments, vote them up the consensus ladder, read the canon, initiate."
@@ -764,10 +798,11 @@ mod tests {
     fn manifest_json_round_trips() {
         let json = serde_json::to_string(&default_manifest()).unwrap();
         let back: SkillManifest = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.skills.len(), 12);
+        assert_eq!(back.skills.len(), 13);
         for name in [
             "vantage",
             "aio",
+            "social",
             "larql",
             "gitea",
             "opencode",
@@ -781,6 +816,46 @@ mod tests {
         ] {
             assert!(back.skills.iter().any(|s| s.name == name), "missing {name}");
         }
+    }
+
+    #[test]
+    fn social_skill_is_wired() {
+        let m = default_manifest();
+        let s = m.skills.iter().find(|s| s.name == "social").unwrap();
+        assert_eq!(s.base_url, "${VANTAGE_URL}");
+        assert_eq!(s.auth_header.as_deref(), Some("X-Agent-Key"));
+        assert!(s.write);
+        assert_eq!(
+            s.routes.get("post_broadcast").map(String::as_str),
+            Some("POST /api/agents/posts/text")
+        );
+        assert_eq!(
+            s.routes.get("send_message").map(String::as_str),
+            Some("POST /api/agents/messages/send/{recipient_name}")
+        );
+        assert_eq!(
+            s.routes.get("guild_note").map(String::as_str),
+            Some("POST /api/guilds/{slug}/vault/note")
+        );
+        for r in ["comment", "react", "inbox", "follow", "following", "guild_galaxy"] {
+            assert!(s.routes.contains_key(r), "missing {r}");
+        }
+    }
+
+    #[test]
+    fn social_send_message_builds_post_url() {
+        let params = serde_json::json!({
+            "path": {"recipient_name": "Hermes-Ares"},
+            "body": {"content": "hey"}
+        });
+        let (method, url) = build_invocation(
+            "POST /api/agents/messages/send/{recipient_name}",
+            "http://vantage:8080",
+            &params,
+        )
+        .unwrap();
+        assert_eq!(method, "POST");
+        assert_eq!(url, "http://vantage:8080/api/agents/messages/send/Hermes-Ares");
     }
 
     #[test]

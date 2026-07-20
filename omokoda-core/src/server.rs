@@ -420,7 +420,16 @@ async fn events_handler(
         steward.event_bus.subscribe()
     };
 
-    let stream = BroadcastStream::new(rx).map(|result| {
+    // Emit an immediate "connected" event so clients get data on connect instead
+    // of a silent open socket (a bare `curl`/EventSource otherwise hangs with no
+    // output until the next real event, which read as a broken endpoint).
+    let hello = tokio_stream::once(Ok::<_, Box<dyn std::error::Error + Send + Sync>>(
+        Event::default()
+            .event("connected")
+            .data(serde_json::json!({"type": "connected", "ok": true}).to_string()),
+    ));
+
+    let live = BroadcastStream::new(rx).map(|result| {
         result
             .map(|ev| {
                 let data = sovereign_event_to_json(&ev);
@@ -429,7 +438,9 @@ async fn events_handler(
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     });
 
-    Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+    let stream = hello.chain(live);
+
+    Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(10)))
 }
 
 // ---------------------------------------------------------------------------

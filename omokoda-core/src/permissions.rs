@@ -152,20 +152,39 @@ impl PermissionPolicy {
     #[must_use]
     pub fn default_steward_policy(active_mode: PermissionMode) -> Self {
         let mut policy = Self::new(active_mode);
-        // Tier 0 tools
-        policy = policy.with_tool_requirement("read_file", PermissionMode::ReadOnly);
-        policy = policy.with_tool_requirement("web_search", PermissionMode::ReadOnly);
-        policy = policy.with_tool_requirement("note_taking", PermissionMode::WorkspaceWrite);
-        policy = policy.with_tool_requirement("glob", PermissionMode::ReadOnly);
-        policy = policy.with_tool_requirement("grep", PermissionMode::ReadOnly);
+        // NOTE: any tool NOT listed here falls back to DangerFullAccess
+        // (see required_mode_for). Read-only discovery tools MUST be classified
+        // explicitly or the HTTP /v1/act path (no prompter) denies them — which
+        // silently broke capability discovery in the Axiom UI (`skills` → 400).
 
-        // Tier 2 tools
-        policy = policy.with_tool_requirement("bash", PermissionMode::DangerFullAccess);
-        policy = policy.with_tool_requirement("wasm", PermissionMode::DangerFullAccess);
+        // ── Read-only: pure reads / discovery, safe to run without escalation ──
+        for t in [
+            "read_file", "web_search", "glob", "grep",
+            "skills", "session_status", "sessions_list", "sessions_history",
+            "agents_list", "nodes", "todo_read", "config_read", "structured_output",
+            "mesh_query_neighbors", "mesh_query_resources", "mesh_query_trust",
+            "mesh_discover_capabilities",
+        ] {
+            policy = policy.with_tool_requirement(t, PermissionMode::ReadOnly);
+        }
 
-        // Tier 4 tools
-        policy =
-            policy.with_tool_requirement("agent_orchestration", PermissionMode::DangerFullAccess);
+        // ── Workspace-write: mutations within the agent's own sphere ──
+        for t in [
+            "note_taking", "todo_write", "edit_file", "apply_patch", "config_write",
+            "message", "canvas", "image", "cron", "skillforge",
+            "mesh_propose", "mesh_respond", "mesh_signal_event",
+            "mesh_reserve_resource", "mesh_release_resource",
+            "sessions_send", "sessions_spawn",
+        ] {
+            policy = policy.with_tool_requirement(t, PermissionMode::WorkspaceWrite);
+        }
+
+        // ── Danger-full-access: arbitrary host exec / system power ──
+        // (bash, wasm, exec, process, repl, browser, gateway, agent_orchestration)
+        // are intentionally left unlisted so they keep the DangerFullAccess default.
+        for t in ["bash", "wasm", "agent_orchestration"] {
+            policy = policy.with_tool_requirement(t, PermissionMode::DangerFullAccess);
+        }
 
         policy
     }

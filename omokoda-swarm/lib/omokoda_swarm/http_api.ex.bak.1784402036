@@ -1,0 +1,153 @@
+defmodule OmokodaSwarm.HttpApi do
+  @moduledoc """
+  Minimal dependency-free HTTP surface for the swarm supervisor tree.
+
+  `mix.exs` intentionally has no deps (this is a pure-OTP application), so
+  this uses `:gen_tcp` directly rather than pulling in Phoenix/Cowboy via
+  Hex -- a handful of JSON GET/POST routes is not worth the dependency
+  weight. Mirrors the CORS behavior of the Rust kernel (:7777), LOOM
+  (:8889), and the Julia memory service (:7778) so the Axiom dashboard can
+  reach it directly from the browser.
+
+  Routes:
+    GET  /health           -> {"ok": true}
+    GET  /status            -> OmokodaSwarm.Coordinator.get_status/0
+    GET  /rem/last_plan     -> OmokodaSwarm.Memory.RemCycle.last_plan/0
+    POST /rem/run_now       -> OmokodaSwarm.Memory.RemCycle.run_now/0
+  """
+
+  use GenServer
+  require Logger
+
+  @port 4000
+
+  def start_link(_opts), do: GenServer.start_link(__MODULE__, [], name: __MODULE__)
+
+  @impl true
+  def init([]) do
+    case :gen_tcp.listen(@port, [:binary, packet: :raw, active: false, reuseaddr: true]) do
+      {:ok, listen_socket} ->
+        Logger.info("[HttpApi] listening on :#{@port}")
+        pid = spawn_link(fn -> accept_loop(listen_socket) end)
+        {:ok, %{listen_socket: listen_socket, acceptor: pid}}
+
+      {:error, reason} ->
+        Logger.warning("[HttpApi] failed to bind :#{@port} — #{inspect(reason)}, HTTP surface disabled")
+        {:ok, %{listen_socket: nil, acceptor: nil}}
+    end
+  end
+
+  defp accept_loop(listen_socket) do
+    case :gen_tcp.accept(listen_socket) do
+      {:ok, socket} ->
+        spawn(fn -> handle_conn(socket) end)
+        accept_loop(listen_socket)
+
+      {:error, reason} ->
+        Logger.warning("[HttpApi] accept failed — #{inspect(reason)}")
+    end
+  end
+
+  defp handle_conn(socket) do
+    with {:ok, data} <- :gen_tcp.recv(socket, 0, 5_000),
+         {:ok, method, path} <- parse_request_line(data) do
+      respond(socket, method, path)
+    else
+      _ -> :ok
+    end
+
+    :gen_tcp.close(socket)
+  end
+
+  defp parse_request_line(data) do
+    case String.split(data, "\r\n", parts: 2) do
+      [request_line | _] ->
+        case String.split(request_line, " ") do
+          [method, path, _version] -> {:ok, method, path}
+          _ -> :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp respond(socket, "OPTIONS", _path) do
+    write(socket, 204, "")
+  end
+
+  defp respond(socket, "GET", "/health") do
+    write_json(socket, 200, %{ok: true})
+  end
+
+  defp respond(socket, "GET", "/status") do
+    try do
+      status = OmokodaSwarm.Coordinator.get_status()
+      write_json(socket, 200, safe_status(status))
+    catch
+      :exit, reason -> write_json(socket, 503, %{error: "coordinator unavailable: #{inspect(reason)}"})
+    end
+  end
+
+  defp respond(socket, "GET", "/rem/last_plan") do
+    plan = OmokodaSwarm.Memory.RemCycle.last_plan()
+    write_json(socket, 200, %{plan: plan})
+  catch
+    :exit, reason -> write_json(socket, 503, %{error: "rem cycle unavailable: #{inspect(reason)}"})
+  end
+
+  defp respond(socket, "POST", "/rem/run_now") do
+    case OmokodaSwarm.Memory.RemCycle.run_now() do
+      {:ok, plan} -> write_json(socket, 200, %{plan: plan})
+      {:error, reason} -> write_json(socket, 502, %{error: inspect(reason)})
+    end
+  catch
+    :exit, reason -> write_json(socket, 503, %{error: "rem cycle unavailable: #{inspect(reason)}"})
+  end
+
+  defp respond(socket, _method, _path) do
+    write_json(socket, 404, %{error: "not found"})
+  end
+
+  # `get_status/0`'s return can hold PIDs/refs that aren't JSON-encodable —
+  # stringify anything OmokodaSwarm.Json can't handle rather than 500ing.
+  defp safe_status(status) when is_map(status) do
+    Map.new(status, fn {k, v} -> {k, safe_value(v)} end)
+  end
+
+  defp safe_status(status), do: safe_value(status)
+
+  defp safe_value(v) when is_pid(v) or is_reference(v) or is_function(v), do: inspect(v)
+  defp safe_value(v) when is_map(v), do: safe_status(v)
+  defp safe_value(v) when is_list(v), do: Enum.map(v, &safe_value/1)
+  defp safe_value(v), do: v
+
+  defp write_json(socket, status, data) do
+    write(socket, status, OmokodaSwarm.JSON.encode!(data), "application/json")
+  end
+
+  defp write(socket, status, body, content_type \\ "text/plain") do
+    reason = reason_phrase(status)
+
+    headers = [
+      "HTTP/1.1 #{status} #{reason}",
+      "Content-Type: #{content_type}",
+      "Content-Length: #{byte_size(body)}",
+      "Access-Control-Allow-Origin: *",
+      "Access-Control-Allow-Methods: GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers: Content-Type",
+      "Connection: close",
+      "",
+      ""
+    ]
+
+    :gen_tcp.send(socket, Enum.join(headers, "\r\n") <> body)
+  end
+
+  defp reason_phrase(200), do: "OK"
+  defp reason_phrase(204), do: "No Content"
+  defp reason_phrase(404), do: "Not Found"
+  defp reason_phrase(502), do: "Bad Gateway"
+  defp reason_phrase(503), do: "Service Unavailable"
+  defp reason_phrase(_), do: "Error"
+end

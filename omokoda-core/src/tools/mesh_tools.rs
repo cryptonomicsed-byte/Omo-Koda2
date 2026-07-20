@@ -146,22 +146,15 @@ pub fn daily_resonance(birth_ts: u64) -> serde_json::Value {
         0 => ("Èṣù-Ẹ̀légbára", 0.70),
         1 => ("Ṣàngó", 0.65),
         2 => ("Ọṣun", 0.80),
-        3 => ("Ọ̀rúnmìlà", 0.90),
+        3 => ("Yemọja", 0.90),
         4 => ("Ọya", 0.85),
         5 => ("Ògún", 0.75),
         _ => ("Ọbàtálá", 0.95),
     };
-    // Enrich with the full Koodu codex for the day (embedded at compile time,
-    // so this stays deterministic and needs no runtime file access).
-    let codex_json = match weekday {
-        0 => include_str!("../koodu/sunday.json"),
-        1 => include_str!("../koodu/monday.json"),
-        2 => include_str!("../koodu/tuesday.json"),
-        3 => include_str!("../koodu/wednesday.json"),
-        4 => include_str!("../koodu/thursday.json"),
-        5 => include_str!("../koodu/friday.json"),
-        _ => include_str!("../koodu/saturday.json"),
-    };
+    // Enrich with the full Koodu codex for the day (embedded at compile time
+    // in `rhythm.rs`, the single source of truth for the 7 JSON files, so
+    // this stays deterministic and needs no runtime file access).
+    let codex_json = crate::rhythm::raw_codex_for_weekday(weekday as u8);
     let codex: serde_json::Value = serde_json::from_str(codex_json).unwrap_or_else(|_| json!({}));
     let get = |k: &str| codex.get(k).cloned().unwrap_or(json!(null));
     json!({

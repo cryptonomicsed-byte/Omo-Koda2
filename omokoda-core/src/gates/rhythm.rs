@@ -6,9 +6,9 @@
 
 use crate::gates::{GateContext, GateResult, HermeticGate, Operation, OperationKind};
 
-pub struct RhythmGate;
+pub struct HermeticRhythmGate;
 
-impl HermeticGate for RhythmGate {
+impl HermeticGate for HermeticRhythmGate {
     fn evaluate(&self, op: &Operation, ctx: &GateContext) -> GateResult {
         // Enforce cooldown: reject any non-birth operation while cooldown is active.
         if ctx.in_cooldown && !op.is_birth() {
@@ -81,7 +81,7 @@ mod tests {
 
     #[test]
     fn normal_act_passes() {
-        let gate = RhythmGate;
+        let gate = HermeticRhythmGate;
         let op = Operation {
             kind: OperationKind::Act {
                 tool: "read_file".to_string(),
@@ -97,7 +97,7 @@ mod tests {
 
     #[test]
     fn act_during_cooldown_rejected() {
-        let gate = RhythmGate;
+        let gate = HermeticRhythmGate;
         let op = Operation {
             kind: OperationKind::Act {
                 tool: "bash".to_string(),
@@ -112,7 +112,7 @@ mod tests {
 
     #[test]
     fn birth_exempt_from_cooldown() {
-        let gate = RhythmGate;
+        let gate = HermeticRhythmGate;
         let op = Operation {
             kind: OperationKind::Birth {
                 name: "oracle".to_string(),
@@ -126,7 +126,7 @@ mod tests {
 
     #[test]
     fn spawn_at_high_swarm_load_rejected() {
-        let gate = RhythmGate;
+        let gate = HermeticRhythmGate;
         let op = Operation {
             kind: OperationKind::Act {
                 tool: "spawn_agent".to_string(),

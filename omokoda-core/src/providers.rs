@@ -181,6 +181,14 @@ impl ProviderRegistry {
         registry
     }
 
+    /// An empty registry (no providers) — for tests that register their own.
+    pub fn empty() -> Self {
+        Self {
+            providers: Vec::new(),
+            has_mock: false,
+        }
+    }
+
     /// Whether an in-process mock provider is active (test mode).
     pub fn has_mock(&self) -> bool {
         self.has_mock

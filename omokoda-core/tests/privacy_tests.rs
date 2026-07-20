@@ -69,9 +69,7 @@ mod privacy_tests {
             }
         }
 
-        let mut registry = ProviderRegistry {
-            providers: Vec::new(),
-        };
+        let mut registry = ProviderRegistry::empty();
         registry.register(Box::new(FailingLocal(ProviderMetadata {
             name: "LocalFail".to_string(),
             class: ProviderClass::Local,
@@ -176,9 +174,7 @@ mod privacy_tests {
             }
         }
 
-        let mut registry = ProviderRegistry {
-            providers: Vec::new(),
-        };
+        let mut registry = ProviderRegistry::empty();
         registry.register(Box::new(FailProv(ProviderMetadata {
             name: "FailLocal".to_string(),
             class: ProviderClass::Local,

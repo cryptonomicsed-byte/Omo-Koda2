@@ -1,13 +1,33 @@
 'use client'
 
+import { useEffect } from 'react'
 import Link from 'next/link'
 import { useAgentStore } from '@/lib/store/agent'
 import { useUIStore } from '@/lib/store/ui'
 import { TokenGauge } from '@/components/ui/TokenGauge'
 
 export function Header() {
-  const { activeAgent, tier, tokens, privacyMode, setPrivacyMode } = useAgentStore()
+  const { activeAgent, tier, tokens, privacyMode, setPrivacyMode, setActiveAgent, setTier, setReputation } =
+    useAgentStore()
   const { toggleCommandPalette } = useUIStore()
+
+  // Hydrate the agent store from the live kernel so the header reflects the
+  // real sovereign agent instead of always showing "No Agent".
+  useEffect(() => {
+    let alive = true
+    fetch('/v1/status')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => {
+        if (!alive || !s?.has_agent || !s.name) return
+        setActiveAgent(s.name)
+        if (typeof s.tier === 'number') setTier(s.tier)
+        if (typeof s.reputation === 'number') setReputation(s.reputation)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [setActiveAgent, setTier, setReputation])
 
   const tierStars = '★'.repeat(Math.min(tier, 7))
 

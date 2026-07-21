@@ -1,0 +1,61 @@
+# Ọmọ Kọ́dà — simple dev environment (forge plan deliverable G).
+#
+#   docker compose up --build kernel      # Èṣù Rust kernel on :7777 (/v1/*)
+#   docker compose up --build frontend    # legacy Next.js PWA on :3000
+#   docker compose run --rm executor python -m pytest   # Ògún executor tests
+#
+# The kernel is the always-required foundation; frontend + executor are optional
+# surfaces. Axiom (:8876) remains the canonical dashboard and is deployed
+# separately — it simply points at the kernel's /v1/* API.
+
+services:
+  # --- Èṣù: the Rust Steward kernel (birth / think / act, /v1/* API) ---
+  kernel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: omokoda/kernel:dev
+    ports:
+      - "7777:7777"
+    environment:
+      VAULT_BASE: /app/vault
+      HEARTBEAT_SECS: "0"          # disable autonomous heartbeat in dev; set >0 to enable
+    volumes:
+      - omokoda-vault:/app/vault    # sovereign souls/receipts persist across restarts
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://localhost:7777/v1/status || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # --- The human interface layer (TypeScript / Next.js) ---
+  frontend:
+    build:
+      context: ./omokoda-frontend
+      dockerfile: Dockerfile
+    image: omokoda/frontend:dev
+    ports:
+      - "3000:3000"
+    environment:
+      KERNEL: http://kernel:7777
+    depends_on:
+      - kernel
+    restart: unless-stopped
+
+  # --- Ògún: Python executor / simulation dev container ---
+  # A library the Steward calls, not a standing service — kept idle so you can
+  # exec into it for pytest / imports without rebuilding a Python toolchain.
+  executor:
+    build:
+      context: ./omokoda-simulation
+      dockerfile: Dockerfile
+    image: omokoda/executor:dev
+    environment:
+      # /private hard-fail is enforced in-code; declared here for parity/visibility.
+      OMOKODA_LOCAL_PROVIDERS: "webllm,ollama"
+    restart: unless-stopped
+
+volumes:
+  omokoda-vault:

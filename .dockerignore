@@ -1,0 +1,15 @@
+target/
+**/target/
+node_modules/
+**/node_modules/
+.git/
+.github/
+*.md
+docs/
+.next/
+**/.next/
+__pycache__/
+**/__pycache__/
+*.pyc
+.env
+.env.*

@@ -1,6 +1,7 @@
 use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, KeyInit, Nonce};
 use hkdf::Hkdf;
 use sha2::Sha256;
+use zeroize::Zeroize;
 
 pub struct OduKeys;
 
@@ -42,12 +43,15 @@ impl OduKeys {
         let cipher = ChaCha20Poly1305::new(kn.into());
 
         let plaintext = [0u8; 32];
-        let ciphertext = cipher
+        let mut ciphertext = cipher
             .encrypt(nonce, plaintext.as_ref())
             .expect("ChaCha20Poly1305 encryption failed for key rotation");
 
         let mut kn_plus_1 = [0u8; 32];
         kn_plus_1.copy_from_slice(&ciphertext[..32]);
+        // The full ciphertext buffer is derived directly from the key chain —
+        // wipe the heap copy so the rotated key doesn't linger in freed memory.
+        ciphertext.zeroize();
         kn_plus_1
     }
 

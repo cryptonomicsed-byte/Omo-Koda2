@@ -82,7 +82,10 @@ pub fn dominant_glyph_byte(graph: &GlyphGraph) -> Option<u8> {
         let byte = (ch as u32 % 256) as u8;
         *counts.entry(byte).or_insert(0) += 1;
     }
-    counts.into_iter().max_by_key(|(_, count)| *count).map(|(byte, _)| byte)
+    counts
+        .into_iter()
+        .max_by_key(|(_, count)| *count)
+        .map(|(byte, _)| byte)
 }
 
 /// A real, minimal divinatory signal from an agent's own memory graph:
@@ -167,6 +170,9 @@ mod tests {
         let a = dominant_glyph_byte(&build_memory_graph(&messages));
         let b = dominant_glyph_byte(&build_memory_graph(&messages));
         assert!(a.is_some());
-        assert_eq!(a, b, "same conversation history must fold to the same glyph byte every time");
+        assert_eq!(
+            a, b,
+            "same conversation history must fold to the same glyph byte every time"
+        );
     }
 }

@@ -52,11 +52,10 @@ impl OduEntry {
 /// entries for IDF alone to suppress them. Not exhaustive -- just the
 /// highest-frequency offenders.
 const STOPWORDS: &[&str] = &[
-    "that", "this", "with", "have", "from", "they", "will", "would", "could",
-    "should", "about", "there", "their", "which", "when", "what", "were",
-    "been", "your", "just", "like", "then", "than", "here", "some", "into",
-    "over", "such", "only", "also", "very", "more", "most", "these", "those",
-    "does", "each", "other", "because", "while",
+    "that", "this", "with", "have", "from", "they", "will", "would", "could", "should", "about",
+    "there", "their", "which", "when", "what", "were", "been", "your", "just", "like", "then",
+    "than", "here", "some", "into", "over", "such", "only", "also", "very", "more", "most",
+    "these", "those", "does", "each", "other", "because", "while",
 ];
 
 /// Real, deterministic per-agent vocabulary learner -- no neural weights,
@@ -80,7 +79,10 @@ pub struct WordLearner {
 impl WordLearner {
     fn tokenize(text: &str) -> std::collections::HashSet<String> {
         text.split_whitespace()
-            .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase())
+            .map(|w| {
+                w.trim_matches(|c: char| !c.is_alphanumeric())
+                    .to_lowercase()
+            })
             .filter(|w| w.len() >= 4 && !STOPWORDS.contains(&w.as_str()))
             .collect()
     }
@@ -124,7 +126,8 @@ fn extract_entities(content: &str) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
     for raw_word in content.split_whitespace() {
-        let word = raw_word.trim_matches(|c: char| !c.is_alphanumeric() && c != '/' && c != '.' && c != '_');
+        let word = raw_word
+            .trim_matches(|c: char| !c.is_alphanumeric() && c != '/' && c != '.' && c != '_');
         if word.len() < 3 {
             continue;
         }
@@ -200,8 +203,42 @@ pub struct OduDirectory {
     /// *wants* dedup (e.g. a future dream.rs consolidation pass) can find
     /// exact-duplicate clusters explicitly, on purpose, without recall or
     /// insert ever doing it implicitly.
-    #[serde(default)]
+    #[serde(default, with = "hex_key_index")]
     content_hash_index: HashMap<[u8; 32], Vec<String>>,
+}
+
+/// Serde adapter for `content_hash_index`. serde_json cannot serialize a map
+/// with `[u8; 32]` keys ("key must be a string"), which silently broke agent
+/// auto-save the moment this index held any entry (e.g. after a private thought
+/// or /seal). Persist the keys as hex strings; the values are unchanged.
+mod hex_key_index {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::HashMap;
+
+    pub fn serialize<S: Serializer>(
+        map: &HashMap<[u8; 32], Vec<String>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        let as_hex: HashMap<String, &Vec<String>> =
+            map.iter().map(|(k, v)| (hex::encode(k), v)).collect();
+        as_hex.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<HashMap<[u8; 32], Vec<String>>, D::Error> {
+        let as_hex = HashMap::<String, Vec<String>>::deserialize(deserializer)?;
+        as_hex
+            .into_iter()
+            .map(|(k, v)| {
+                let bytes = hex::decode(&k).map_err(serde::de::Error::custom)?;
+                let arr: [u8; 32] = bytes.try_into().map_err(|_| {
+                    serde::de::Error::custom("content_hash_index key must be 32 bytes")
+                })?;
+                Ok((arr, v))
+            })
+            .collect()
+    }
 }
 
 impl OduDirectory {
@@ -288,7 +325,7 @@ impl OduDirectory {
             return Vec::new();
         };
         let mut hits: Vec<&OduEntry> = ids.iter().filter_map(|id| self.entries.get(id)).collect();
-        hits.sort_by(|a, b| b.last_accessed.cmp(&a.last_accessed));
+        hits.sort_by_key(|b| std::cmp::Reverse(b.last_accessed));
         hits
     }
 
@@ -666,7 +703,11 @@ mod memdir_tests {
     fn recall_finds_entries_matching_the_query() {
         let mut dir = OduDirectory::new();
         dir.insert(content_entry("e1", "the vantage database uses sqlite", 0.5));
-        dir.insert(content_entry("e2", "trading strategy backtest results", 0.5));
+        dir.insert(content_entry(
+            "e2",
+            "trading strategy backtest results",
+            0.5,
+        ));
         let hits = dir.recall("tell me about the vantage database", 5);
         assert_eq!(hits.len(), 1);
         assert!(hits[0].contains("sqlite"));
@@ -681,7 +722,11 @@ mod memdir_tests {
         dir.insert(content_entry("common1", "message about weather today", 0.5));
         dir.insert(content_entry("common2", "message about lunch plans", 0.5));
         dir.insert(content_entry("common3", "message about the weekend", 0.5));
-        dir.insert(content_entry("rare", "message about zangbeto receipts", 0.5));
+        dir.insert(content_entry(
+            "rare",
+            "message about zangbeto receipts",
+            0.5,
+        ));
 
         let hits = dir.recall("message zangbeto", 1);
         assert_eq!(hits.len(), 1);
@@ -736,6 +781,10 @@ mod memdir_tests {
         let hits = dir.recall("zangbeto signing", 5);
         assert!(hits.iter().any(|c| c.contains("detail one")));
         assert!(hits.iter().any(|c| c.contains("detail two")));
-        assert_eq!(dir.archived_fold_count(), 0, "fold should have been consumed by unfold");
+        assert_eq!(
+            dir.archived_fold_count(),
+            0,
+            "fold should have been consumed by unfold"
+        );
     }
 }

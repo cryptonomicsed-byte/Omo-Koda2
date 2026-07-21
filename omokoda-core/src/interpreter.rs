@@ -1050,8 +1050,7 @@ impl Steward {
             Statement::Birth { name, metadata } => {
                 // Phase 1-7: BIRTH = 7^1 (fractal depth 1)
                 let is_sovereign = metadata.iter().any(|p| {
-                    p.key == "sovereign"
-                        && (p.value.eq_ignore_ascii_case("true") || p.value == "1")
+                    p.key == "sovereign" && (p.value.eq_ignore_ascii_case("true") || p.value == "1")
                 });
                 // Refuse to mint a stranger over the owner's already-loaded
                 // identity. Without this, any repeat sovereign-birth call
@@ -1230,18 +1229,24 @@ impl Steward {
                         );
                     }
 
+                    // An in-process mock provider (tests) is local by
+                    // definition — nothing leaves the process — so it may
+                    // serve private thoughts even though default_provider is
+                    // still the `default` sentinel.
                     let config = &agent.session().config;
                     let provider_name = config.default_provider.as_str();
-                    match provider_name {
-                        // larql serves locally-decompiled weights (larql-server)
-                        // — private-eligible like the other local engines.
-                        "webllm" | "ollama" | "larql" => {} // allowed
-                        _ => {
-                            return Err(format!(
-                                "Private thoughts require a local provider. Current: {}. \
-                             Allowed: webllm, ollama, larql. Blocked: openai, anthropic, gemini, etc.",
-                                provider_name
-                            ))
+                    if !self.providers.has_mock() {
+                        match provider_name {
+                            // larql serves locally-decompiled weights
+                            // (larql-server) — private-eligible.
+                            "webllm" | "ollama" | "larql" => {} // allowed
+                            _ => {
+                                return Err(format!(
+                                    "Private thoughts require a local provider. Current: {}. \
+                                 Allowed: webllm, ollama, larql. Blocked: openai, anthropic, gemini, etc.",
+                                    provider_name
+                                ))
+                            }
                         }
                     }
                 }
@@ -1451,7 +1456,7 @@ impl Steward {
                 // Private turns are never sent, matching the public_messages
                 // privacy gate this same function relies on above.
                 if !private {
-                    if let Some(osun_url) = std::env::var("OSUN_URL").ok() {
+                    if let Ok(osun_url) = std::env::var("OSUN_URL") {
                         use crate::bus::clients::{HttpOsunClient, OsunClient};
                         let agent_id = agent_mut.id().clone();
                         let text = format!("{prompt}\n{response}");
@@ -1488,7 +1493,12 @@ impl Steward {
                         path,
                     );
                     entry.importance = hermetic_score.clamp(0.0, 1.0);
-                    agent_mut.snapshot.odu_dir.insert(entry);
+                    // Private thoughts must never persist as plaintext in the odu
+                    // memory graph; they live only in the sealed private_data (see
+                    // /seal). Recording them here leaked plaintext to disk on save.
+                    if !private {
+                        agent_mut.snapshot.odu_dir.insert(entry);
+                    }
 
                     // Èṣù gates the rewrite, LARQL only ever queries: this
                     // mirrors the OSOVM 3-layer model (VEIL suggests / LARQL
@@ -1526,7 +1536,9 @@ impl Steward {
                         let op = Operation {
                             kind: OperationKind::MemoryRewrite {
                                 kind: "rem_cycle".to_string(),
-                                detail: format!("sabbath fractal fold over {dir_len} odu_dir entries"),
+                                detail: format!(
+                                    "sabbath fractal fold over {dir_len} odu_dir entries"
+                                ),
                             },
                             intent: "dream engine background maintenance".to_string(),
                             agent_id: Some(agent_id),
@@ -1569,10 +1581,9 @@ impl Steward {
                     // stand-in 1.0 (no persisted energy state feeds this
                     // yet) so only the MessageCount/TimeSecs triggers can
                     // fire -- EnergyBelow simply never trips, not a bug.
-                    let _ = self.auto_compactor.compact_if_needed(
-                        &mut self.agent.as_mut().unwrap().snapshot.session,
-                        1.0,
-                    );
+                    let _ = self
+                        .auto_compactor
+                        .compact_if_needed(&mut self.agent.as_mut().unwrap().snapshot.session, 1.0);
                 }
 
                 // Re-borrow: the dream-engine step above needed a disjoint
@@ -2068,7 +2079,11 @@ impl Steward {
                     agent_id.as_str(),
                     &tool,
                     hermetic_score as f32,
-                    if zangbeto_audit_passed { "approved" } else { "flagged" },
+                    if zangbeto_audit_passed {
+                        "approved"
+                    } else {
+                        "flagged"
+                    },
                 )
                 .await;
 
@@ -2341,8 +2356,10 @@ impl Steward {
                         let agent = self.ensure_born()?;
                         let output = match crate::memory::larql_query::parse_query(query_text) {
                             Ok(q) => {
-                                let answer =
-                                    crate::memory::larql_query::execute(&q, &agent.snapshot.odu_dir);
+                                let answer = crate::memory::larql_query::execute(
+                                    &q,
+                                    &agent.snapshot.odu_dir,
+                                );
                                 answer.summary.join("\n")
                             }
                             Err(e) => format!("LARQL parse error: {e}"),
@@ -2591,13 +2608,11 @@ impl Steward {
             // is unset or the service is unreachable -- reconstruct_soma
             // returns an empty SomaContext in that case and render_section
             // returns None, so nothing is added to the prompt.
-            if let Some(osun_url) = std::env::var("OSUN_URL").ok() {
+            if let Ok(osun_url) = std::env::var("OSUN_URL") {
                 use crate::bus::clients::{HttpOsunClient, OsunClient};
                 let client = HttpOsunClient::new(osun_url);
                 let emotion = crate::emotion::EmotionState::birth();
-                let soma = client
-                    .reconstruct_soma(agent.id(), prompt, &emotion)
-                    .await;
+                let soma = client.reconstruct_soma(agent.id(), prompt, &emotion).await;
                 if soma.has_content() {
                     ctx.push(ConversationMessage::new_system(
                         soma.render_section(),
@@ -3155,18 +3170,23 @@ impl Steward {
 
         // 1. Safety checks (same as regular think)
         if private {
+            let has_mock = self.providers.has_mock();
             let agent = self.ensure_born()?;
             if agent.private_data.is_none() {
                 return Err("Agent is locked. Unlock first with /unlock <password>".to_string());
             }
             let provider_name = agent.session().config.default_provider.clone();
-            match provider_name.as_str() {
-                "webllm" | "ollama" => {}
-                _ => {
-                    return Err(format!(
-                        "Private thoughts require a local provider. Current: {}. Allowed: webllm, ollama.",
-                        provider_name
-                    ))
+            // An in-process mock provider (tests) is local by definition, so it
+            // may serve private thoughts even though default_provider is `default`.
+            if !has_mock {
+                match provider_name.as_str() {
+                    "webllm" | "ollama" | "larql" => {}
+                    _ => {
+                        return Err(format!(
+                            "Private thoughts require a local provider. Current: {}. Allowed: webllm, ollama, larql.",
+                            provider_name
+                        ))
+                    }
                 }
             }
         }
@@ -3283,10 +3303,16 @@ impl Steward {
                     {
                         Ok(Ok(r)) => r,
                         Ok(Err(e)) => {
-                            return Err(format!("Provider error on turn {} (byok): {}", turn_count, e))
+                            return Err(format!(
+                                "Provider error on turn {} (byok): {}",
+                                turn_count, e
+                            ))
                         }
                         Err(_) => {
-                            return Err(format!("Provider error on turn {} (byok): timed out", turn_count))
+                            return Err(format!(
+                                "Provider error on turn {} (byok): timed out",
+                                turn_count
+                            ))
                         }
                     }
                 }

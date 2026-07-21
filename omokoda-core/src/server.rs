@@ -190,9 +190,9 @@ async fn birth_handler(
             value: kv.value,
         })
         .collect();
-    let is_sovereign = metadata.iter().any(|p| {
-        p.key == "sovereign" && (p.value.eq_ignore_ascii_case("true") || p.value == "1")
-    });
+    let is_sovereign = metadata
+        .iter()
+        .any(|p| p.key == "sovereign" && (p.value.eq_ignore_ascii_case("true") || p.value == "1"));
 
     if is_sovereign {
         // Unchanged: the owner's canonical identity, on the process-wide
@@ -225,7 +225,9 @@ async fn birth_handler(
     };
     match new_steward.dispatch(stmt).await {
         Ok(result) => {
-            let agent_id = new_steward.agent_core().map(|a| a.id().as_str().to_string());
+            let agent_id = new_steward
+                .agent_core()
+                .map(|a| a.id().as_str().to_string());
             let agent_key = new_steward
                 .agent_core()
                 .and_then(|a| a.vantage_key())
@@ -272,10 +274,13 @@ async fn dispatch_for_request(
     match requested_id {
         None => {
             let mut steward = state.steward.lock().await;
-            steward
-                .dispatch(stmt)
-                .await
-                .map_err(|e| (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e}))).into_response())
+            steward.dispatch(stmt).await.map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": e})),
+                )
+                    .into_response()
+            })
         }
         Some(id) => {
             let mut guests = state.guests.lock().await;
@@ -299,10 +304,13 @@ async fn dispatch_for_request(
                 )
                     .into_response());
             }
-            steward
-                .dispatch(stmt)
-                .await
-                .map_err(|e| (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e}))).into_response())
+            steward.dispatch(stmt).await.map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": e})),
+                )
+                    .into_response()
+            })
         }
     }
 }
@@ -708,9 +716,9 @@ fn spawn_heartbeat(steward: Arc<Mutex<Steward>>) {
             let new_skills = crate::tools::mesh_tools::check_new_skills().await;
             let open_jobs = crate::tools::mesh_tools::check_open_jobs().await;
             let mode = if open_jobs.is_some() { "Work" } else { "Idle" };
-            let mut ctx = perception
-                .clone()
-                .unwrap_or_else(|| "No neighbors or resources visible on the mesh yet.".to_string());
+            let mut ctx = perception.clone().unwrap_or_else(|| {
+                "No neighbors or resources visible on the mesh yet.".to_string()
+            });
             if let Some(skills_note) = &new_skills {
                 ctx.push_str("\n\n");
                 ctx.push_str(skills_note);
@@ -737,8 +745,13 @@ fn spawn_heartbeat(steward: Arc<Mutex<Steward>>) {
                 .await
             {
                 Ok(result) => {
-                    let thought = ExecutionResponse::from(result).tool_output.unwrap_or_default();
-                    println!("[heartbeat] {}", thought.chars().take(180).collect::<String>());
+                    let thought = ExecutionResponse::from(result)
+                        .tool_output
+                        .unwrap_or_default();
+                    println!(
+                        "[heartbeat] {}",
+                        thought.chars().take(180).collect::<String>()
+                    );
                     thought
                 }
                 Err(e) => {
@@ -756,9 +769,8 @@ fn spawn_heartbeat(steward: Arc<Mutex<Steward>>) {
                 "intent": intent.chars().take(200).collect::<String>(),
                 "perceived_mesh": perception.is_some(),
             });
-            let params =
-                serde_json::json!({"event_type": "heartbeat_pulse", "details": details})
-                    .to_string();
+            let params = serde_json::json!({"event_type": "heartbeat_pulse", "details": details})
+                .to_string();
             match guard
                 .dispatch(Statement::Act {
                     tool: "mesh_signal_event".to_string(),

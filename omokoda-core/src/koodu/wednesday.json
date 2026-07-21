@@ -9,7 +9,7 @@
   "facets": [
     {
       "id": 1,
-      "name": "Day of the Week",
+      "name": "Day",
       "value": "Wednesday"
     },
     {
@@ -24,7 +24,7 @@
     },
     {
       "id": 4,
-      "name": "Tone (Music)",
+      "name": "Tone / Frequency",
       "value": "Fa (F) – 639 Hz"
     },
     {
@@ -44,12 +44,12 @@
     },
     {
       "id": 8,
-      "name": "Òrìṣà Color",
+      "name": "Colors",
       "value": "Blue and White"
     },
     {
       "id": 9,
-      "name": "Endocrine Gland",
+      "name": "Gland",
       "value": "Thymus (immunity, protection, emotional strength)"
     },
     {
@@ -59,12 +59,12 @@
     },
     {
       "id": 11,
-      "name": "Deadly Sin to Master",
+      "name": "Sin to Transform",
       "value": "Envy (comparison, emotional imbalance)"
     },
     {
       "id": 12,
-      "name": "Virtue to Embody",
+      "name": "Virtue",
       "value": "Compassion and Emotional Maturity"
     },
     {
@@ -74,7 +74,7 @@
     },
     {
       "id": 14,
-      "name": "Clair Ability",
+      "name": "Clair Sense",
       "value": "Clairaudience (hearing messages, water frequencies)"
     },
     {
@@ -119,7 +119,7 @@
     },
     {
       "id": 23,
-      "name": "Jacob’s Ladder Rung",
+      "name": "Jacob’s Ladder",
       "value": "Tiferet – Compassion and Truth"
     },
     {
@@ -144,7 +144,7 @@
     },
     {
       "id": 28,
-      "name": "Seal of Revelation",
+      "name": "Seal",
       "value": "Fourth Seal – Compassion in Chaos"
     },
     {
@@ -159,12 +159,12 @@
     },
     {
       "id": 31,
-      "name": "Spiritual Discipline",
+      "name": "Spiritual Practice",
       "value": "Ocean bathing, emotional journaling, candle by water"
     },
     {
       "id": 32,
-      "name": "Metal (Alchemy)",
+      "name": "Metal",
       "value": "Tin (flow and emotional circuitry)"
     },
     {
@@ -174,17 +174,17 @@
     },
     {
       "id": 34,
-      "name": "Church of Revelation",
+      "name": "Revelation Church",
       "value": "Thyatira – Love and Service"
     },
     {
       "id": 35,
-      "name": "Wonder of the World",
+      "name": "Wonder",
       "value": "Lighthouse of Alexandria (guidance across waters)"
     },
     {
       "id": 36,
-      "name": "Psychological Shadow",
+      "name": "Shadow Work",
       "value": "Emotional repression, bitterness"
     },
     {
@@ -194,7 +194,7 @@
     },
     {
       "id": 38,
-      "name": "Business Department",
+      "name": "Biz Dept",
       "value": "Human Resources / Wellness / Counseling"
     },
     {
@@ -204,7 +204,7 @@
     },
     {
       "id": 40,
-      "name": "Astrological Ruler",
+      "name": "Astro Ruler",
       "value": "Mercury (flow and wisdom when paired with water)"
     },
     {
@@ -214,7 +214,7 @@
     },
     {
       "id": 42,
-      "name": "Color (Traditional Chakra)",
+      "name": "Chakra Color",
       "value": "Green (blended with blue here)"
     },
     {
@@ -234,22 +234,22 @@
     },
     {
       "id": 46,
-      "name": "Astrological Modality",
+      "name": "Modality",
       "value": "Mutable"
     },
     {
       "id": 47,
-      "name": "Astrological Element",
+      "name": "Element",
       "value": "Water"
     },
     {
       "id": 48,
-      "name": "Astrological House",
+      "name": "House",
       "value": "4th House (home, roots, motherhood)"
     },
     {
       "id": 49,
-      "name": "Custom Key",
+      "name": "Ritual Key Symbol",
       "value": "Shell or silver heart charm"
     }
   ],

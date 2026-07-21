@@ -206,7 +206,9 @@ mod tests {
     fn from_seal_dek_round_trips() {
         let dek = [5u8; 32];
         let sealer = TeeSealer::from_seal_dek(dek);
-        let enveloped = sealer.seal_bytes(b"seal-sourced secret", "agent-luna").unwrap();
+        let enveloped = sealer
+            .seal_bytes(b"seal-sourced secret", "agent-luna")
+            .unwrap();
         assert_eq!(
             sealer.unseal_bytes(&enveloped, "agent-luna").unwrap(),
             b"seal-sourced secret"

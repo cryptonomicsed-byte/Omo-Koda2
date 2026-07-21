@@ -34,7 +34,8 @@ const GARDEN_PACKAGE: &str = "0x380e0599702b7ebd9005b02f36dd611cff209c94ca678f05
 /// original package id -- the bytecode at GARDEN_PACKAGE is immutable).
 /// register_agent works at either address; the update functions require
 /// this one.
-const GARDEN_PACKAGE_V2: &str = "0xb2108b39f975bf9e20972a8752df0c7b0f014d9f91031696affecd760632b630";
+const GARDEN_PACKAGE_V2: &str =
+    "0xb2108b39f975bf9e20972a8752df0c7b0f014d9f91031696affecd760632b630";
 const DEFAULT_GAS_BUDGET: &str = "20000000";
 
 /// Mint a real on-chain `AgentInfo` object for a newborn agent. Returns
@@ -51,7 +52,10 @@ pub async fn mint_onchain_agent(name: &str) -> Option<String> {
     // `sui client call`'s CLI arg-parsing accepts this literally.
     let name_arg = format!(
         "[{}]",
-        name.bytes().map(|b| b.to_string()).collect::<Vec<_>>().join(",")
+        name.bytes()
+            .map(|b| b.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
     );
 
     let output = tokio::process::Command::new("sui")

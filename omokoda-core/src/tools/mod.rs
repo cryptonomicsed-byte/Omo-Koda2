@@ -12,8 +12,8 @@ pub mod file_ops;
 pub mod mesh_tools;
 pub mod repl;
 pub mod retry;
-pub mod skills;
 pub mod skillforge;
+pub mod skills;
 pub mod sovereign;
 pub mod streaming;
 pub mod structured_output;
@@ -917,12 +917,10 @@ impl Tool for AgentOrchestrationTool {
         _context: &ExecutionContext,
     ) -> Result<(String, crate::usage::TokenUsage), String> {
         let Ok(base_url) = std::env::var("YEMOJA_URL") else {
-            return Err(
-                "agent_orchestration unavailable: YEMOJA_URL not configured".to_string(),
-            );
+            return Err("agent_orchestration unavailable: YEMOJA_URL not configured".to_string());
         };
-        let parsed: serde_json::Value = serde_json::from_str(params)
-            .map_err(|e| format!("invalid params JSON: {e}"))?;
+        let parsed: serde_json::Value =
+            serde_json::from_str(params).map_err(|e| format!("invalid params JSON: {e}"))?;
         let role = parsed
             .get("role")
             .and_then(|v| v.as_str())
@@ -933,12 +931,8 @@ impl Tool for AgentOrchestrationTool {
             .unwrap_or(0.0);
 
         let client = crate::bus::clients::HttpYemojaClient::new(base_url);
-        let agent_id = crate::bus::clients::YemojaClient::spawn_agent(
-            &client,
-            role,
-            budget_synapse,
-        )
-        .await?;
+        let agent_id =
+            crate::bus::clients::YemojaClient::spawn_agent(&client, role, budget_synapse).await?;
 
         Ok((
             format!("spawned subagent {agent_id} (role={role})"),

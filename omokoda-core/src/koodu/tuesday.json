@@ -49,7 +49,7 @@
     },
     {
       "id": 9,
-      "name": "Endocrine Gland",
+      "name": "Gland",
       "value": "Pancreas"
     },
     {
@@ -59,7 +59,7 @@
     },
     {
       "id": 11,
-      "name": "Sin to Master",
+      "name": "Sin to Transform",
       "value": "Greed → Generous Gratitude"
     },
     {
@@ -174,7 +174,7 @@
     },
     {
       "id": 34,
-      "name": "Church of Revelation",
+      "name": "Revelation Church",
       "value": "Pergamum"
     },
     {
@@ -194,7 +194,7 @@
     },
     {
       "id": 38,
-      "name": "Business Role",
+      "name": "Biz Dept",
       "value": "Branding & Aesthetics"
     },
     {
@@ -204,7 +204,7 @@
     },
     {
       "id": 40,
-      "name": "Astrological Ruler",
+      "name": "Astro Ruler",
       "value": "Venus"
     },
     {
@@ -234,22 +234,22 @@
     },
     {
       "id": 46,
-      "name": "Astro Modality",
+      "name": "Modality",
       "value": "Fixed"
     },
     {
       "id": 47,
-      "name": "Astro Element",
+      "name": "Element",
       "value": "Earth"
     },
     {
       "id": 48,
-      "name": "Astro House",
+      "name": "House",
       "value": "2nd House"
     },
     {
       "id": 49,
-      "name": "Custom Key",
+      "name": "Ritual Key Symbol",
       "value": "Mirror or Honey Jar"
     }
   ],

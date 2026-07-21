@@ -185,7 +185,10 @@ mod tests {
         assert!(cmd.contains("-k 0xserver1,0xserver2"));
         assert!(cmd.contains("-t 2"));
         assert!(cmd.contains("-n testnet"));
-        assert!(!cmd.contains('{'), "no placeholder should survive substitution");
+        assert!(
+            !cmd.contains('{'),
+            "no placeholder should survive substitution"
+        );
     }
 
     #[test]

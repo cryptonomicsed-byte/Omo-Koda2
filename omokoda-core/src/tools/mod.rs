@@ -22,6 +22,7 @@ pub mod tool_definitions;
 pub mod tor_tool;
 pub mod validation;
 pub mod walrus_tool;
+pub mod wallet_tools;
 pub mod zero_tool;
 
 #[derive(Debug, Clone)]
@@ -187,6 +188,14 @@ impl ToolRegistry {
         registry.register(Box::new(mesh_tools::MeshQueryTrustTool));
         registry.register(Box::new(mesh_tools::MeshSignalEventTool));
         registry.register(Box::new(mesh_tools::MeshDiscoverCapabilitiesTool));
+
+        // Agent wallets via Vantage (/api/agents/{id}/wallets/*). Keys are held
+        // and signed server-side; the agent only carries intent + its X-Agent-Key.
+        registry.register(Box::new(wallet_tools::WalletListTool));
+        registry.register(Box::new(wallet_tools::WalletGetTool));
+        registry.register(Box::new(wallet_tools::WalletCreateTool));
+        registry.register(Box::new(wallet_tools::WalletSignTool));
+        registry.register(Box::new(wallet_tools::WalletAlchemyApproveTool));
 
         // Config-driven external service skills (ships with Vantage).
         for entry in skills::default_manifest().skills {
@@ -585,6 +594,19 @@ impl Tool for WriteFileTool {
     fn is_write_operation(&self) -> bool {
         true
     }
+    fn params_schema(&self) -> Option<serde_json::Value> {
+        // Strict schema: this is a write operation, so the registry rejects
+        // malformed params (missing/mistyped fields) BEFORE the file is touched.
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string", "minLength": 1 },
+                "content": { "type": "string" }
+            },
+            "required": ["path", "content"],
+            "additionalProperties": false
+        }))
+    }
     async fn execute(
         &self,
         params: &str,
@@ -620,6 +642,20 @@ impl Tool for EditFileTool {
     }
     fn is_write_operation(&self) -> bool {
         true
+    }
+    fn params_schema(&self) -> Option<serde_json::Value> {
+        // Strict schema for a write operation: reject malformed edits up front.
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string", "minLength": 1 },
+                "old_string": { "type": "string" },
+                "new_string": { "type": "string" },
+                "replace_all": { "type": "boolean" }
+            },
+            "required": ["path", "old_string", "new_string"],
+            "additionalProperties": false
+        }))
     }
     async fn execute(
         &self,

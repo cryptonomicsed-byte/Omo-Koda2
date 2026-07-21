@@ -83,7 +83,11 @@ impl VantageClient {
         Ok(val)
     }
 
-    async fn post(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
+    pub(crate) async fn post(
+        &self,
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
         self.send(
             http()
                 .post(format!("{}{}", self.base_url, path))
@@ -92,7 +96,7 @@ impl VantageClient {
         .await
     }
 
-    async fn get(&self, path: &str) -> Result<serde_json::Value, String> {
+    pub(crate) async fn get(&self, path: &str) -> Result<serde_json::Value, String> {
         self.send(http().get(format!("{}{}", self.base_url, path)))
             .await
     }
@@ -118,6 +122,14 @@ impl VantageClient {
 }
 
 static VANTAGE: LazyLock<Option<VantageClient>> = LazyLock::new(VantageClient::from_env);
+
+/// The shared, env-configured Vantage client (`VANTAGE_URL` / `VANTAGE_KEY`),
+/// or `None` when Vantage is not configured. Reused by other tool modules
+/// (e.g. `wallet_tools`) so they share the same base URL and the birth-minted
+/// `X-Agent-Key` authentication rather than duplicating the client.
+pub(crate) fn vantage() -> Option<&'static VantageClient> {
+    VANTAGE.as_ref()
+}
 
 /// Verifiable sovereign identity carried to Vantage when an agent is born.
 pub struct NewbornIdentity<'a> {

@@ -176,6 +176,8 @@ impl PermissionPolicy {
             "mesh_query_resources",
             "mesh_query_trust",
             "mesh_discover_capabilities",
+            "wallet_list",
+            "wallet_get",
         ] {
             policy = policy.with_tool_requirement(t, PermissionMode::ReadOnly);
         }

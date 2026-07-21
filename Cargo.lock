@@ -2598,7 +2598,7 @@ dependencies = [
 [[package]]
 name = "larql-glyph"
 version = "0.1.0"
-source = "git+https://github.com/cryptonomicsed-byte/larql?rev=fd3ea11b63247719c07347d6d30b86114eb5f556#fd3ea11b63247719c07347d6d30b86114eb5f556"
+source = "git+https://github.com/cryptonomicsed-byte/larql?rev=149322efa11a2592b9cbebfbfa91c98d7b2d50a7#149322efa11a2592b9cbebfbfa91c98d7b2d50a7"
 dependencies = [
  "hex",
  "serde",

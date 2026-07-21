@@ -603,20 +603,37 @@ impl AgentCore {
 
     fn rotate_memory_key(&mut self) {
         use crate::memory::odu_keys::OduKeys;
-        let hermetic_seed =
+        use zeroize::Zeroize;
+        let mut hermetic_seed =
             blake3::derive_key("omokoda:hermetic_seed", self.snapshot.odu_seed.as_bytes());
 
         let epoch_nonce = [0u8; 32];
-        self.current_memory_key = OduKeys::rotate_key(
+        let next = OduKeys::rotate_key(
             &self.current_memory_key,
             &hermetic_seed,
             self.snapshot.act_counter,
             &epoch_nonce,
         );
+        // Wipe the superseded key before it is overwritten, and the derived
+        // hermetic seed once it is no longer needed — neither should outlive
+        // this rotation on the stack.
+        self.current_memory_key.zeroize();
+        self.current_memory_key = next;
+        hermetic_seed.zeroize();
     }
 
     pub fn dna_fingerprint(&self) -> &str {
         &self.snapshot.dna_fingerprint
+    }
+
+    /// Project this agent's live Odù memory into the ecosystem GlyphIndex graph
+    /// (see `memory::glyph_memory`). Read-only, metadata-only — the interop
+    /// surface other eco legs (mnemopi / larql / zerolang / Axiom) consume.
+    pub fn glyph_memory(&self) -> larql_glyph::GlyphGraph {
+        crate::memory::glyph_memory::project(
+            &self.snapshot.odu_dir,
+            &self.snapshot.id.to_string(),
+        )
     }
 
     pub fn odu_seed(&self) -> &OduSeed {

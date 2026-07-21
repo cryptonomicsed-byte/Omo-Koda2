@@ -616,6 +616,85 @@ fn sovereign_event_to_json(ev: &crate::bus::SovereignEvent) -> serde_json::Value
 // Router + server entry point
 // ---------------------------------------------------------------------------
 
+/// GET /v1/vault/glyph — the agent's Odù memory projected into the ecosystem
+/// GlyphIndex graph (metadata only; plaintext stays sealed in the vault). This
+/// is Ọmọ Kọ́dà's read leg of the cross-language GlyphIndex contract, so Axiom
+/// and other eco agents (mnemopi / larql / zerolang) can consume the same
+/// content-addressed graph. Optional query params:
+///   `?describe=<canonical_id>`      — one node plus its incident edges
+///   `?walk=<canonical_id>&depth=<n>` — BFS from a node (default depth 1)
+/// `x-agent-id` header selects a guest agent; otherwise the owner is used.
+async fn get_glyph_memory(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    query: axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let requested_id = headers.get("x-agent-id").and_then(|v| v.to_str().ok());
+    let graph = if let Some(id) = requested_id {
+        let guests = state.guests.lock().await;
+        guests
+            .get(id)
+            .and_then(|s| s.agent_core())
+            .map(|a| a.glyph_memory())
+    } else {
+        let steward = state.steward.lock().await;
+        steward.agent_core().map(|a| a.glyph_memory())
+    };
+    let Some(graph) = graph else {
+        return Json(serde_json::json!({ "error": "no agent" }));
+    };
+    if let Some(id) = query.get("describe") {
+        return match graph.describe(id) {
+            Ok(d) => Json(serde_json::to_value(&d).unwrap_or_default()),
+            Err(e) => Json(serde_json::json!({ "error": e.to_string() })),
+        };
+    }
+    if let Some(id) = query.get("walk") {
+        let depth = query
+            .get("depth")
+            .and_then(|d| d.parse::<usize>().ok())
+            .unwrap_or(1);
+        return match graph.walk(id, depth) {
+            Ok(nodes) => Json(serde_json::json!({ "walk": nodes })),
+            Err(e) => Json(serde_json::json!({ "error": e.to_string() })),
+        };
+    }
+    Json(graph.to_json())
+}
+
+/// POST /v1/vault/glyph/merge — agent-to-agent memory exchange. Body is another
+/// agent's GlyphGraph snapshot (as served by `GET /v1/vault/glyph`); the kernel
+/// merges it into *this* agent's live projection (spec merge: tags union,
+/// earliest-ts wins, locators preserved, idempotent) and returns the union.
+/// Read-safe: the caller's own sealed memory is untouched — only the returned
+/// graph reflects the combination. `x-agent-id` selects a guest agent.
+async fn post_glyph_merge(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(incoming): Json<larql_glyph::GlyphGraph>,
+) -> impl IntoResponse {
+    let requested_id = headers.get("x-agent-id").and_then(|v| v.to_str().ok());
+    let mut graph = if let Some(id) = requested_id {
+        let guests = state.guests.lock().await;
+        guests
+            .get(id)
+            .and_then(|s| s.agent_core())
+            .map(|a| a.glyph_memory())
+    } else {
+        let steward = state.steward.lock().await;
+        steward.agent_core().map(|a| a.glyph_memory())
+    };
+    match graph.as_mut() {
+        Some(g) => {
+            // larql_glyph::GlyphGraph::merge — tags union, earliest-ts wins,
+            // locators preserved, edges unioned, idempotent.
+            g.merge(incoming);
+            Json(g.to_json())
+        }
+        None => Json(serde_json::json!({ "error": "no agent" })),
+    }
+}
+
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/v1/birth", post(birth_handler))
@@ -630,6 +709,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/v1/vault/config", put(put_vault_config))
         .route("/v1/vault/sync", post(post_vault_sync))
         .route("/v1/vault/galaxy", get(get_galaxy_data))
+        .route("/v1/vault/glyph", get(get_glyph_memory))
+        .route("/v1/vault/glyph/merge", post(post_glyph_merge))
         .route("/v1/vault/search", get(search_vault))
         .route("/v1/vault/enable", post(post_vault_enable))
         .route("/v1/vault/knowledge", post(post_vault_knowledge))

@@ -1,5 +1,6 @@
 pub mod dag;
 pub mod engine;
+pub mod glyph_memory;
 pub mod larql_query;
 pub mod memdir;
 pub mod odu_keys;

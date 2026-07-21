@@ -3170,18 +3170,23 @@ impl Steward {
 
         // 1. Safety checks (same as regular think)
         if private {
+            let has_mock = self.providers.has_mock();
             let agent = self.ensure_born()?;
             if agent.private_data.is_none() {
                 return Err("Agent is locked. Unlock first with /unlock <password>".to_string());
             }
             let provider_name = agent.session().config.default_provider.clone();
-            match provider_name.as_str() {
-                "webllm" | "ollama" => {}
-                _ => {
-                    return Err(format!(
-                        "Private thoughts require a local provider. Current: {}. Allowed: webllm, ollama.",
-                        provider_name
-                    ))
+            // An in-process mock provider (tests) is local by definition, so it
+            // may serve private thoughts even though default_provider is `default`.
+            if !has_mock {
+                match provider_name.as_str() {
+                    "webllm" | "ollama" | "larql" => {}
+                    _ => {
+                        return Err(format!(
+                            "Private thoughts require a local provider. Current: {}. Allowed: webllm, ollama, larql.",
+                            provider_name
+                        ))
+                    }
                 }
             }
         }

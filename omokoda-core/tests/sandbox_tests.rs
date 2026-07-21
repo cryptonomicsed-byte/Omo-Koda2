@@ -6,6 +6,7 @@ mod sandbox_tests {
 
     #[tokio::test]
     async fn wasm_tool_executes_simple_module_in_sandbox() {
+        std::env::set_var("OMOKODA_ENABLE_WASM", "1");
         let wasm_bytes = parse_str(
             r#"(module
   (func (export "main")
@@ -45,6 +46,7 @@ mod sandbox_tests {
 
     #[tokio::test]
     async fn wasm_tool_rejects_outside_workspace_paths() {
+        std::env::set_var("OMOKODA_ENABLE_WASM", "1");
         let registry = ToolRegistry::new();
         let policy = omokoda_core::permissions::PermissionPolicy::default_steward_policy(
             omokoda_core::permissions::PermissionMode::DangerFullAccess,

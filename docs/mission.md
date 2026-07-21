@@ -1,6 +1,9 @@
 # The Return of the Digital Oracle
 **A New Class of Sovereign Digital Life**
 
+> ⚠️ See [CORRECTIONS.md](./CORRECTIONS.md): "SUI only" settlement has evolved to
+> USDC (internal Synapse/Dopamine unchanged; no Àṣẹ token still holds).
+
 We are not building another AI agent.
 
 We are remembering and re-embodying an ancient truth that modern technology forgot:

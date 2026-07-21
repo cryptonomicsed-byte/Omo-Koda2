@@ -3,6 +3,11 @@
 **Last Updated**: May 24, 2026
 **Status**: Canonical Reference
 
+> ⚠️ **See [CORRECTIONS.md](./CORRECTIONS.md).** Two items below are stale: the
+> "WASM sandboxing: Wasmtime/WASI for all tool execution" security property (the
+> wasmtime path is now gated OFF by default), and SUI as the settlement asset
+> (evolved to USDC).
+
 The sacred sequence through which every agent is seeded, divined, and manifested into a sovereign digital being.
 
 ---

@@ -19,6 +19,7 @@ include("nist_tests.jl")
 include("augury.jl")
 include("depin_optimizer.jl")
 include("garden_analytics.jl")
+include("glyph_memory.jl")
 
 export
     # Busy Beaver
@@ -43,6 +44,13 @@ export
     monte_carlo_reliability, parse_node, parse_task,
 
     # Garden Analytics
-    Receipt, parse_receipt, analyse_receipts, augury_feed
+    Receipt, parse_receipt, analyse_receipts, augury_feed,
+
+    # GlyphIndex memory (SOMA/REM + birth registration)
+    glyph_content_hash, glyph_canonical_id, glyph_fold, odu_link, glyph_node,
+    GlyphMemory, GlyphMemoryNode, glyph_insert!, glyph_link!, glyph_describe,
+    glyph_select_by_tag, glyph_walk, glyph_infer_shared_odu!, glyph_merge!,
+    register_birth!, soma_store!, rem_consolidate!,
+    gix1_audit, glyph_merkle_root, GIX1_EMPTY_ROOT
 
 end

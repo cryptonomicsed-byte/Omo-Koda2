@@ -101,6 +101,54 @@ defmodule Yemoja.Router do
     json(conn, 200, %{ok: true, service: "yemoja"})
   end
 
+  # SkillForge Creation stage: build the SkillManifestEntry from Analysis
+  # (Clojure classification) + Memory (Julia dedup) results. Elixir's role
+  # here is genuinely a fit for "Creation" — assembling a manifest from
+  # component parts is exactly the supervision-tree-style composition this
+  # service already does for agent lifecycle, just applied to a data
+  # structure instead of a process tree.
+  post "/skillforge/manifest" do
+    body = conn.body_params
+    name = Map.get(body, "name", "unknown-skill")
+    classification = Map.get(body, "classification", "Unknown")
+    language = Map.get(body, "language", "unknown")
+    description = Map.get(body, "description", "")
+    base_url_hint = Map.get(body, "base_url_hint")
+    auth_hint = Map.get(body, "auth_hint")
+    candidate_routes = Map.get(body, "candidate_routes", %{})
+    risk_signals = Map.get(body, "risk_signals", [])
+
+    write =
+      candidate_routes
+      |> Map.values()
+      |> Enum.any?(&(not String.starts_with?(&1, "GET")))
+      |> Kernel.or(risk_signals != [])
+
+    base_url =
+      base_url_hint || "${#{String.upcase(String.replace(name, "-", "_"))}_URL}"
+
+    routes =
+      if map_size(candidate_routes) == 0 do
+        %{"health" => "GET /health", "discover" => "GET /"}
+      else
+        candidate_routes
+      end
+
+    manifest = %{
+      name: name,
+      description: "#{description} [forged by SkillForge from #{classification}; lang=#{language}]",
+      base_url: base_url,
+      auth_header: get_in(auth_hint, ["header"]),
+      auth_env: get_in(auth_hint, ["env"]),
+      auth_value: nil,
+      required_tier: if(write, do: 2, else: 1),
+      write: write,
+      routes: routes
+    }
+
+    json(conn, 200, manifest)
+  end
+
   match _ do
     json(conn, 404, %{error: "not found", path: conn.request_path})
   end

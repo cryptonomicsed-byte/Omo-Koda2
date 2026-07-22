@@ -61,6 +61,13 @@ func corsMiddleware(next http.Handler) http.Handler {
 
 // NewHTTPHandler returns an http.Handler for the ỌYA REST API.
 func NewHTTPHandler(store *PrimitiveStore) http.Handler {
+	return NewHTTPHandlerWithSkillForge(store, NewSkillForgeStore())
+}
+
+// NewHTTPHandlerWithSkillForge is NewHTTPHandler plus the SkillForge
+// Coordination-stage routes, for callers that want to share/inspect the
+// SkillForgeStore (e.g. tests).
+func NewHTTPHandlerWithSkillForge(store *PrimitiveStore, sfStore *SkillForgeStore) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/cooldown/", func(w http.ResponseWriter, r *http.Request) {
@@ -103,6 +110,8 @@ func NewHTTPHandler(store *PrimitiveStore) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 	})
+
+	RegisterSkillForgeRoutes(mux, sfStore)
 
 	return corsMiddleware(mux)
 }

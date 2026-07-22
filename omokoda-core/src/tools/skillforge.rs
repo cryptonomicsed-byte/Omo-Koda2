@@ -1,12 +1,28 @@
 //! SkillForge — turn any GitHub repo into a safe, agent-native service skill.
 //!
-//! A single [`SkillForgeTool`] coordinates seven internal stages. Naming is
-//! universal (no project-specific mythology): the flow is circular, always
+//! [`SkillForgeTool`] (Rust/Steward) coordinates seven internal stages. Naming
+//! is universal (no project-specific mythology): the flow is circular, always
 //! entering and leaving through the **Steward**.
 //!
 //!   Steward (intake)  ─▶ Analysis ─▶ Memory ─▶ Creation
 //!        ▲                                        │
 //!        └──── Coordination ◀── Audit ◀── Execution
+//!
+//! Four stages have a polyglot leg (`skillforge_bus.rs`), each calling the
+//! ecosystem's already-live language-native service for that domain — real
+//! computation there, not a relabeled Rust call:
+//!   - **Analysis** also asks Ọbàtálá (Clojure/Babashka, `/skillforge/analyze`)
+//!     to symbolically classify the repo from Python-extracted facts.
+//!   - **Memory** also asks Ọ̀ṣun (Julia, `/skillforge/similar`) for a
+//!     word-overlap similarity check beyond exact-name dedup.
+//!   - **Creation** also asks Yemọja (Elixir, `/skillforge/manifest`) to
+//!     assemble the `SkillManifestEntry`.
+//!   - **Coordination** reports run-state to Ọya (Go, `/skillforge/{start,
+//!     transition,finish}`) for observability across the whole pipeline.
+//! Every polyglot call is fail-soft (`OBATALA_URL`/`OSUN_URL`/`YEMOJA_URL`/
+//! `OYA_URL` unset or unreachable → the Rust/Python-only path, unchanged from
+//! before this leg existed, decides instead). Nothing about the safety gate
+//! below depends on any of these services being up.
 //!
 //! The tool builds on the existing [`SkillManifestEntry`] / [`ExternalServiceTool`]
 //! machinery: a forged skill is just a new manifest entry, registered live for
@@ -161,6 +177,36 @@ impl SkillForgeTool {
         Ok(analysis)
     }
 
+    /// Stage 1b: symbolic classification via Ọbàtálá (Clojure), over the
+    /// facts Python already extracted. Fail-soft: on any transport/parse
+    /// error `analysis` keeps `analyze_repo.py`'s own classification and
+    /// confidence unchanged — this only ever refines, never blocks.
+    async fn classify_symbolic(&self, analysis: &mut RepoAnalysis) {
+        let missing = |surface: &str| analysis.missing_agent_surfaces.iter().any(|m| m == surface);
+        let facts = super::skillforge_bus::AnalyzeFacts {
+            has_openapi: !missing("openapi_spec"),
+            has_mcp: !missing("mcp_server"),
+            has_rest: !analysis.candidate_routes.is_empty(),
+            // Not carried as a discrete field in RepoAnalysis; CliOnly-vs-dockerfile
+            // is already folded into Python's own classification, so the
+            // "dockerfile with no other surface" rule only fires when Python
+            // already called it CliOnly.
+            dockerfile: analysis.classification == "CliOnly",
+            base_url_hint: analysis.base_url_hint.as_deref(),
+            risk_signals: &analysis.risk_signals,
+            nuclei_critical: analysis.nuclei.as_ref().map(|n| n.critical).unwrap_or(0),
+            nuclei_high: analysis.nuclei.as_ref().map(|n| n.high).unwrap_or(0),
+        };
+        if let Some(result) = super::skillforge_bus::classify(&facts).await {
+            analysis.notes.push(format!(
+                "Ọbàtálá (symbolic): {} (confidence {:.2}) — {}",
+                result.classification, result.confidence, result.reason
+            ));
+            analysis.classification = result.classification;
+            analysis.confidence = result.confidence;
+        }
+    }
+
     // ---- Stage 2: Memory (dedup + canonical naming) ------------------------
 
     fn memory_dedup(&self, proposed: &str) -> String {
@@ -180,6 +226,33 @@ impl SkillForgeTool {
             }
         }
         proposed.to_string()
+    }
+
+    /// Stage 2b: Ọ̀ṣun (Julia) similarity check beyond exact-name matching —
+    /// catches "same project, different slug" (e.g. a repo that renamed, or a
+    /// fork). Fail-soft: `None`/no likely match leaves the exact-name dedup
+    /// above as the only signal, exactly as it works today.
+    async fn similarity_dedup(&self, name: &str, description: &str) -> Option<String> {
+        let existing: Vec<(String, String)> = {
+            let guard = self.skills.lock().ok()?;
+            guard
+                .iter()
+                .map(|s| (s.name.clone(), s.description.clone()))
+                .collect()
+        };
+        let entries: Vec<super::skillforge_bus::ExistingSkill> = existing
+            .iter()
+            .map(|(n, d)| super::skillforge_bus::ExistingSkill {
+                name: n,
+                description: d,
+            })
+            .collect();
+        let result = super::skillforge_bus::similar(name, description, &entries).await?;
+        if result.likely_duplicate {
+            result.closest_match
+        } else {
+            None
+        }
     }
 
     // ---- Stage 3: Creation -------------------------------------------------
@@ -221,6 +294,39 @@ impl SkillForgeTool {
             write,
             routes,
         }
+    }
+
+    /// Stage 3b: Yemọja (Elixir) manifest assembly. Fail-soft: `None` leaves
+    /// the Rust-built `entry` from [`Self::creation`] unchanged — this only
+    /// ever replaces it with an equivalent-shape manifest, never removes the
+    /// fallback path.
+    async fn creation_elixir(&self, name: &str, a: &RepoAnalysis) -> Option<SkillManifestEntry> {
+        let auth_hint = a.auth_hint.as_ref().map(|h| super::skillforge_bus::AuthHintOut {
+            header: &h.header,
+            env: &h.env,
+        });
+        let facts = super::skillforge_bus::ManifestFacts {
+            name,
+            classification: &a.classification,
+            language: &a.language,
+            description: &a.description,
+            base_url_hint: a.base_url_hint.as_deref(),
+            auth_hint,
+            candidate_routes: &a.candidate_routes,
+            risk_signals: &a.risk_signals,
+        };
+        let m = super::skillforge_bus::build_manifest(&facts).await?;
+        Some(SkillManifestEntry {
+            name: m.name,
+            description: m.description,
+            base_url: m.base_url,
+            auth_header: m.auth_header,
+            auth_env: m.auth_env,
+            auth_value: None,
+            required_tier: m.required_tier,
+            write: m.write,
+            routes: m.routes,
+        })
     }
 
     // ---- Stage 4: Execution (best-effort smoke) ----------------------------
@@ -850,10 +956,46 @@ impl Tool for SkillForgeTool {
         let transform_req = v.get("transform").and_then(|b| b.as_bool()).unwrap_or(true);
         let sandbox_req = v.get("sandbox").and_then(|b| b.as_bool()).unwrap_or(true);
 
+        // Ọya (Go) Coordination: best-effort run tracking across the whole
+        // pipeline. Never affects the outcome — pure observability.
+        let run_id = format!(
+            "sf-{}-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0),
+            std::process::id()
+        );
+        super::skillforge_bus::coordinate_start(&run_id, &url).await;
+
         // ---- Pipeline ------------------------------------------------------
-        let analysis = self.analysis(&url)?;
+        let mut analysis = match self.analysis(&url) {
+            Ok(a) => a,
+            Err(e) => {
+                super::skillforge_bus::coordinate_finish(&run_id, false, &e).await;
+                return Err(e);
+            }
+        };
+        // Stage 1b: Ọbàtálá (Clojure) symbolic classification — refines
+        // classification/confidence in place; no-op if the service is down.
+        self.classify_symbolic(&mut analysis).await;
+        super::skillforge_bus::coordinate_transition(&run_id, "analysis").await;
+
         let name = self.memory_dedup(&analysis.name);
-        let mut entry = self.creation(&name, &analysis);
+        // Stage 2b: Ọ̀ṣun (Julia) similarity dedup — if it finds a likely
+        // duplicate under a different name than the exact-match check above
+        // caught, fold that name into the same versioning path.
+        let name = match self.similarity_dedup(&name, &analysis.description).await {
+            Some(dup) if dup != name => self.memory_dedup(&dup),
+            _ => name,
+        };
+        super::skillforge_bus::coordinate_transition(&run_id, "memory").await;
+
+        let mut entry = match self.creation_elixir(&name, &analysis).await {
+            Some(e) => e,
+            None => self.creation(&name, &analysis),
+        };
+        super::skillforge_bus::coordinate_transition(&run_id, "creation").await;
 
         // Stage 4b: transform human-first repos into an agent-native gateway.
         // When surfaces are missing and transformation succeeds, the skill is
@@ -1037,6 +1179,8 @@ impl Tool for SkillForgeTool {
             "activation": activation,
             "review_ticket": review_ticket,
         });
+
+        super::skillforge_bus::coordinate_finish(&run_id, true, "").await;
 
         Ok((
             serde_json::to_string_pretty(&receipt).unwrap_or_else(|_| "{}".into()),

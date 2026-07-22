@@ -143,6 +143,66 @@
      :sabbath (sabbath?)}))
 
 ;; ---------------------------------------------------------------------------
+;; SkillForge Analysis — symbolic classification over the structured facts
+;; Ògún's analyze_repo.py already extracted (routes, surfaces, risk_signals,
+;; nuclei counts). Python does the file-IO/regex legwork; this is the actual
+;; reasoning over those facts — the same "data-as-rules, run in order,
+;; collect every objection" shape as `rules` above, applied to repo
+;; classification instead of consent. Symbolic reasoning is Ọbàtálá's whole
+;; reason for being Lisp/Clojure (see namespace docstring); SkillForge's
+;; Analysis stage is exactly that job for a different domain.
+;; ---------------------------------------------------------------------------
+
+(def classification-rules
+  [;; A repo with an OpenAPI spec or MCP manifest is unambiguously API/MCP —
+   ;; the strongest possible signal, independent of anything else found.
+   (fn [{:keys [has_openapi has_mcp]}]
+     (when (or has_openapi has_mcp)
+       {:classification "ApiOrMcp" :confidence 0.85
+        :reason "explicit OpenAPI/MCP surface declared"}))
+
+   ;; REST route hints plus a resolvable base URL: strong but not absolute —
+   ;; regex-scraped routes can be false positives (framework example code,
+   ;; test fixtures), so confidence stays below the declared-surface case.
+   (fn [{:keys [has_rest base_url_hint]}]
+     (when (and has_rest base_url_hint)
+       {:classification "ApiOrMcp" :confidence 0.65
+        :reason "REST route hints found with a resolvable base URL"}))
+
+   ;; A Dockerfile with no API surface at all is the CLI-only shape: runnable,
+   ;; but agents need a wrapper (Execution/Transformation stage), not a direct
+   ;; call.
+   (fn [{:keys [has_openapi has_mcp has_rest dockerfile]}]
+     (when (and dockerfile (not has_openapi) (not has_mcp) (not has_rest))
+       {:classification "CliOnly" :confidence 0.5
+        :reason "Dockerfile present but no API/MCP/REST surface — needs a gateway wrapper"}))])
+
+(defn- risk-adjustment
+  "Confidence never survives contact with real risk signals at face value —
+  each one lowers trust in the classification itself, not just the audit
+  score (Justice's job is separate; this is 'how sure are we this repo is
+  what it claims to be'). Nuclei criticals are the strongest signal: a repo
+  whose own files trip secret/misconfig templates is not safely classifiable
+  as a plain API wrapper regardless of what its OpenAPI spec says."
+  [confidence {:keys [risk_signals nuclei_critical nuclei_high]}]
+  (let [signal-penalty (* 0.08 (count risk_signals))
+        nuclei-penalty (+ (* 0.15 (or nuclei_critical 0))
+                           (* 0.05 (or nuclei_high 0)))]
+    (max 0.1 (- confidence signal-penalty nuclei-penalty))))
+
+(defn classify-repo
+  "Runs the classification rules in order (first match wins — they're
+  ordered strongest-signal-first, matching how `rules` above orders privacy
+  rules by how absolute they are), then adjusts confidence down for risk
+  signals found during Analysis's Python leg. Falls back to Unknown when no
+  rule fires — an honest 'we don't know', not a forced guess."
+  [facts]
+  (let [hit (some #(% facts) classification-rules)
+        base (or hit {:classification "Unknown" :confidence 0.3
+                       :reason "no OpenAPI/MCP/REST/Dockerfile signal matched"})]
+    (assoc base :confidence (risk-adjustment (:confidence base) facts))))
+
+;; ---------------------------------------------------------------------------
 ;; HTTP surface — same permissive CORS as the Rust kernel / LOOM / Julia /
 ;; Elixir / Go surfaces, so the Axiom browser dashboard can reach it.
 ;; ---------------------------------------------------------------------------
@@ -198,6 +258,11 @@
     (let [body (read-json-body req)
           result (evaluate (merge {:hermetic_state {}} body))]
       (json-response 200 {:sharable (:allowed result) :reasons (:violations result)}))
+
+    ;; SkillForge Analysis stage: classify a repo from Python-extracted facts.
+    (and (= (:request-method req) :post) (= (:uri req) "/skillforge/analyze"))
+    (let [facts (read-json-body req)]
+      (json-response 200 (classify-repo facts)))
 
     :else
     (json-response 404 {:error (str "unknown path: " (:uri req))})))

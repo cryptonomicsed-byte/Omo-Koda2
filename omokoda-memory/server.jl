@@ -60,6 +60,7 @@ include(joinpath(@__DIR__, "src", "rem_fractal.jl"))
 include(joinpath(@__DIR__, "src", "vantage_bridge.jl"))
 include(joinpath(@__DIR__, "src", "soma_bridge.jl"))
 include(joinpath(@__DIR__, "src", "resonance.jl"))
+include(joinpath(@__DIR__, "src", "skillforge_bridge.jl"))
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -429,6 +430,8 @@ HTTP.register!(ROUTER, "POST", "/vantage/patterns",    handle_vantage_patterns)
 
 HTTP.register!(ROUTER, "POST", "/soma/store",          handle_soma_store)
 HTTP.register!(ROUTER, "POST", "/soma/reconstruct",    handle_soma_reconstruct)
+
+HTTP.register!(ROUTER, "POST", "/skillforge/similar",  handle_skillforge_similar)
 
 # ---------------------------------------------------------------------------
 # Entry point

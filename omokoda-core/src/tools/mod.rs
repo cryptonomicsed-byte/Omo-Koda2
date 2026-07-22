@@ -13,6 +13,7 @@ pub mod mesh_tools;
 pub mod repl;
 pub mod retry;
 pub mod skillforge;
+pub mod skillforge_bus;
 pub mod skills;
 pub mod sovereign;
 pub mod streaming;

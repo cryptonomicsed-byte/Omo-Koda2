@@ -14,8 +14,12 @@
 //!   VERIFY WHERE path CONTAINS "substring"
 //!   DESCRIBE entities
 //!   DESCRIBE duplicates
+//!   DESCRIBE reflections
+//!   TRACE <node_id>
 
+use crate::memory::dag::CausalMemoryDag;
 use crate::memory::memdir::OduDirectory;
+use crate::memory::reflection::ReflectionLedger;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MemoryQuery {
@@ -23,6 +27,8 @@ pub enum MemoryQuery {
     VerifyPathContains(String),
     DescribeEntities,
     DescribeDuplicates,
+    DescribeReflections,
+    TraceCausal(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -36,11 +42,13 @@ pub struct MemoryAnswer {
 pub enum MemoryQueryError {
     Unrecognized(String),
     MissingQuotedValue,
+    MissingNodeId,
 }
 
 impl std::fmt::Display for MemoryQueryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::MissingNodeId => write!(f, "TRACE requires a node id, e.g. TRACE think:123:4"),
             Self::Unrecognized(s) => write!(f, "unrecognized memory query: {s}"),
             Self::MissingQuotedValue => write!(f, "expected a \"quoted value\""),
         }
@@ -63,8 +71,17 @@ pub fn parse_query(input: &str) -> Result<MemoryQuery, MemoryQueryError> {
         return match rest.as_str() {
             "entities" => Ok(MemoryQuery::DescribeEntities),
             "duplicates" => Ok(MemoryQuery::DescribeDuplicates),
+            "reflections" => Ok(MemoryQuery::DescribeReflections),
             _ => Err(MemoryQueryError::Unrecognized(input.to_string())),
         };
+    }
+
+    if upper.starts_with("TRACE") {
+        let node_id = trimmed[5..].trim();
+        if node_id.is_empty() {
+            return Err(MemoryQueryError::MissingNodeId);
+        }
+        return Ok(MemoryQuery::TraceCausal(node_id.to_string()));
     }
 
     if upper.starts_with("VERIFY") {
@@ -84,7 +101,12 @@ pub fn parse_query(input: &str) -> Result<MemoryQuery, MemoryQueryError> {
     Err(MemoryQueryError::Unrecognized(input.to_string()))
 }
 
-pub fn execute(query: &MemoryQuery, dir: &OduDirectory) -> MemoryAnswer {
+pub fn execute(
+    query: &MemoryQuery,
+    dir: &OduDirectory,
+    causal_dag: &CausalMemoryDag,
+    reflection: &ReflectionLedger,
+) -> MemoryAnswer {
     match query {
         MemoryQuery::VerifyEntity(entity) => {
             let hits = dir.recall_entity(entity);
@@ -157,6 +179,57 @@ pub fn execute(query: &MemoryQuery, dir: &OduDirectory) -> MemoryAnswer {
                 passed: None,
             }
         }
+        MemoryQuery::DescribeReflections => {
+            let summary = reflection
+                .entries
+                .iter()
+                .rev()
+                .take(10)
+                .map(|r| {
+                    format!(
+                        "[{}] {} — {}{}",
+                        r.timestamp,
+                        r.primitive,
+                        r.content.chars().take(80).collect::<String>(),
+                        r.emotion
+                            .as_ref()
+                            .map(|e| format!(" ({e})"))
+                            .unwrap_or_default()
+                    )
+                })
+                .collect();
+            MemoryAnswer {
+                summary,
+                passed: None,
+            }
+        }
+        MemoryQuery::TraceCausal(node_id) => {
+            let chain = causal_dag.causal_chain(node_id);
+            if chain.is_empty() {
+                MemoryAnswer {
+                    summary: vec![format!("✗ no causal node '{node_id}'")],
+                    passed: Some(false),
+                }
+            } else {
+                let summary = chain
+                    .iter()
+                    .enumerate()
+                    .map(|(i, n)| {
+                        format!(
+                            "{}{} [{}] {}",
+                            "  ".repeat(i),
+                            if i == 0 { "" } else { "← " },
+                            n.id,
+                            n.content.chars().take(80).collect::<String>()
+                        )
+                    })
+                    .collect();
+                MemoryAnswer {
+                    summary,
+                    passed: Some(true),
+                }
+            }
+        }
     }
 }
 
@@ -177,7 +250,7 @@ mod tests {
     fn verify_entity_passes_when_present() {
         let dir = dir_with(&[("e1", "we discussed Vantage today", "think/simplequery")]);
         let q = parse_query(r#"VERIFY WHERE entity = "Vantage""#).unwrap();
-        let answer = execute(&q, &dir);
+        let answer = execute(&q, &dir, &CausalMemoryDag::default(), &ReflectionLedger::default());
         assert_eq!(answer.passed, Some(true));
     }
 
@@ -185,7 +258,7 @@ mod tests {
     fn verify_entity_fails_when_absent() {
         let dir = dir_with(&[("e1", "we discussed lunch today", "think/simplequery")]);
         let q = parse_query(r#"VERIFY WHERE entity = "Vantage""#).unwrap();
-        let answer = execute(&q, &dir);
+        let answer = execute(&q, &dir, &CausalMemoryDag::default(), &ReflectionLedger::default());
         assert_eq!(answer.passed, Some(false));
     }
 
@@ -193,7 +266,7 @@ mod tests {
     fn verify_path_contains() {
         let dir = dir_with(&[("e1", "hello", "think/complextask")]);
         let q = parse_query(r#"VERIFY WHERE path CONTAINS "complextask""#).unwrap();
-        let answer = execute(&q, &dir);
+        let answer = execute(&q, &dir, &CausalMemoryDag::default(), &ReflectionLedger::default());
         assert_eq!(answer.passed, Some(true));
     }
 
@@ -201,7 +274,7 @@ mod tests {
     fn describe_entities_lists_known_entities() {
         let dir = dir_with(&[("e1", "we discussed Vantage and Zangbeto", "think/x")]);
         let q = parse_query("DESCRIBE entities").unwrap();
-        let answer = execute(&q, &dir);
+        let answer = execute(&q, &dir, &CausalMemoryDag::default(), &ReflectionLedger::default());
         // known_entities returns the lowercased index key, not display casing.
         assert!(answer.summary.iter().any(|s| s == "vantage"));
         assert!(answer.summary.iter().any(|s| s == "zangbeto"));
@@ -213,13 +286,74 @@ mod tests {
         dir.insert(OduEntry::new("a", "identical content here", "p1"));
         dir.insert(OduEntry::new("b", "identical content here", "p2"));
         let q = parse_query("DESCRIBE duplicates").unwrap();
-        let answer = execute(&q, &dir);
+        let answer = execute(&q, &dir, &CausalMemoryDag::default(), &ReflectionLedger::default());
         assert_eq!(answer.summary.len(), 1);
     }
 
     #[test]
     fn unrecognized_query_is_an_error() {
         assert!(parse_query("WALK something").is_err());
+    }
+
+    #[test]
+    fn trace_walks_the_causal_chain() {
+        let dir = OduDirectory::new();
+        let mut dag = CausalMemoryDag::default();
+        dag.insert(crate::memory::dag::MemNode::new(
+            "root".into(),
+            "first thought".into(),
+            0,
+        ));
+        dag.insert(
+            crate::memory::dag::MemNode::new("child".into(), "consequence".into(), 1)
+                .with_parents(vec!["root".into()]),
+        );
+
+        let q = parse_query("TRACE child").unwrap();
+        let answer = execute(&q, &dir, &dag, &ReflectionLedger::default());
+        assert_eq!(answer.passed, Some(true));
+        assert_eq!(answer.summary.len(), 2);
+        assert!(answer.summary[0].contains("consequence"));
+        assert!(answer.summary[1].contains("first thought"));
+    }
+
+    #[test]
+    fn trace_missing_node_fails_cleanly() {
+        let dir = OduDirectory::new();
+        let q = parse_query("TRACE nonexistent").unwrap();
+        let answer = execute(
+            &q,
+            &dir,
+            &CausalMemoryDag::default(),
+            &ReflectionLedger::default(),
+        );
+        assert_eq!(answer.passed, Some(false));
+    }
+
+    #[test]
+    fn trace_without_node_id_is_an_error() {
+        assert_eq!(parse_query("TRACE"), Err(MemoryQueryError::MissingNodeId));
+        assert_eq!(
+            parse_query("TRACE   "),
+            Err(MemoryQueryError::MissingNodeId)
+        );
+    }
+
+    #[test]
+    fn describe_reflections_shows_recent_entries_with_emotion() {
+        let dir = OduDirectory::new();
+        let mut ledger = ReflectionLedger::default();
+        let emotion = crate::emotion::EmotionState::birth();
+        ledger.record_with_emotion("think", "hello there", 100, &emotion);
+        ledger.record("act", "did a thing", 200);
+
+        let q = parse_query("DESCRIBE reflections").unwrap();
+        let answer = execute(&q, &dir, &CausalMemoryDag::default(), &ledger);
+        assert_eq!(answer.summary.len(), 2);
+        // Most recent first.
+        assert!(answer.summary[0].contains("did a thing"));
+        assert!(answer.summary[1].contains("hello there"));
+        assert!(answer.summary[1].contains("energy="));
     }
 
     #[test]

@@ -259,6 +259,28 @@ pub struct AgentSnapshot {
     /// wires it in.
     #[serde(default)]
     pub odu_dir: crate::memory::memdir::OduDirectory,
+    /// Causal (cause -> effect) lineage for public think turns -- a
+    /// different traversal shape than `odu_dir` (path/importance/word-
+    /// overlap) or the receipt chain (`previous_hash`, a strict linear
+    /// tamper-evidence chain, not a per-memory reasoning lineage). Answers
+    /// "what led to this," not "what's semantically close" or "prove this
+    /// wasn't tampered with." Was previously built but never referenced by
+    /// any live agent.
+    #[serde(default)]
+    pub causal_dag: crate::memory::dag::CausalMemoryDag,
+    /// The most recent public think/act node id, so the next one can link
+    /// to it as a causal parent -- a simple linear chain by default (each
+    /// turn caused by the one before it in this session); real branching
+    /// can be added later without changing this field's shape.
+    #[serde(default)]
+    pub last_causal_node: Option<String>,
+    /// Per-primitive reflection journal: primitive + content + the read-
+    /// only `EmotionState` already computed at the insertion point for SOMA
+    /// storage -- the one place snapshot carries emotional state alongside
+    /// memory content, which neither `odu_dir` nor the receipt chain do.
+    /// Was previously built but never referenced by any live agent.
+    #[serde(default)]
+    pub reflection: crate::memory::reflection::ReflectionLedger,
 }
 
 #[derive(Debug, Clone)]
@@ -852,6 +874,9 @@ impl Steward {
             llm_model,
             sovereign,
             odu_dir: crate::memory::memdir::OduDirectory::new(),
+            causal_dag: crate::memory::dag::CausalMemoryDag::new(),
+            last_causal_node: None,
+            reflection: crate::memory::reflection::ReflectionLedger::new(),
         };
         let mut core = AgentCore::from_snapshot(snapshot, k_root);
         core.private_data = Some(private_data);
@@ -1513,7 +1538,37 @@ impl Steward {
                     // Private thoughts must never persist as plaintext in the odu
                     // memory graph; they live only in the sealed private_data (see
                     // /seal). Recording them here leaked plaintext to disk on save.
+                    // The causal DAG and reflection ledger are held on the same
+                    // AgentSnapshot (and so persist to the same disk file) as
+                    // odu_dir, so they must observe the identical !private gate --
+                    // otherwise this would silently reopen exactly the plaintext
+                    // leak the odu_dir gate above was written to close.
                     if !private {
+                        let node_id = entry.id.clone();
+                        let node = crate::memory::dag::MemNode::new(
+                            node_id.clone(),
+                            entry.content.clone(),
+                            now,
+                        )
+                        .with_parents(
+                            agent_mut
+                                .snapshot
+                                .last_causal_node
+                                .clone()
+                                .into_iter()
+                                .collect(),
+                        );
+                        agent_mut.snapshot.causal_dag.insert(node);
+                        agent_mut.snapshot.last_causal_node = Some(node_id);
+
+                        let emotion = crate::emotion::EmotionState::birth();
+                        agent_mut.snapshot.reflection.record_with_emotion(
+                            "think",
+                            &entry.content,
+                            now,
+                            &emotion,
+                        );
+
                         agent_mut.snapshot.odu_dir.insert(entry);
                     }
 
@@ -2367,7 +2422,9 @@ impl Steward {
                     let query_text = arg.as_deref().unwrap_or("").trim();
                     let looks_like_query = {
                         let upper = query_text.to_ascii_uppercase();
-                        upper.starts_with("VERIFY") || upper.starts_with("DESCRIBE")
+                        upper.starts_with("VERIFY")
+                            || upper.starts_with("DESCRIBE")
+                            || upper.starts_with("TRACE")
                     };
                     if looks_like_query {
                         let agent = self.ensure_born()?;
@@ -2376,6 +2433,8 @@ impl Steward {
                                 let answer = crate::memory::larql_query::execute(
                                     &q,
                                     &agent.snapshot.odu_dir,
+                                    &agent.snapshot.causal_dag,
+                                    &agent.snapshot.reflection,
                                 );
                                 answer.summary.join("\n")
                             }

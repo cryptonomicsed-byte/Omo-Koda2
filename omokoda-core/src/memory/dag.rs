@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// A node in the causal memory graph.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MemNode {
     pub id: String,
     pub content: String,
@@ -32,7 +32,7 @@ impl MemNode {
 
 /// Directed Acyclic Graph of causal memory.
 /// Traversal is causal (cause → effect), not semantic.
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CausalMemoryDag {
     nodes: HashMap<String, MemNode>,
 }

@@ -188,6 +188,63 @@ mod interpreter_tests {
         assert!(!result.private_mode);
     }
 
+    /// The causal DAG and reflection ledger sit on the same AgentSnapshot as
+    /// odu_dir (so all three persist to the same disk file) and must
+    /// observe the identical !private gate -- proves a private think does
+    /// NOT leave a trace in either, the same invariant odu_dir already
+    /// enforces to avoid a plaintext leak on save.
+    #[tokio::test]
+    async fn private_think_leaves_no_causal_or_reflection_trace() {
+        let mut steward = test_steward!("private_think_leaves_no_causal_or_reflection_trace");
+        steward.set_mock_provider("mock thought".to_string());
+        steward
+            .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
+            .await
+            .unwrap();
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+
+        let stmts = parse(r#"think "secret plan""#).unwrap();
+        let result = steward.dispatch(stmts[0].clone()).await.unwrap();
+        assert!(result.private_mode);
+
+        let agent = steward.agent_core().expect("agent exists");
+        assert_eq!(agent.snapshot.odu_dir.len(), 0, "no plaintext in odu_dir");
+        assert_eq!(
+            agent.snapshot.causal_dag.len(),
+            0,
+            "no causal node for a private think"
+        );
+        assert!(
+            agent.snapshot.reflection.entries.is_empty(),
+            "no reflection entry for a private think"
+        );
+    }
+
+    /// The public counterpart: a published think DOES leave a causal node
+    /// and a reflection entry, both wired at the same site as odu_dir.
+    #[tokio::test]
+    async fn public_think_records_a_causal_node_and_a_reflection() {
+        let mut steward = test_steward!("public_think_records_a_causal_node_and_a_reflection");
+        steward.set_mock_provider("mock thought".to_string());
+        steward
+            .dispatch(parse(r#"birth "luna""#).unwrap()[0].clone())
+            .await
+            .unwrap();
+        steward.ensure_born_mut().unwrap().set_synapse(100_000.0);
+
+        let stmts = parse(r#"think "share this" /publish"#).unwrap();
+        let result = steward.dispatch(stmts[0].clone()).await.unwrap();
+        assert!(!result.private_mode);
+
+        let agent = steward.agent_core().expect("agent exists");
+        assert_eq!(agent.snapshot.odu_dir.len(), 1);
+        assert_eq!(agent.snapshot.causal_dag.len(), 1);
+        assert_eq!(agent.snapshot.reflection.entries.len(), 1);
+        let reflection = &agent.snapshot.reflection.entries[0];
+        assert_eq!(reflection.primitive, "think");
+        assert!(reflection.emotion.is_some(), "emotion tag is populated");
+    }
+
     #[tokio::test]
     async fn steward_can_register_a_provider() {
         use omokoda_core::providers::MockProvider;

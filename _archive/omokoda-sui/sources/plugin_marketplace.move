@@ -7,7 +7,7 @@
 /// Ports Claw-code's officialMarketplace pattern to a trustless on-chain model:
 /// instead of a GCS bucket, content lives on IPFS/Arweave; the Sui object graph
 /// is the authoritative registry index.
-module omokoda_sui::garden {
+module omokoda_sui::plugin_marketplace {
 
     use sui::object::{Self, UID};
     use sui::tx_context::{Self, TxContext};

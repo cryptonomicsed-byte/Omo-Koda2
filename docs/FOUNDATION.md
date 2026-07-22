@@ -152,16 +152,21 @@ We are giving humanity reliable, sovereign digital partners — each with privat
 | Hermetic Ethics Engine | Rust | omokoda-hermetic | ✅ Active |
 | CLI | Rust | omokoda-cli | ✅ Active |
 | WASM Sandbox (Àṣẹ) | WASM/Rust | omokoda-core/sandbox.rs | ✅ Implemented |
-| Swarm Coordination | Elixir | omokoda-swarm | ✅ Active |
-| Flow / Ops | Go | omokoda-ops | ✅ Active |
-| Justice / On-Chain | Move | omokoda-sui | ✅ Active |
+| Swarm Coordination | Elixir | omokoda-swarm | ✅ Active (:4000) |
+| Flow / Ops | Go | omokoda-ops | ✅ Active (:8080, runs as `ares-omokoda-oya`) |
+| Justice / On-Chain | Move | omokoda-on-chain | ✅ Active (`0x380e0599...`, testnet) |
 | Human Interface | TypeScript | omokoda-frontend | ✅ Active |
 | Economic Simulation | Python | omokoda-simulation | ✅ Active |
 | User Identity (Sui wallet/zkLogin/seed) | Rust | omokoda-core/identity/user.rs | ✅ Implemented |
 | Privacy Enforcer (provider/storage/hive gates) | Rust | omokoda-core/steward/privacy.rs | ✅ Implemented |
 | Primitive Dispatcher (birth/think/act validation) | Rust | omokoda-core/steward/dispatch.rs | ✅ Implemented |
-| Memory Service | Julia | omokoda-julia | 🔲 Planned (Wave 21) |
-| Wisdom / Ethics Service | Clojure | omokoda-clojure | ✅ Implemented (:4002) |
+| Memory Service | Julia | omokoda-memory | ✅ Active (:7778) |
+| Wisdom / Ethics Service | Clojure | omokoda-clojure | ✅ Active (:4002) |
+
+<!-- 2026-07-22: corrected -- this table previously named the wrong
+     (never-deployed) directory for 3 of 5 non-Rust services. omokoda-julia,
+     omokoda-elixir, omokoda-go, omokoda-sui, and omokoda-lisp are archived
+     under _archive/ (superseded, see _archive/README.md). -->
 | Private Memory (Walrus + MemWal) | Move/Rust | omokoda-sui + omokoda-core | 🔲 Planned |
 | Seal (private memory policy) | Move | omokoda-sui | 🔲 Planned |
 | Nautilus TEE processing | Rust/WASM | omokoda-core | 🔲 Planned |

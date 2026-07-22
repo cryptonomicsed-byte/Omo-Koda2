@@ -20,6 +20,10 @@ defmodule Yemoja.MixProject do
 
   defp deps do
     [
+      # plug_cowboy 2.6 alone resolves plug >=1.16, which requires Elixir
+      # >=1.15 -- the VPS runs 1.14.0, so plug is pinned explicitly to the
+      # last release that still supports it.
+      {:plug, "~> 1.15.0", override: true},
       {:plug_cowboy, "~> 2.6"},
       {:jason, "~> 1.4"},
     ]

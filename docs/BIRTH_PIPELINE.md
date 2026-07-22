@@ -220,8 +220,14 @@ AgentBirthReceipt produced
   ├── Register on Sui chain (Move)
   ├── Spawn Elixir GenServer (omokoda-swarm)
   ├── Initialize Julia memory resonance (omokoda-memory)
+  ├── Auto-register on Vantage Block Mesh (specs/vantage-registration.md)
   └── Open TypeScript consent handshake (omokoda-frontend)
 ```
+
+The Vantage step is fail-open (no-op unless `VANTAGE_URL` is set): the
+newborn mints its own Vantage account, joins its home block with verifiable
+Ed25519 identity, and appears live on the Block Mesh. Exact wire protocol,
+invariants, and failure semantics: [specs/vantage-registration.md](../specs/vantage-registration.md).
 
 ---
 

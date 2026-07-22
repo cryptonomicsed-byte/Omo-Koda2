@@ -2464,6 +2464,199 @@ impl Steward {
                         tool_output: Some(output),
                     })
                 }
+                "private" => {
+                    let agent = self.ensure_born_mut()?;
+                    agent.session_mut().config.default_privacy = true;
+                    self.auto_save();
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(
+                            "Default privacy set to private (equivalent to /configure privacy:true)."
+                                .to_string(),
+                        ),
+                    })
+                }
+                "publish" => {
+                    let agent = self.ensure_born_mut()?;
+                    agent.session_mut().config.default_privacy = false;
+                    self.auto_save();
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(
+                            "Default privacy set to public (equivalent to /configure privacy:false)."
+                                .to_string(),
+                        ),
+                    })
+                }
+                "transfer" => {
+                    let to_address = arg
+                        .ok_or_else(|| "transfer requires a destination address".to_string())?;
+                    let agent = self.ensure_born()?;
+                    let nft_id = agent
+                        .onchain_nft_id()
+                        .ok_or_else(|| "agent has no on-chain object to transfer".to_string())?
+                        .to_string();
+                    let ok = crate::onchain::transfer_object(&nft_id, &to_address).await;
+                    if ok {
+                        Ok(ExecutionResult {
+                            receipt: None,
+                            private_mode: false,
+                            tool_output: Some(format!(
+                                "Transferred on-chain object {} to {}.",
+                                nft_id, to_address
+                            )),
+                        })
+                    } else {
+                        Err("on-chain transfer failed (see server logs for details)".to_string())
+                    }
+                }
+                "model" => match arg.as_deref() {
+                    None => {
+                        let agent = self.ensure_born()?;
+                        let current = agent.session().config.default_provider.clone();
+                        Ok(ExecutionResult {
+                            receipt: None,
+                            private_mode: false,
+                            tool_output: Some(format!("Current model/provider: {}", current)),
+                        })
+                    }
+                    Some(name) => {
+                        if !self.providers.is_known_provider(name)
+                            && !name.eq_ignore_ascii_case("default")
+                        {
+                            let available = self.providers.provider_names().join(", ");
+                            return Err(format!(
+                                "unknown provider '{}'. available: {}",
+                                name, available
+                            ));
+                        }
+                        let name = name.to_string();
+                        let agent = self.ensure_born_mut()?;
+                        agent.session_mut().config.default_provider = name.clone();
+                        self.auto_save();
+                        Ok(ExecutionResult {
+                            receipt: None,
+                            private_mode: false,
+                            tool_output: Some(format!("Model/provider set to {}", name)),
+                        })
+                    }
+                },
+                "export" => {
+                    let agent = self.ensure_born()?;
+                    let json = agent.session().export_json()?;
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(json),
+                    })
+                }
+                "history" => {
+                    let agent = self.ensure_born()?;
+                    let all = agent.session().recent_thinks();
+                    let n = arg
+                        .as_deref()
+                        .and_then(|s| s.parse::<usize>().ok())
+                        .unwrap_or(all.len());
+                    let start = all.len().saturating_sub(n);
+                    let output = if all.is_empty() {
+                        "No think history yet.".to_string()
+                    } else {
+                        all[start..].join("\n---\n")
+                    };
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(output),
+                    })
+                }
+                "skills" => {
+                    let agent = self.ensure_born()?;
+                    let context = ExecutionContext {
+                        agent_id: agent.id().clone(),
+                        name: agent.name().to_string(),
+                        tier: agent.tier(),
+                        reputation: agent.reputation(),
+                        odu_identity: agent.snapshot.odu_identity.clone(),
+                        workspace_root: std::env::current_dir()
+                            .unwrap_or_else(|_| PathBuf::from(".")),
+                        sandbox_mode: agent.snapshot.session.config.default_sandbox,
+                    };
+                    let (output, _usage) = self
+                        .tools
+                        .execute("skills", "", context, &self.permission_policy, None)
+                        .await?;
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(output),
+                    })
+                }
+                "receipts" => {
+                    let agent = self.ensure_born()?;
+                    let n = arg
+                        .as_deref()
+                        .and_then(|s| s.parse::<usize>().ok())
+                        .unwrap_or(10);
+                    let recent = agent.receipts().recent(n);
+                    let output = if recent.is_empty() {
+                        "No receipts yet.".to_string()
+                    } else {
+                        recent
+                            .iter()
+                            .map(|r| format!("[{}] {} action={}", r.timestamp, r.receipt_id, r.action))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    };
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(output),
+                    })
+                }
+                "clear" => {
+                    let agent = self.ensure_born_mut()?;
+                    let cleared = agent.session().public_messages.len();
+                    agent.session_mut().public_messages.clear();
+                    self.auto_save();
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(format!(
+                            "Cleared {} conversation message(s). Persistent memory (odu_dir, receipts) is untouched.",
+                            cleared
+                        )),
+                    })
+                }
+                "think" => {
+                    let agent = self.ensure_born()?;
+                    let n = arg
+                        .as_deref()
+                        .and_then(|s| s.parse::<usize>().ok())
+                        .unwrap_or(5);
+                    let recent: Vec<_> = agent
+                        .receipts()
+                        .recent(agent.receipts().count())
+                        .into_iter()
+                        .filter(|r| r.action == "think")
+                        .take(n)
+                        .collect();
+                    let output = if recent.is_empty() {
+                        "No think receipts yet.".to_string()
+                    } else {
+                        recent
+                            .iter()
+                            .map(|r| format!("[{}] {}", r.timestamp, r.receipt_id))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    };
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(output),
+                    })
+                }
                 _ => Err(format!(
                     "Slash command '/{}' not yet implemented in Steward",
                     command

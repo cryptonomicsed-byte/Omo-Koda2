@@ -148,6 +148,18 @@ impl ReceiptStore {
         }
     }
 
+    /// The `n` most recent receipts, newest first. `self.chain` is
+    /// append-only in creation order, so walking it in reverse is the real
+    /// chronological order -- not a re-sort or approximation.
+    pub fn recent(&self, n: usize) -> Vec<&Receipt> {
+        self.chain
+            .iter()
+            .rev()
+            .filter_map(|id| self.receipts.get(id))
+            .take(n)
+            .collect()
+    }
+
     pub fn save_to_path(&self, path: &Path) -> Result<(), String> {
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| format!("failed to serialize receipts: {e}"))?;

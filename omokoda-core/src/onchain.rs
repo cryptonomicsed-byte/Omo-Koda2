@@ -294,6 +294,49 @@ pub async fn record_skillforge_audit(
     })
 }
 
+/// Transfer ownership of an already-minted on-chain object (agent NFT,
+/// skill-audit receipt, etc.) to a new Sui address via the generic
+/// `sui client transfer` CLI verb -- there is no bespoke Move entry
+/// function for this in `garden.move`, only the initial
+/// `transfer::public_transfer` at mint time, so the generic CLI transfer
+/// is the real mechanism. Returns `true` on a successful on-chain
+/// transfer, `false` on any failure (bad address, `sui` missing,
+/// insufficient gas, object not owned by this wallet).
+pub async fn transfer_object(object_id: &str, to_address: &str) -> bool {
+    let gas_budget =
+        std::env::var("OMOKODA_SUI_GAS_BUDGET").unwrap_or_else(|_| DEFAULT_GAS_BUDGET.to_string());
+
+    let output = tokio::process::Command::new("sui")
+        .args([
+            "client",
+            "transfer",
+            "--object-id",
+            object_id,
+            "--to",
+            to_address,
+            "--gas-budget",
+            &gas_budget,
+            "--json",
+        ])
+        .output()
+        .await;
+
+    match output {
+        Ok(o) if o.status.success() => true,
+        Ok(o) => {
+            eprintln!(
+                "[onchain] transfer_object failed: {}",
+                String::from_utf8_lossy(&o.stderr)
+            );
+            false
+        }
+        Err(e) => {
+            eprintln!("[onchain] transfer_object: sui binary unavailable: {e}");
+            false
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

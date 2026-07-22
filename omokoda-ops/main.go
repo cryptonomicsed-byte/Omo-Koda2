@@ -67,6 +67,11 @@ func main() {
 	mux.HandleFunc("/rhythm/cooldown", rhythmCooldownHandler)
 	mux.HandleFunc("/rhythm/record", rhythmRecordHandler)
 
+	mux.HandleFunc("/skillforge/start", skillforgeStartHandler)
+	mux.HandleFunc("/skillforge/transition", skillforgeTransitionHandler)
+	mux.HandleFunc("/skillforge/finish", skillforgeFinishHandler)
+	mux.HandleFunc("/skillforge/status/", skillforgeStatusHandler)
+
 	server := &http.Server{
 		Addr:         ":8080",
 		Handler:      mux,

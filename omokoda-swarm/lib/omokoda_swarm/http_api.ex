@@ -180,6 +180,55 @@ defmodule OmokodaSwarm.HttpApi do
     end
   end
 
+  # SkillForge Creation stage: assemble the SkillManifestEntry. Consolidated
+  # here from the smaller, now-retired standalone omokoda-elixir/Yemoja
+  # service -- this is the real, deployed Yemoja, so new Yemoja capability
+  # lands on this router going forward.
+  defp respond(socket, "POST", "/skillforge/manifest", body) do
+    case OmokodaSwarm.JSON.decode(body) do
+      {:ok, params} ->
+        name = Map.get(params, "name", "unknown-skill")
+        classification = Map.get(params, "classification", "Unknown")
+        language = Map.get(params, "language", "unknown")
+        description = Map.get(params, "description", "")
+        base_url_hint = Map.get(params, "base_url_hint")
+        auth_hint = Map.get(params, "auth_hint")
+        candidate_routes = Map.get(params, "candidate_routes", %{})
+        risk_signals = Map.get(params, "risk_signals", [])
+
+        write =
+          candidate_routes
+          |> Map.values()
+          |> Enum.any?(&(not String.starts_with?(&1, "GET")))
+          |> Kernel.or(risk_signals != [])
+
+        base_url =
+          base_url_hint || "${#{String.upcase(String.replace(name, "-", "_"))}_URL}"
+
+        routes =
+          if map_size(candidate_routes) == 0 do
+            %{"health" => "GET /health", "discover" => "GET /"}
+          else
+            candidate_routes
+          end
+
+        write_json(socket, 200, %{
+          name: name,
+          description: "#{description} [forged by SkillForge from #{classification}; lang=#{language}]",
+          base_url: base_url,
+          auth_header: get_in(auth_hint, ["header"]),
+          auth_env: get_in(auth_hint, ["env"]),
+          auth_value: nil,
+          required_tier: if(write, do: 2, else: 1),
+          write: write,
+          routes: routes
+        })
+
+      {:error, reason} ->
+        write_json(socket, 422, %{error: "invalid JSON body: #{inspect(reason)}"})
+    end
+  end
+
   defp respond(socket, _method, _path, _body) do
     write_json(socket, 404, %{error: "not found"})
   end

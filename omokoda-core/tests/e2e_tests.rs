@@ -20,6 +20,7 @@ mod e2e_tests {
 
     #[tokio::test]
     async fn e2e_birth_think_and_wasm_act_flow() {
+        std::env::set_var("OMOKODA_ENABLE_WASM", "1");
         let mut steward = test_steward!("e2e_birth_think_and_wasm_act_flow");
         steward.set_mock_provider("e2e thought".to_string());
         steward.set_permission_mode(omokoda_core::permissions::PermissionMode::Allow);

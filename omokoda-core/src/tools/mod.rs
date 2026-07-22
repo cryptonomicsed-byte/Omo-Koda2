@@ -137,13 +137,21 @@ impl ToolRegistry {
         registry.register(Box::new(GlobTool));
         registry.register(Box::new(GrepTool));
         registry.register(Box::new(BashTool));
-        registry.register(Box::new(LazyTool::new(
-            "wasm",
-            "Execute a WASM module in the sandbox",
-            2,
-            true,
-            Box::new(|| Box::new(WasmTool)),
-        )));
+        // wasmtime 13.0.1 carries known sandbox-escape CVEs (RUSTSEC-2026-0089/
+        // 0094/0021, 2025-0118, ...; fixed only in wasmtime 43+/47 = a full
+        // WASI-preview2 rewrite of sandbox.rs). The `wasm` tool is already
+        // DangerFullAccess-gated, but keep the vulnerable path UNREGISTERED by
+        // default -- opt in with OMOKODA_ENABLE_WASM=1 -- until the per-agent
+        // microVM/gVisor sandbox tier retires it (or wasmtime is bumped).
+        if std::env::var("OMOKODA_ENABLE_WASM").as_deref() == Ok("1") {
+            registry.register(Box::new(LazyTool::new(
+                "wasm",
+                "Execute a WASM module in the sandbox",
+                2,
+                true,
+                Box::new(|| Box::new(WasmTool)),
+            )));
+        }
         registry.register(Box::new(WebSearchTool));
         registry.register(Box::new(AgentOrchestrationTool));
         registry.register(Box::new(NoteTakingTool));

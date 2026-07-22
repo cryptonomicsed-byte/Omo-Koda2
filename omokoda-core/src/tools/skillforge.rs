@@ -19,6 +19,14 @@
 //!     assemble the `SkillManifestEntry`.
 //!   - **Coordination** reports run-state to Ọya (Go, `/skillforge/{start,
 //!     transition,finish}`) for observability across the whole pipeline.
+//!
+//! **Audit** has a Move leg instead — not an HTTP service (Move only makes
+//! sense as on-chain state, not a request handler): `crate::onchain::
+//! record_skillforge_audit` anchors a content-addressed receipt (hashes only,
+//! never the raw name/URL) via the published `skillforge_audit::audit::record`
+//! Move package on Sui testnet, fail-open on `OMOKODA_SUI_REGISTRY` unset —
+//! the same discipline as birth's on-chain minting.
+//!
 //! Every polyglot call is fail-soft (`OBATALA_URL`/`OSUN_URL`/`YEMOJA_URL`/
 //! `OYA_URL` unset or unreachable → the Rust/Python-only path, unchanged from
 //! before this leg existed, decides instead). Nothing about the safety gate
@@ -1132,6 +1140,18 @@ impl Tool for SkillForgeTool {
                 serde_json::Value::String(ticket),
             )
         };
+        super::skillforge_bus::coordinate_transition(&run_id, "audit").await;
+
+        // Sango (Move) on-chain audit receipt -- fail-open, see onchain.rs.
+        let approved_final = status.starts_with("registered");
+        let onchain_receipt = crate::onchain::record_skillforge_audit(
+            &entry.name,
+            &url,
+            audit.risk_score,
+            audit.requires_review,
+            approved_final,
+        )
+        .await;
 
         // Stage 7: register in Vantage platform skill registry (discoverable by
         // all Vantage-born agents) once the skill is actually registered.
@@ -1176,6 +1196,7 @@ impl Tool for SkillForgeTool {
             "sandbox": sandbox_receipt,
             "storage": store_receipt,
             "vantage_registry": vantage_registry,
+            "onchain_audit_receipt": onchain_receipt,
             "activation": activation,
             "review_ticket": review_ticket,
         });

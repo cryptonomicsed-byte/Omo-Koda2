@@ -200,6 +200,100 @@ fn extract_minted_agent_info_id(json: &serde_json::Value) -> Option<String> {
     })
 }
 
+// ---------------------------------------------------------------------------
+// Ṣàngó — SkillForge Audit stage: on-chain audit receipts
+// ---------------------------------------------------------------------------
+
+/// Standalone package, published because the `garden` package's UpgradeCap
+/// is owned by an address not present in this deployment's keystore --
+/// same "separate named package constant" pattern as `GARDEN_PACKAGE` /
+/// `GARDEN_PACKAGE_V2` above. Module `audit`, function `record`.
+const SKILLFORGE_AUDIT_PACKAGE: &str =
+    "0x8f15cdd07cd9eedd403d461aa6ea4ae6b6a2e0c69ac0c2a3c1ea440475a57425";
+
+/// Anchor one SkillForge audit decision on-chain: a durable, content-
+/// addressed (hash-only, never the raw name/URL) proof that this repo was
+/// reviewed and what the verdict was. Fail-open, matching every other
+/// on-chain call in this module: `None`/`OMOKODA_SUI_REGISTRY` unset never
+/// blocks or fails the forge -- the receipt is a nice-to-have audit trail,
+/// not a dependency for SkillForge to function. Reuses `OMOKODA_SUI_REGISTRY`
+/// only as the "is on-chain configured at all" signal (this call takes no
+/// registry object argument), so a runtime with on-chain birth minting
+/// enabled gets audit anchoring for free.
+pub async fn record_skillforge_audit(
+    skill_name: &str,
+    source_url: &str,
+    risk_score: u32,
+    requires_review: bool,
+    approved: bool,
+) -> Option<String> {
+    std::env::var("OMOKODA_SUI_REGISTRY").ok()?;
+    let gas_budget =
+        std::env::var("OMOKODA_SUI_GAS_BUDGET").unwrap_or_else(|_| DEFAULT_GAS_BUDGET.to_string());
+
+    let name_hash = blake3::hash(skill_name.as_bytes());
+    let url_hash = blake3::hash(source_url.as_bytes());
+    let to_vec_arg = |h: &blake3::Hash| {
+        format!(
+            "[{}]",
+            h.as_bytes()
+                .iter()
+                .map(|b| b.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+    };
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let output = tokio::process::Command::new("sui")
+        .args([
+            "client",
+            "call",
+            "--package",
+            SKILLFORGE_AUDIT_PACKAGE,
+            "--module",
+            "audit",
+            "--function",
+            "record",
+            "--args",
+            &to_vec_arg(&name_hash),
+            &to_vec_arg(&url_hash),
+            &risk_score.to_string(),
+            &requires_review.to_string(),
+            &approved.to_string(),
+            &timestamp.to_string(),
+            "--gas-budget",
+            &gas_budget,
+            "--json",
+        ])
+        .output()
+        .await
+        .ok()?;
+
+    if !output.status.success() {
+        eprintln!(
+            "[onchain] skillforge_audit record failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return None;
+    }
+
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    let changes = json.get("objectChanges")?.as_array()?;
+    changes.iter().find_map(|o| {
+        let obj_type = o.get("objectType")?.as_str()?;
+        let change_type = o.get("type")?.as_str()?;
+        if change_type == "created" && obj_type.ends_with("::audit::AuditReceipt") {
+            o.get("objectId")?.as_str().map(|s| s.to_string())
+        } else {
+            None
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

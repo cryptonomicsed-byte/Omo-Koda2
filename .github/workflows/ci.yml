@@ -225,7 +225,7 @@ jobs:
             echo "Sui CLI is not installed; skipping Move checks."
             exit 0
           fi
-          for package in omokoda-sui omokoda-on-chain; do
+          for package in omokoda-on-chain omokoda-on-chain-skillforge; do
             if [ -f "$package/Move.toml" ]; then
               (cd "$package" && sui move test)
             fi

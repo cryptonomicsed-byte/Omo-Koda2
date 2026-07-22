@@ -339,14 +339,39 @@ async fn think_handler(
     Json(req): Json<ThinkRequest>,
 ) -> impl IntoResponse {
     mark_external_activity();
-    let stmt = Statement::Think {
-        prompt: req.prompt,
-        private: req.private,
-        modifiers: ThinkModifiers {
-            loop_enabled: req.agentic,
-            max_iterations: req.max_turns,
-            ..ThinkModifiers::default()
-        },
+    // Slash commands (/memory, /publish, /seal, ...) previously never worked
+    // over HTTP -- this handler always built Statement::Think directly from
+    // the JSON body, never calling the parser, so a prompt like
+    // "/memory DESCRIBE reflections" was sent to the LLM as literal think
+    // content instead of being recognized. Route a prompt that genuinely
+    // parses as a slash command through the real grammar instead, matching
+    // what the CLI/REPL already does; fall back to the direct Think
+    // construction on any parse failure (or a prompt not starting with
+    // '/') so ordinary prompts -- including ones that merely mention a
+    // path or discuss "/something" in prose -- are completely unaffected.
+    let stmt = if req.prompt.trim_start().starts_with('/') {
+        match crate::parser::parse(&req.prompt) {
+            Ok(mut stmts) if stmts.len() == 1 => stmts.remove(0),
+            _ => Statement::Think {
+                prompt: req.prompt,
+                private: req.private,
+                modifiers: ThinkModifiers {
+                    loop_enabled: req.agentic,
+                    max_iterations: req.max_turns,
+                    ..ThinkModifiers::default()
+                },
+            },
+        }
+    } else {
+        Statement::Think {
+            prompt: req.prompt,
+            private: req.private,
+            modifiers: ThinkModifiers {
+                loop_enabled: req.agentic,
+                max_iterations: req.max_turns,
+                ..ThinkModifiers::default()
+            },
+        }
     };
     match dispatch_for_request(&state, &headers, stmt).await {
         Ok(result) => Json(ExecutionResponse::from(result)).into_response(),

@@ -42,6 +42,7 @@ pub mod tasks;
 pub mod tools;
 pub mod usage;
 pub mod vault;
+pub mod waggle;
 
 pub use identity::user::{IdentityError, PrivacyMode, UserIdentity};
 pub use identity::AgentId;

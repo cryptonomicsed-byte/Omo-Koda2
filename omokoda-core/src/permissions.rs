@@ -178,6 +178,10 @@ impl PermissionPolicy {
             "mesh_discover_capabilities",
             "wallet_list",
             "wallet_get",
+            // wigolo's manifest is write:false -- search/fetch/crawl/extract/
+            // cache/find_similar/research/agent/diff/watch are all read-only
+            // web intelligence, no side effects on the agent's own sphere.
+            "wigolo",
         ] {
             policy = policy.with_tool_requirement(t, PermissionMode::ReadOnly);
         }

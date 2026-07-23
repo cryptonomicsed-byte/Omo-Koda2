@@ -215,6 +215,34 @@ pub fn default_manifest() -> SkillManifest {
                 ]),
             },
             SkillManifestEntry {
+                name: "wigolo".to_string(),
+                description: "wigolo (`wigolo serve`) — local-first web intelligence: search, \
+                     fetch, crawl, extract, cache, find_similar, research, agent, diff, watch. \
+                     No API keys for the core tools. Set WIGOLO_URL (default \
+                     http://127.0.0.1:3334) to enable."
+                    .to_string(),
+                base_url: "${WIGOLO_URL}".to_string(),
+                auth_header: None,
+                auth_env: None,
+                auth_value: None,
+                required_tier: 1,
+                write: false,
+                routes: routes_of(&[
+                    ("health", "GET /health"),
+                    ("tools", "GET /v1/tools"),
+                    ("search", "POST /v1/search"),
+                    ("fetch", "POST /v1/fetch"),
+                    ("crawl", "POST /v1/crawl"),
+                    ("extract", "POST /v1/extract"),
+                    ("cache", "POST /v1/cache"),
+                    ("find_similar", "POST /v1/find_similar"),
+                    ("research", "POST /v1/research"),
+                    ("agent", "POST /v1/agent"),
+                    ("diff", "POST /v1/diff"),
+                    ("watch", "POST /v1/watch"),
+                ]),
+            },
+            SkillManifestEntry {
                 name: "social".to_string(),
                 description: "Vantage agent social layer — post broadcasts, comment on and \
                      react to others', DM another agent directly, and drop a note into a \
@@ -801,7 +829,7 @@ mod tests {
     fn manifest_json_round_trips() {
         let json = serde_json::to_string(&default_manifest()).unwrap();
         let back: SkillManifest = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.skills.len(), 13);
+        assert_eq!(back.skills.len(), 14);
         for name in [
             "vantage",
             "aio",
@@ -809,6 +837,7 @@ mod tests {
             "larql",
             "gitea",
             "opencode",
+            "wigolo",
             "manifesto",
             "pine",
             "markets",
@@ -894,6 +923,17 @@ mod tests {
             o.routes.get("send_message").map(String::as_str),
             Some("POST /session/{id}/message")
         );
+    }
+
+    #[test]
+    fn wigolo_skill_is_wired() {
+        let m = default_manifest();
+        let w = m.skills.iter().find(|s| s.name == "wigolo").unwrap();
+        assert_eq!(w.base_url, "${WIGOLO_URL}");
+        assert!(w.auth_header.is_none()); // loopback-bound daemon, unauthenticated
+        assert!(!w.write); // search/fetch/crawl/etc are read-only web intelligence
+        assert_eq!(w.routes.get("search").map(String::as_str), Some("POST /v1/search"));
+        assert_eq!(w.routes.get("health").map(String::as_str), Some("GET /health"));
     }
 
     #[test]

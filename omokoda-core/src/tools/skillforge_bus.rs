@@ -73,6 +73,40 @@ pub async fn classify(facts: &AnalyzeFacts<'_>) -> Option<ClojureClassification>
     post_json(&url, facts).await
 }
 
+// ── Ọbàtálá (Clojure) — Transformation: gateway template generation ────────
+
+#[derive(Serialize)]
+pub struct TemplateFacts<'a> {
+    pub name: &'a str,
+    pub port: u32,
+    pub language: &'a str,
+    pub classification: &'a str,
+    pub base_url_hint: Option<&'a str>,
+    pub candidate_routes: &'a std::collections::HashMap<String, String>,
+}
+
+#[derive(Deserialize)]
+pub struct ClojureTemplate {
+    pub name: String,
+    pub port: u32,
+    pub wrapper_base_url: String,
+    pub files: std::collections::HashMap<String, String>,
+    pub added_surfaces: Vec<String>,
+    pub gateway_routes: std::collections::HashMap<String, String>,
+}
+
+/// Ask Ọbàtálá to shape the agent-native gateway's file contents (routes.json,
+/// mcp_server.py, Dockerfile, openapi.json, agent.json, README.md) from
+/// structured facts. Fail-soft: `None` (including when `OBATALA_URL` is
+/// unset) leaves `transform_repo.py`'s own template generation as the source
+/// -- this only ever replaces content generation, never file-writing or
+/// Docker-sandboxing, both of which stay Rust/Python's job either way.
+pub async fn template_gateway(facts: &TemplateFacts<'_>) -> Option<ClojureTemplate> {
+    let base = service_url("OBATALA_URL")?;
+    let url = format!("{base}/skillforge/template");
+    post_json(&url, facts).await
+}
+
 // ── Ọ̀ṣun (Julia) — Memory: dedup similarity ─────────────────────────────────
 
 #[derive(Serialize)]

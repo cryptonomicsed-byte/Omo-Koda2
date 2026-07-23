@@ -485,6 +485,39 @@ impl SkillForgeTool {
             .map_err(|e| format!("transformer returned non-JSON: {e}; raw: {}", stdout.trim()))
     }
 
+    /// Stage 4b, Ọbàtálá (Clojure) leg: ask Ọbàtálá to shape the gateway's
+    /// file contents, write them to disk here (Rust keeps ownership of the
+    /// filesystem/Docker side regardless of which language generated the
+    /// text). Fail-soft: `None` (unreachable service, missing/partial
+    /// response, or a write failure) leaves `transformation()`'s Python path
+    /// as the only generator, unchanged from before this leg existed.
+    async fn transformation_clojure(&self, name: &str, a: &RepoAnalysis, port: u32) -> Option<Transformation> {
+        let facts = super::skillforge_bus::TemplateFacts {
+            name,
+            port,
+            language: &a.language,
+            classification: &a.classification,
+            base_url_hint: a.base_url_hint.as_deref(),
+            candidate_routes: &a.candidate_routes,
+        };
+        let t = super::skillforge_bus::template_gateway(&facts).await?;
+        let out_dir = self.forge_dir.join(name);
+        std::fs::create_dir_all(&out_dir).ok()?;
+        for (fname, content) in &t.files {
+            std::fs::write(out_dir.join(fname), content).ok()?;
+        }
+        Some(Transformation {
+            ok: true,
+            error: None,
+            output_dir: out_dir.to_string_lossy().to_string(),
+            port: t.port,
+            wrapper_base_url: t.wrapper_base_url,
+            generated_files: t.files.keys().cloned().collect(),
+            added_surfaces: t.added_surfaces,
+            gateway_routes: t.gateway_routes,
+        })
+    }
+
     /// Build and boot the generated gateway in a Docker sandbox and smoke-test
     /// its agent surfaces. Returns the raw sandbox report (advisory to Audit).
     fn sandbox(&self, name: &str, t: &Transformation) -> serde_json::Value {
@@ -1125,7 +1158,15 @@ impl Tool for SkillForgeTool {
         let mut forge_output_dir: Option<String> = None;
         let mut forge_files: Vec<String> = Vec::new();
         if transform_req && !analysis.missing_agent_surfaces.is_empty() {
-            match self.transformation(&name, &analysis) {
+            let port: u32 = std::env::var("SKILLFORGE_GATEWAY_PORT")
+                .ok()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(8900);
+            let transform_result = match self.transformation_clojure(&name, &analysis, port).await {
+                Some(t) => Ok(t),
+                None => self.transformation(&name, &analysis),
+            };
+            match transform_result {
                 Ok(t) if t.ok => {
                     entry.base_url = t.wrapper_base_url.clone();
                     forge_output_dir = Some(t.output_dir.clone());

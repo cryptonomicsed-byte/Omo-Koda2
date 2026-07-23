@@ -78,6 +78,10 @@ struct RepoAnalysis {
     #[serde(default)]
     candidate_routes: HashMap<String, String>,
     #[serde(default)]
+    clone_path: Option<String>,
+    #[serde(default)]
+    security_prescan: Option<SecurityPrescan>,
+    #[serde(default)]
     missing_agent_surfaces: Vec<String>,
     #[serde(default)]
     risk_signals: Vec<String>,
@@ -93,6 +97,36 @@ struct RepoAnalysis {
 struct AuthHint {
     header: String,
     env: String,
+}
+
+/// Stage 0.5 output: mandatory pre-execution security scan on the raw
+/// clone, before anything from the repo is ever built or run. `hard_fail`
+/// is the one gate in the whole pipeline that never soft-falls-back --
+/// betterleaks verified secrets, nuclei criticals, or a malware-signature
+/// hit here kill the forge immediately, before Stage 1c ever boots it.
+#[derive(Debug, Clone, Deserialize, Default)]
+struct SecurityPrescan {
+    #[serde(default)]
+    hard_fail: bool,
+    #[serde(default)]
+    reasons: Vec<String>,
+}
+
+/// Stage 1c output (`boot_and_discover.py`): mandatory, soft-fallback.
+/// `booted` is the honest signal of whether real dynamic discovery
+/// happened at all -- when false the skill proceeds on static routes only
+/// and must be stamped `fully_forged: false`, never silently treated as
+/// fully covered.
+#[derive(Debug, Clone, Deserialize, Default)]
+struct Discovery {
+    #[serde(default)]
+    booted: bool,
+    #[serde(default)]
+    ui_only: bool,
+    #[serde(default)]
+    discovered_routes: HashMap<String, String>,
+    #[serde(default)]
+    notes: Vec<String>,
 }
 
 /// Native Nuclei file-template scan result (secrets / keys / misconfigs).
@@ -213,6 +247,52 @@ impl SkillForgeTool {
             analysis.classification = result.classification;
             analysis.confidence = result.confidence;
         }
+    }
+
+    // ---- Stage 1c: Discovery (mandatory, soft-fallback) --------------------
+
+    /// Boots the already-security-cleared clone and drives it (Playwright
+    /// click-through + network capture, gobuster brute-force) to find real
+    /// capability surface static analysis structurally cannot see. Only
+    /// ever called after Stage 0.5's hard gate has passed -- never on
+    /// unscanned code. Soft-fallback by design: if boot fails for any
+    /// reason (language undetectable, install/run failure, port never
+    /// opens), returns `booted: false` and the pipeline proceeds on
+    /// static-only routes -- the caller stamps `fully_forged` accordingly,
+    /// this never lies about what it accomplished.
+    async fn boot_and_discover(&self, a: &RepoAnalysis) -> Discovery {
+        let Some(clone_path) = a.clone_path.as_deref() else {
+            return Discovery::default();
+        };
+        let script = self.scripts_dir.join("boot_and_discover.py");
+        let mut cmd = tokio::process::Command::new("python3");
+        cmd.arg(&script)
+            .arg("--dir")
+            .arg(clone_path)
+            .arg("--language")
+            .arg(&a.language)
+            .arg("--boot-timeout")
+            .arg("120")
+            .arg("--ready-wait")
+            .arg("20");
+        if let Some(hint) = &a.base_url_hint {
+            cmd.arg("--base-url-hint").arg(hint);
+        }
+        let discovery = match cmd.output().await {
+            Ok(out) => serde_json::from_slice::<Discovery>(&out.stdout).unwrap_or_default(),
+            Err(_) => Discovery::default(),
+        };
+        // The clone is only kept alive for this stage (analyze_repo.py
+        // deliberately leaves it on disk); clean it up now regardless of
+        // outcome so forged-and-rejected/soft-fallback runs don't leak
+        // clones under /tmp.
+        let _ = tokio::fs::remove_dir_all(
+            std::path::Path::new(clone_path)
+                .parent()
+                .unwrap_or(std::path::Path::new(clone_path)),
+        )
+        .await;
+        discovery
     }
 
     // ---- Stage 2: Memory (dedup + canonical naming) ------------------------
@@ -989,6 +1069,36 @@ impl Tool for SkillForgeTool {
         self.classify_symbolic(&mut analysis).await;
         super::skillforge_bus::coordinate_transition(&run_id, "analysis").await;
 
+        // Stage 0.5 hard gate: analyze_repo.py already ran betterleaks +
+        // nuclei + malware-signature checks on the raw clone before this
+        // point. This is the one gate in the pipeline that never soft-falls
+        // back -- a verified secret, critical nuclei finding, or malware
+        // signature kills the forge here, before anything is ever booted.
+        if let Some(prescan) = &analysis.security_prescan {
+            if prescan.hard_fail {
+                let reason = format!(
+                    "security prescan hard-failed: {}",
+                    prescan.reasons.join("; ")
+                );
+                super::skillforge_bus::coordinate_finish(&run_id, false, &reason).await;
+                crate::onchain::record_skillforge_audit(&analysis.name, &url, 10, true, false)
+                    .await;
+                return Err(reason);
+            }
+        }
+
+        // Stage 1c: mandatory dynamic discovery, soft-fallback. Always
+        // attempted (not gated on missing_agent_surfaces) so a repo whose
+        // static analysis looks "complete" doesn't skip real capability
+        // discovery -- the whole point is maximum agent exposure, not just
+        // whatever a route-declaration regex happened to find.
+        let discovery = self.boot_and_discover(&analysis).await;
+        for (k, v) in &discovery.discovered_routes {
+            analysis.candidate_routes.entry(k.clone()).or_insert_with(|| v.clone());
+        }
+        let fully_forged = discovery.booted;
+        super::skillforge_bus::coordinate_transition(&run_id, "discovery").await;
+
         let name = self.memory_dedup(&analysis.name);
         // Stage 2b: Ọ̀ṣun (Julia) similarity dedup — if it finds a likely
         // duplicate under a different name than the exact-match check above
@@ -1190,6 +1300,12 @@ impl Tool for SkillForgeTool {
                 "review_persona": audit.persona,
                 "requires_review": audit.requires_review,
                 "reasons": audit.reasons,
+            },
+            "discovery": {
+                "fully_forged": fully_forged,
+                "ui_only": discovery.ui_only,
+                "discovered_route_count": discovery.discovered_routes.len(),
+                "notes": discovery.notes,
             },
             "execution": smoke,
             "transformation": transformation_receipt,

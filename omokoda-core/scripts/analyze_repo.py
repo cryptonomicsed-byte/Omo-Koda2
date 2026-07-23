@@ -236,6 +236,87 @@ NUCLEI_TEMPLATES = os.environ.get(
     "SKILLFORGE_NUCLEI_TEMPLATES", "/root/nuclei-templates/file/")
 
 
+def _betterleaks_scan(root):
+    """Docker-run betterleaks secret scan against the raw clone, before
+    anything is ever built or executed. Best-effort; never raises. A
+    critical/verified secret here is a hard-fail signal upstream."""
+    if not shutil.which("docker"):
+        return {"ran": False, "reason": "docker not installed"}
+    try:
+        res = subprocess.run(
+            ["docker", "run", "--rm", "-v", f"{root}:/repo:ro",
+             "ghcr.io/betterleaks/betterleaks:latest", "dir", "/repo"],
+            capture_output=True, text=True, timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        return {"ran": False, "reason": "timeout"}
+    except Exception as e:
+        return {"ran": False, "reason": f"{type(e).__name__}: {e}"}
+    out = res.stdout + res.stderr
+    verified = out.count("Verified: true") + out.count("verified: true")
+    total = out.count("┌─")
+    return {"ran": True, "total": total, "verified": verified}
+
+
+def _malware_signature_scan(root):
+    """Cheap, targeted static red flags beyond nuclei's generic templates:
+    known malicious-package patterns, obfuscated payload droppers, reverse
+    shells. Not a substitute for the full OKF chain (Strix/Metasploit run
+    later against a *booted* instance) -- this is the pre-execution gate,
+    so it only ever reads source text, never runs anything from the repo."""
+    patterns = {
+        "reverse-shell": r"(nc\s+-e|/bin/sh\s+-i|bash\s+-i\s+>&|socket\.socket\(.*SOCK_STREAM.*\).*connect\(.*\))",
+        "obfuscated-eval": r"eval\(\s*(atob|base64|Buffer\.from)\(",
+        "crypto-miner": r"(stratum\+tcp://|xmrig|minerd)",
+        "self-modifying-install-hook": r"(postinstall|preinstall)\"\s*:\s*\".*(curl|wget|eval)",
+        "credential-exfil": r"(webhook\.site|requestbin|ngrok\.io)/[a-zA-Z0-9]{6,}",
+    }
+    hits = []
+    for dirpath, _dirs, files in os.walk(root):
+        if "/.git" in dirpath:
+            continue
+        for fn in files:
+            if not fn.endswith((".py", ".js", ".ts", ".sh", ".json", ".rs", ".go")):
+                continue
+            fp = os.path.join(dirpath, fn)
+            try:
+                text = Path(fp).read_text(errors="ignore")[:200_000]
+            except Exception:
+                continue
+            for label, pat in patterns.items():
+                if re.search(pat, text, re.IGNORECASE):
+                    hits.append({"signal": label, "file": os.path.relpath(fp, root)})
+                    if len(hits) >= 25:
+                        return hits
+    return hits
+
+
+def _security_prescan(root):
+    """Mandatory Stage 0.5: runs on the raw clone before anything is ever
+    built or executed. Hard-fail (never soft-fallback) on any verified
+    secret, malware signature, or nuclei-critical finding -- this is the one
+    gate the pipeline cannot proceed past, since everything downstream
+    (boot + discovery) means running the repo's own code."""
+    betterleaks = _betterleaks_scan(root)
+    nuclei = _nuclei_scan(root)
+    malware_hits = _malware_signature_scan(root)
+    reasons = []
+    if betterleaks.get("verified", 0) > 0:
+        reasons.append(f"betterleaks found {betterleaks['verified']} verified secret(s)")
+    if nuclei.get("critical", 0) > 0:
+        reasons.append(f"nuclei found {nuclei['critical']} critical finding(s)")
+    if malware_hits:
+        signals = sorted({h["signal"] for h in malware_hits})
+        reasons.append(f"malware signature(s) detected: {', '.join(signals)}")
+    return {
+        "betterleaks": betterleaks,
+        "nuclei": nuclei,
+        "malware_signatures": malware_hits,
+        "hard_fail": bool(reasons),
+        "reasons": reasons,
+    }
+
+
 def _nuclei_scan(root):
     """Run nuclei's native file templates over the repo to find secrets, keys,
     and misconfigs. No docker, no HTTP target. Best-effort; never raises."""
@@ -303,6 +384,19 @@ def main():
                 _fail("clone failed", detail=res.stderr.strip()[:500])
 
         name = _slug_from_url(target) if not os.path.isdir(target) else Path(root).name.lower()
+
+        # Stage 0.5: mandatory pre-execution security scan. Runs before any
+        # further processing, on the raw clone, before anything from this
+        # repo is ever built or executed.
+        security_prescan = _security_prescan(root)
+        if security_prescan["hard_fail"]:
+            if tmp and os.path.isdir(tmp):
+                shutil.rmtree(tmp, ignore_errors=True)
+            _emit({
+                "ok": False,
+                "error": "security prescan hard-failed: " + "; ".join(security_prescan["reasons"]),
+                "security_prescan": security_prescan,
+            })
 
         readme_path = _find(root, ["README.md", "README.rst", "README.txt", "README"])
         readme = _read_text(readme_path) if readme_path else ""
@@ -395,16 +489,24 @@ def main():
             "missing_agent_surfaces": missing,
             "risk_signals": _risk_signals(readme, root),
             "nuclei": _nuclei_scan(root),
+            "security_prescan": security_prescan,
+            "clone_path": root,
             "language": _detect_language(root),
             "notes": notes,
         })
     except subprocess.TimeoutExpired:
-        _fail("clone or scan timed out")
-    except Exception as e:  # never crash the Rust caller
-        _fail(f"analyzer exception: {type(e).__name__}: {e}")
-    finally:
         if tmp and os.path.isdir(tmp):
             shutil.rmtree(tmp, ignore_errors=True)
+        _fail("clone or scan timed out")
+    except Exception as e:  # never crash the Rust caller
+        if tmp and os.path.isdir(tmp):
+            shutil.rmtree(tmp, ignore_errors=True)
+        _fail(f"analyzer exception: {type(e).__name__}: {e}")
+    # NOTE: on success (or a security-prescan hard-fail, which also cleans up
+    # inline before emitting) the clone under tmp/repo is deliberately left
+    # on disk -- Stage 1c (boot_and_discover.py) needs the real checkout to
+    # boot the app. Caller (skillforge.rs) owns cleanup after the pipeline
+    # finishes with this run.
 
 
 if __name__ == "__main__":

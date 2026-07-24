@@ -24,3 +24,4 @@ __pycache__
 .venv/
 omokoda-simulation/tools/__pycache__/
 .omokoda/
+omokoda-core/skills.forged.json

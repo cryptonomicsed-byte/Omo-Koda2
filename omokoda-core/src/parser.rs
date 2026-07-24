@@ -99,6 +99,7 @@ const VALID_SLASH_COMMANDS: &[&str] = &[
     "clear",
     "think",
     "cloak",
+    "buzz",
 ];
 
 fn contains_blocked_identifiers(input: &str) -> bool {

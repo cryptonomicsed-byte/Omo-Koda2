@@ -1,5 +1,6 @@
 pub mod ase;
 pub mod bipon39;
+pub mod buzz;
 pub mod cloak;
 pub mod dna;
 pub mod duress;

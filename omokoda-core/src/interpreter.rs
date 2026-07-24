@@ -2685,6 +2685,21 @@ impl Steward {
                         )),
                     })
                 }
+                "buzz" => {
+                    let agent = self.ensure_born()?;
+                    let private_data = agent.private_data.as_ref().ok_or_else(|| {
+                        "private memory is sealed; /unlock <password> first".to_string()
+                    })?;
+                    let npub = crate::identity::buzz::buzz_npub(private_data.odu_seed.as_bytes())?;
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(format!(
+                            "Buzz/Nostr identity (npub, safe to publish/register): {}\n\nDerived deterministically from this agent's own Odù seed (separate secp256k1 keyspace from its Ed25519/Sui identity) -- re-derivable any time from the same sealed seed, nothing new stored.",
+                            npub
+                        )),
+                    })
+                }
                 _ => Err(format!(
                     "Slash command '/{}' not yet implemented in Steward",
                     command

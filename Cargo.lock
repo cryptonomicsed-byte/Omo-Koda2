@@ -3021,6 +3021,7 @@ dependencies = [
  "async-trait",
  "axum",
  "bipon39",
+ "blake2",
  "blake3",
  "chacha20poly1305",
  "chrono",

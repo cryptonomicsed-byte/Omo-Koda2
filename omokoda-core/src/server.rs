@@ -157,6 +157,11 @@ pub struct StatusResponse {
     /// unminted -- OMOKODA_SUI_REGISTRY unset, born before this existed,
     /// or the chain call failed at the time.
     pub onchain_nft_id: Option<String>,
+    /// This agent's real Sui address (blake2b256(0x00 || pubkey), SIP-6) --
+    /// where funds/payments for this agent's work actually go, distinct from
+    /// the on-chain NFT object id above and from the raw pubkey hex used
+    /// only for identity-proof signatures elsewhere.
+    pub sui_address: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -413,6 +418,7 @@ async fn status_handler(
                 tier: agent.map(|a| a.tier()),
                 synapse: agent.map(|a| a.synapse()),
                 onchain_nft_id: agent.and_then(|a| a.onchain_nft_id().map(|s| s.to_string())),
+                sui_address: agent.map(|a| a.sui_address()),
             }
         }
         Some(id) => {
@@ -426,6 +432,7 @@ async fn status_handler(
                 tier: agent.map(|a| a.tier()),
                 synapse: agent.map(|a| a.synapse()),
                 onchain_nft_id: agent.and_then(|a| a.onchain_nft_id().map(|s| s.to_string())),
+                sui_address: agent.map(|a| a.sui_address()),
             }
         }
     };
@@ -648,6 +655,13 @@ fn sovereign_event_to_json(ev: &crate::bus::SovereignEvent) -> serde_json::Value
 /// content-addressed graph. Optional query params:
 ///   `?describe=<canonical_id>`      — one node plus its incident edges
 ///   `?walk=<canonical_id>&depth=<n>` — BFS from a node (default depth 1)
+///   `?tags=<a>,<b>&relations=<r1>`  — permission-scoped subgraph (Koodu's
+///                                     `filterSnapshot` grant shape): only
+///                                     nodes carrying at least one listed tag
+///                                     and edges whose relation is listed;
+///                                     omit either to leave that axis
+///                                     unrestricted. Without this param the
+///                                     full graph is served, unchanged.
 /// `x-agent-id` header selects a guest agent; otherwise the owner is used.
 async fn get_glyph_memory(
     State(state): State<AppState>,
@@ -684,7 +698,67 @@ async fn get_glyph_memory(
             Err(e) => Json(serde_json::json!({ "error": e.to_string() })),
         };
     }
+    if query.contains_key("tags") || query.contains_key("relations") {
+        let allow_tags: Vec<String> = query
+            .get("tags")
+            .map(|s| s.split(',').filter(|t| !t.is_empty()).map(String::from).collect())
+            .unwrap_or_default();
+        let relations: Option<Vec<String>> = query
+            .get("relations")
+            .map(|s| s.split(',').filter(|r| !r.is_empty()).map(String::from).collect());
+        let filtered = crate::memory::glyph_memory::filter_snapshot(
+            &graph,
+            &allow_tags,
+            relations.as_deref(),
+        );
+        return Json(filtered.to_json());
+    }
     Json(graph.to_json())
+}
+
+/// GET /v1/vault/glyph/anchor — compute (and, if configured, on-chain anchor)
+/// a Merkle root over the agent's current GlyphGraph: a durable, content-
+/// addressed proof of "exactly these memories existed at this time," never
+/// the memories themselves. The root is always computed and returned even
+/// when `OMOKODA_GLYPH_ANCHOR_PACKAGE` is unset -- only the on-chain receipt
+/// is skipped in that case (see `onchain::record_glyph_anchor`).
+/// `x-agent-id` selects a guest agent; otherwise the owner is used.
+async fn get_glyph_anchor(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    let requested_id = headers.get("x-agent-id").and_then(|v| v.to_str().ok());
+    let (graph, owner) = if let Some(id) = requested_id {
+        let guests = state.guests.lock().await;
+        (
+            guests.get(id).and_then(|s| s.agent_core()).map(|a| a.glyph_memory()),
+            id.to_string(),
+        )
+    } else {
+        let steward = state.steward.lock().await;
+        (
+            steward.agent_core().map(|a| a.glyph_memory()),
+            steward
+                .agent_core()
+                .map(|a| a.id().as_str().to_string())
+                .unwrap_or_default(),
+        )
+    };
+    let Some(graph) = graph else {
+        return Json(serde_json::json!({ "error": "no agent" }));
+    };
+    let entries = crate::memory::glyph_memory::anchor_entries(&graph);
+    let node_count = entries.len() as u64;
+    let root = match larql_glyph::merkle_root(&entries) {
+        Ok(r) => r,
+        Err(e) => return Json(serde_json::json!({ "error": e.to_string() })),
+    };
+    let onchain_receipt = crate::onchain::record_glyph_anchor(&root, node_count, &owner).await;
+    Json(serde_json::json!({
+        "merkle_root": root,
+        "node_count": node_count,
+        "onchain_receipt": onchain_receipt,
+    }))
 }
 
 /// POST /v1/vault/glyph/merge — agent-to-agent memory exchange. Body is another
@@ -736,6 +810,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/v1/vault/galaxy", get(get_galaxy_data))
         .route("/v1/vault/glyph", get(get_glyph_memory))
         .route("/v1/vault/glyph/merge", post(post_glyph_merge))
+        .route("/v1/vault/glyph/anchor", get(get_glyph_anchor))
         .route("/v1/vault/search", get(search_vault))
         .route("/v1/vault/enable", post(post_vault_enable))
         .route("/v1/vault/knowledge", post(post_vault_knowledge))

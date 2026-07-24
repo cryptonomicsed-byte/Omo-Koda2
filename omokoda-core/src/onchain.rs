@@ -337,6 +337,92 @@ pub async fn transfer_object(object_id: &str, to_address: &str) -> bool {
     }
 }
 
+// ---------------------------------------------------------------------------
+// GlyphIndex — memory-graph merkle anchoring
+// ---------------------------------------------------------------------------
+
+/// Standalone package for `glyph_anchor::anchor::record(merkle_root: vector<u8>,
+/// node_count: u64, owner_hash: vector<u8>, timestamp: u64)`. Not yet
+/// published (blocked on testnet gas at the time this was written -- see
+/// `OMOKODA_GLYPH_ANCHOR_PACKAGE` below); until it is, this fails open on the
+/// missing env var exactly like every other on-chain call in this module,
+/// and the caller still gets the real, locally-computed merkle root back --
+/// only the durable on-chain receipt is skipped, never the computation.
+const GLYPH_ANCHOR_PACKAGE_ENV: &str = "OMOKODA_GLYPH_ANCHOR_PACKAGE";
+
+/// Anchor a GlyphIndex memory-graph merkle root on-chain: a durable,
+/// content-addressed (hash-only, no plaintext, no individual memory
+/// contents) proof that "this agent held exactly this set of memories at
+/// this time." Fail-open: `None` if `OMOKODA_GLYPH_ANCHOR_PACKAGE` is unset,
+/// `sui` is unavailable, or the call fails -- anchoring is a durability
+/// nice-to-have, never a dependency for the graph itself to work (the
+/// caller already has the root from `larql_glyph::merkle_root` regardless).
+pub async fn record_glyph_anchor(
+    merkle_root_hex: &str,
+    node_count: u64,
+    owner: &str,
+) -> Option<String> {
+    let package = std::env::var(GLYPH_ANCHOR_PACKAGE_ENV).ok()?;
+    let gas_budget =
+        std::env::var("OMOKODA_SUI_GAS_BUDGET").unwrap_or_else(|_| DEFAULT_GAS_BUDGET.to_string());
+
+    let root_bytes = hex::decode(merkle_root_hex).ok()?;
+    let owner_hash = blake3::hash(owner.as_bytes());
+    let to_vec_arg = |bytes: &[u8]| {
+        format!(
+            "[{}]",
+            bytes.iter().map(|b| b.to_string()).collect::<Vec<_>>().join(",")
+        )
+    };
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let output = tokio::process::Command::new("sui")
+        .args([
+            "client",
+            "call",
+            "--package",
+            &package,
+            "--module",
+            "anchor",
+            "--function",
+            "record",
+            "--args",
+            &to_vec_arg(&root_bytes),
+            &node_count.to_string(),
+            &to_vec_arg(owner_hash.as_bytes()),
+            &timestamp.to_string(),
+            "--gas-budget",
+            &gas_budget,
+            "--json",
+        ])
+        .output()
+        .await
+        .ok()?;
+
+    if !output.status.success() {
+        eprintln!(
+            "[onchain] glyph anchor record failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return None;
+    }
+
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    let changes = json.get("objectChanges")?.as_array()?;
+    changes.iter().find_map(|o| {
+        let obj_type = o.get("objectType")?.as_str()?;
+        let change_type = o.get("type")?.as_str()?;
+        if change_type == "created" && obj_type.ends_with("::anchor::AnchorReceipt") {
+            o.get("objectId")?.as_str().map(|s| s.to_string())
+        } else {
+            None
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

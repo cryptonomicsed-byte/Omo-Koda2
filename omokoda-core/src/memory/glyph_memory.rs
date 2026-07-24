@@ -103,6 +103,70 @@ pub fn snapshot_json(dir: &OduDirectory, owner: &str) -> serde_json::Value {
     project(dir, owner).to_json()
 }
 
+/// Permissioned sharing: build a filtered subgraph the same way Koodu's
+/// `glyph-adapter.js::filterSnapshot` does for the Block Mesh (JS/Rust legs
+/// of the same GlyphIndex contract, same grant shape). `allow_tags` empty
+/// means "share every node" (matches Koodu's `allowTags ?? []` default);
+/// `relations` `None` means "share every edge relation". Only nodes/edges
+/// that pass the grant are copied into the returned graph — the source graph
+/// (and this agent's own live projection) is never mutated.
+///
+/// `larql_glyph::GlyphGraph` keeps its `nodes`/`edges` maps private, so this
+/// is built entirely from the public query surface (`select`/`describe`),
+/// same as any other consumer of the crate would have to.
+pub fn filter_snapshot(
+    graph: &GlyphGraph,
+    allow_tags: &[String],
+    relations: Option<&[String]>,
+) -> GlyphGraph {
+    let selected: Vec<&GlyphNode> = if allow_tags.is_empty() {
+        graph.select(|_| true)
+    } else {
+        graph.select(|n| n.tags.iter().any(|t| allow_tags.contains(t)))
+    };
+    let selected_ids: std::collections::BTreeSet<&str> =
+        selected.iter().map(|n| n.canonical_id.as_str()).collect();
+
+    let mut filtered = GlyphGraph::new();
+    for node in &selected {
+        // Safe: every selected node came from a valid graph, so its
+        // canonical_id already passed `insert`'s validation once.
+        let _ = filtered.insert((*node).clone());
+    }
+    for node in &selected {
+        if let Ok(desc) = graph.describe(&node.canonical_id) {
+            for edge in desc.outgoing {
+                let to_included = selected_ids.contains(edge.to.as_str());
+                let relation_allowed =
+                    relations.is_none_or(|allowed| allowed.iter().any(|r| r == &edge.relation));
+                if to_included && relation_allowed {
+                    let _ = filtered.link(&edge.from, &edge.to, &edge.relation);
+                }
+            }
+        }
+    }
+    filtered
+}
+
+/// `(canonical_id, digest)` pairs for every node in the graph, in the exact
+/// shape `larql_glyph::merkle_root` expects. Omo-Koda2 doesn't seal a
+/// separate ciphertext blob (plaintext never leaves the vault at all, see
+/// module docs) -- there is no independent `blob_sha256` to pair with the
+/// canonical id, so the digest is reused as both halves of the leaf. This
+/// still produces a real, anchorable root over "exactly these N memories
+/// existed at this time," which is the actual guarantee anchoring is for.
+pub fn anchor_entries(graph: &GlyphGraph) -> Vec<(String, [u8; 32])> {
+    graph
+        .select(|_| true)
+        .into_iter()
+        .filter_map(|node| {
+            let bytes = hex::decode(&node.canonical_id).ok()?;
+            let digest: [u8; 32] = bytes.try_into().ok()?;
+            Some((node.canonical_id.clone(), digest))
+        })
+        .collect()
+}
+
 // Agent-to-agent memory-graph merge is `larql_glyph::GlyphGraph::merge` (pinned
 // rev 149322e): tags union, earliest `ts` wins, locators never dropped, edges
 // unioned, idempotent. Call it directly on the projected graph — no Ọmọ Kọ́dà
@@ -235,5 +299,78 @@ mod tests {
         assert!(reached
             .iter()
             .any(|n| n.canonical_id == hex::encode(larql_glyph::content_hash("turn two"))));
+    }
+
+    #[test]
+    fn filter_snapshot_scopes_by_tag_and_strips_unshared_edges() {
+        let dir = dir_with(&[
+            ("public thought", "chat/s", "topic:mesh"),
+            ("private thought", "chat/s", "private:wallet"),
+        ]);
+        let graph = project(&dir, "owner");
+        // Unfiltered: two nodes, one "follows" edge between them.
+        assert_eq!(graph.select(|_| true).len(), 2);
+
+        let scoped = filter_snapshot(&graph, &["topic:mesh".to_string()], None);
+        assert_eq!(scoped.select(|_| true).len(), 1, "only the tagged node is shared");
+        let shared_id = hex::encode(larql_glyph::content_hash("public thought"));
+        assert!(scoped.describe(&shared_id).is_ok());
+        let hidden_id = hex::encode(larql_glyph::content_hash("private thought"));
+        assert!(
+            scoped.describe(&hidden_id).is_err(),
+            "untagged node must not cross the grant"
+        );
+        // The follows edge had its other endpoint excluded, so it can't survive.
+        let desc = scoped.describe(&shared_id).unwrap();
+        assert!(desc.outgoing.is_empty() && desc.incoming.is_empty());
+    }
+
+    #[test]
+    fn filter_snapshot_empty_tags_shares_everything() {
+        let dir = dir_with(&[("a", "p", "t1"), ("b", "p", "t2")]);
+        let graph = project(&dir, "owner");
+        let scoped = filter_snapshot(&graph, &[], None);
+        assert_eq!(scoped.select(|_| true).len(), graph.select(|_| true).len());
+    }
+
+    #[test]
+    fn filter_snapshot_relation_grant_excludes_other_relations() {
+        let dir = dir_with(&[("x", "p", "t"), ("y", "p", "t")]);
+        let mut graph = project(&dir, "owner");
+        graph.infer_shared_odu(); // may add a shared-odu edge alongside follows
+        let follows_only = filter_snapshot(&graph, &[], Some(&["follows".to_string()]));
+        let x = hex::encode(larql_glyph::content_hash("x"));
+        let desc = follows_only.describe(&x).unwrap();
+        assert!(
+            desc.outgoing.iter().chain(desc.incoming.iter()).all(|e| e.relation == "follows"),
+            "only the follows relation should survive the grant"
+        );
+    }
+
+    #[test]
+    fn anchor_entries_round_trip_into_a_real_merkle_root() {
+        let dir = dir_with(&[("m1", "p", "t"), ("m2", "p", "t")]);
+        let graph = project(&dir, "owner");
+        let entries = anchor_entries(&graph);
+        assert_eq!(entries.len(), 2);
+        for (id, digest) in &entries {
+            assert_eq!(id, &hex::encode(digest), "digest must decode back to its own id");
+        }
+        let root = larql_glyph::merkle_root(&entries).unwrap();
+        assert_ne!(root, larql_glyph::GIX1_EMPTY_ROOT);
+        // Deterministic: same graph, same root.
+        assert_eq!(root, larql_glyph::merkle_root(&anchor_entries(&graph)).unwrap());
+    }
+
+    #[test]
+    fn anchor_entries_empty_graph_yields_frozen_empty_root() {
+        let dir = OduDirectory::new();
+        let graph = project(&dir, "owner");
+        let entries = anchor_entries(&graph);
+        assert!(entries.is_empty());
+        assert_eq!(
+            larql_glyph::merkle_root(&entries).unwrap(),
+            larql_glyph::GIX1_EMPTY_ROOT
+        );
     }
 }

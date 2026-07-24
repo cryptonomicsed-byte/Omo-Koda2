@@ -1,6 +1,24 @@
+use blake2::digest::consts::U32;
+use blake2::{Blake2b, Digest};
 use ed25519_dalek::SigningKey;
 use hmac::{Hmac, Mac};
 use sha2::Sha512;
+
+type Blake2b256 = Blake2b<U32>;
+
+/// Derive the real Sui address from an Ed25519 public key: `0x` + hex of
+/// `blake2b256(flag_byte || pubkey)`, `flag_byte = 0x00` for the Ed25519
+/// signature scheme -- Sui's actual on-chain address format (SIP-6), not the
+/// raw public key hex that was published here before. Ported from
+/// vanity-cloakseed's `chainCrypto.ts::deriveSuiAddress`, verified against
+/// the same algorithm.
+pub fn sui_address_from_pubkey(pubkey: &[u8; 32]) -> String {
+    let mut hasher = Blake2b256::new();
+    hasher.update([0x00]);
+    hasher.update(pubkey);
+    let digest = hasher.finalize();
+    format!("0x{}", hex::encode(digest))
+}
 
 pub struct Wallet;
 
@@ -69,5 +87,45 @@ impl Wallet {
         il.copy_from_slice(&intermediate[..32]);
         ir.copy_from_slice(&intermediate[32..]);
         Ok((il, ir))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Real vector: `sui keytool generate ed25519 --json` on this box printed
+    /// suiAddress = 0x498724...71ba for peerId (raw pubkey hex)
+    /// ff8790...fa32c -- independently verified with Python's hashlib
+    /// (blake2b digest_size=32) before trusting it here. Not a synthetic
+    /// vector; the actual `sui` binary computed this address.
+    #[test]
+    fn sui_address_matches_the_real_sui_cli() {
+        let pubkey_hex = "ff879040047ab33258afade9e5505defc37e4d5dac2d770b702a526d40bfa32c";
+        let pubkey: [u8; 32] = hex::decode(pubkey_hex).unwrap().try_into().unwrap();
+        let address = sui_address_from_pubkey(&pubkey);
+        assert_eq!(
+            address,
+            "0x498724481844b13ea6f8277c65af18774e03d5b81b6d40d4258cd8f12b2871ba"
+        );
+    }
+
+    #[test]
+    fn sui_address_is_deterministic_and_well_formed() {
+        let pubkey = [7u8; 32];
+        let a = sui_address_from_pubkey(&pubkey);
+        let b = sui_address_from_pubkey(&pubkey);
+        assert_eq!(a, b);
+        assert!(a.starts_with("0x"));
+        assert_eq!(a.len(), 66, "0x + 64 hex chars (32-byte digest)");
+    }
+
+    #[test]
+    fn sui_address_differs_from_the_raw_pubkey_hex() {
+        // The bug this replaces: publishing raw pubkey hex as if it were the
+        // address. They must never be equal.
+        let pubkey = [3u8; 32];
+        let address = sui_address_from_pubkey(&pubkey);
+        assert_ne!(address, format!("0x{}", hex::encode(pubkey)));
     }
 }

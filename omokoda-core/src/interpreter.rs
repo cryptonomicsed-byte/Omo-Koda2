@@ -400,6 +400,14 @@ impl AgentCore {
         &self.snapshot.public_key
     }
 
+    /// This agent's real Sui address: `0x` + blake2b256(0x00 || pubkey),
+    /// the actual on-chain address format (SIP-6) -- not the raw public key
+    /// hex `reg_pubkey` used to publish elsewhere, which is a different
+    /// value entirely and was never a valid, fundable Sui address.
+    pub fn sui_address(&self) -> String {
+        crate::identity::wallet::sui_address_from_pubkey(&self.snapshot.public_key)
+    }
+
     pub fn vantage_key(&self) -> Option<&str> {
         self.snapshot.vantage_key.as_deref()
     }
@@ -2655,6 +2663,26 @@ impl Steward {
                         receipt: None,
                         private_mode: false,
                         tool_output: Some(output),
+                    })
+                }
+                "cloak" => {
+                    let agent = self.ensure_born()?;
+                    let private_data = agent.private_data.as_ref().ok_or_else(|| {
+                        "private memory is sealed; /unlock <password> first".to_string()
+                    })?;
+                    let cloak = crate::identity::cloak::CloakSeed::from_seed(
+                        private_data.odu_seed.as_bytes(),
+                    );
+                    let real_words: Vec<&str> =
+                        private_data.odu_identity.mnemonic.split_whitespace().collect();
+                    let cloaked = cloak.encode_phrase(&real_words)?;
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(format!(
+                            "Cloak phrase (cover words -- meaningless without your own cipher, safe to write down): {}\n\nThis is NOT the real recovery phrase. It only decodes back inside this agent's own process, from its own sealed seed -- never share it expecting someone else to reconstruct the real phrase from it alone.",
+                            cloaked.join(" ")
+                        )),
                     })
                 }
                 _ => Err(format!(

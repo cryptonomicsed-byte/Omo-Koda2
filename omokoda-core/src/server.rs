@@ -338,46 +338,47 @@ fn mark_external_activity() {
     LAST_EXTERNAL_ACTIVITY.store(now, Ordering::Relaxed);
 }
 
+/// Slash commands (/memory, /publish, /seal, ...) previously never worked
+/// over HTTP -- callers always built Statement::Think directly from the
+/// prompt string, never calling the parser, so a prompt like "/memory
+/// DESCRIBE reflections" was sent to the LLM as literal think content
+/// instead of being recognized. Route a prompt that genuinely parses as a
+/// slash command through the real grammar instead, matching what the
+/// CLI/REPL already does; fall back to the direct Think construction on
+/// any parse failure (or a prompt not starting with '/') so ordinary
+/// prompts -- including ones that merely mention a path or discuss
+/// "/something" in prose -- are completely unaffected. Shared by
+/// think_handler and cognition_handler so the two never drift.
+fn prompt_to_statement(
+    prompt: String,
+    private: bool,
+    agentic: bool,
+    max_turns: Option<u32>,
+) -> Statement {
+    if prompt.trim_start().starts_with('/') {
+        match crate::parser::parse(&prompt) {
+            Ok(mut stmts) if stmts.len() == 1 => return stmts.remove(0),
+            _ => {}
+        }
+    }
+    Statement::Think {
+        prompt,
+        private,
+        modifiers: ThinkModifiers {
+            loop_enabled: agentic,
+            max_iterations: max_turns,
+            ..ThinkModifiers::default()
+        },
+    }
+}
+
 async fn think_handler(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
     Json(req): Json<ThinkRequest>,
 ) -> impl IntoResponse {
     mark_external_activity();
-    // Slash commands (/memory, /publish, /seal, ...) previously never worked
-    // over HTTP -- this handler always built Statement::Think directly from
-    // the JSON body, never calling the parser, so a prompt like
-    // "/memory DESCRIBE reflections" was sent to the LLM as literal think
-    // content instead of being recognized. Route a prompt that genuinely
-    // parses as a slash command through the real grammar instead, matching
-    // what the CLI/REPL already does; fall back to the direct Think
-    // construction on any parse failure (or a prompt not starting with
-    // '/') so ordinary prompts -- including ones that merely mention a
-    // path or discuss "/something" in prose -- are completely unaffected.
-    let stmt = if req.prompt.trim_start().starts_with('/') {
-        match crate::parser::parse(&req.prompt) {
-            Ok(mut stmts) if stmts.len() == 1 => stmts.remove(0),
-            _ => Statement::Think {
-                prompt: req.prompt,
-                private: req.private,
-                modifiers: ThinkModifiers {
-                    loop_enabled: req.agentic,
-                    max_iterations: req.max_turns,
-                    ..ThinkModifiers::default()
-                },
-            },
-        }
-    } else {
-        Statement::Think {
-            prompt: req.prompt,
-            private: req.private,
-            modifiers: ThinkModifiers {
-                loop_enabled: req.agentic,
-                max_iterations: req.max_turns,
-                ..ThinkModifiers::default()
-            },
-        }
-    };
+    let stmt = prompt_to_statement(req.prompt, req.private, req.agentic, req.max_turns);
     match dispatch_for_request(&state, &headers, stmt).await {
         Ok(result) => Json(ExecutionResponse::from(result)).into_response(),
         Err(resp) => resp,
@@ -441,6 +442,103 @@ async fn status_handler(
 
 async fn health_handler() -> Json<HealthResponse> {
     Json(HealthResponse { ok: true })
+}
+
+// ---------------------------------------------------------------------------
+// Vantage cognition webhook -- POST /v1/cognition
+// ---------------------------------------------------------------------------
+//
+// The Vantage-side contract (agreed 2026-07-24, cross-session coordination
+// via the shared Vantage vault + herdr): agents.cognition_url on their side
+// points here; their copilot's _dispatch_chat() calls this endpoint instead
+// of (or in addition to) the existing regex intent router, to get a real
+// reply from the actual agent instead of a canned/pattern-matched one.
+//
+// Bearer-token gated (OMOKODA_COGNITION_TOKEN) -- this is the one HTTP
+// surface in this kernel meant to be called by a wholly external system
+// over the open internet, so it gets its own auth check rather than relying
+// on the same trust boundary as the rest of /v1 (which assumes a co-located
+// or otherwise trusted caller). Fails closed: unset token or a mismatch is
+// a 401, never a silent pass-through.
+//
+// v1 scope, deliberately: routes every call to the sovereign owner steward
+// (empty X-Agent-Id, same as an unauthenticated /v1/think call) --
+// `agent_name` is accepted and echoed for Vantage's own logging/routing but
+// not yet used to select a specific guest agent on this side. Multi-agent
+// routing (agent_name -> a specific born guest) is a real follow-up once
+// there's more than one Omo-Koda2 agent Vantage needs to reach this way.
+
+#[derive(Deserialize)]
+pub struct CognitionRequest {
+    pub agent_name: String,
+    pub text: String,
+    #[serde(default)]
+    pub human_id: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct CognitionResponse {
+    pub reply: String,
+}
+
+fn cognition_token() -> Option<String> {
+    std::env::var("OMOKODA_COGNITION_TOKEN")
+        .ok()
+        .filter(|v| !v.is_empty())
+}
+
+async fn cognition_handler(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<CognitionRequest>,
+) -> impl IntoResponse {
+    use axum::http::StatusCode;
+
+    let Some(expected) = cognition_token() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "cognition webhook not configured (OMOKODA_COGNITION_TOKEN unset)"
+            })),
+        )
+            .into_response();
+    };
+    let presented = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "));
+    if presented != Some(expected.as_str()) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({"error": "invalid or missing bearer token"})),
+        )
+            .into_response();
+    }
+
+    mark_external_activity();
+
+    // Fold human_id into the prompt as light context (not persisted/tracked
+    // beyond this one turn) -- the agent sees who it's replying to, same as
+    // it would from a Buzz channel @mention carrying a real npub.
+    let prompt = match &req.human_id {
+        Some(human_id) => format!("[from human:{human_id} via Vantage Copilot] {}", req.text),
+        None => req.text,
+    };
+    let stmt = prompt_to_statement(prompt, false, false, None);
+
+    // Empty headers => routes to the sovereign owner steward, same path an
+    // unauthenticated /v1/think call would take (see v1-scope note above).
+    let empty_headers = axum::http::HeaderMap::new();
+    match dispatch_for_request(&state, &empty_headers, stmt).await {
+        Ok(result) => {
+            let reply = result
+                .tool_output
+                .unwrap_or_else(|| "(no reply text)".to_string());
+            let _ = &req.agent_name; // accepted + reserved for future per-agent routing
+            Json(CognitionResponse { reply }).into_response()
+        }
+        Err(resp) => resp,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -798,6 +896,7 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/v1/birth", post(birth_handler))
         .route("/v1/think", post(think_handler))
+        .route("/v1/cognition", post(cognition_handler))
         .route("/v1/act", post(act_handler))
         .route("/v1/events", get(events_handler))
         .route("/v1/status", get(status_handler))

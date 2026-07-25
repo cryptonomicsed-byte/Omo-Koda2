@@ -2701,6 +2701,25 @@ impl Steward {
                         )),
                     })
                 }
+                "buzz-key" => {
+                    // Exposes the secret half -- only for wiring an operator's
+                    // own buzz-acp harness with BUZZ_PRIVATE_KEY. Same unlock
+                    // gate as /buzz; never surfaced anywhere else.
+                    let agent = self.ensure_born()?;
+                    let private_data = agent.private_data.as_ref().ok_or_else(|| {
+                        "private memory is sealed; /unlock <password> first".to_string()
+                    })?;
+                    let privkey_hex =
+                        crate::identity::buzz::buzz_privkey_hex(private_data.odu_seed.as_bytes())?;
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(format!(
+                            "Buzz/Nostr secret key (hex -- for BUZZ_PRIVATE_KEY in a buzz-acp harness you control, never share otherwise): {}",
+                            privkey_hex
+                        )),
+                    })
+                }
                 "buzz-join" => {
                     let agent = self.ensure_born()?;
                     let private_data = agent.private_data.as_ref().ok_or_else(|| {
@@ -2712,16 +2731,30 @@ impl Steward {
                     let raw = arg.ok_or_else(|| {
                         "buzz-join requires '<group_id> <message...>'".to_string()
                     })?;
-                    let (group_id, message) = raw.split_once(' ').ok_or_else(|| {
+                    let (group_id, rest) = raw.split_once(' ').ok_or_else(|| {
                         "buzz-join requires '<group_id> <message...>'".to_string()
                     })?;
+                    // Optional leading "@<64-hex-pubkey>" turns into a real
+                    // NIP-01 `p` tag mention -- a literal "@name" in the text
+                    // alone won't trigger a mention-based agent's filter.
+                    let (mention, message) = match rest.split_once(' ') {
+                        Some((maybe_at, tail))
+                            if maybe_at.len() == 65
+                                && maybe_at.starts_with('@')
+                                && maybe_at[1..].chars().all(|c| c.is_ascii_hexdigit()) =>
+                        {
+                            (Some(maybe_at[1..].to_string()), tail)
+                        }
+                        _ => (None, rest),
+                    };
                     let relay_url = std::env::var("BUZZ_RELAY_URL")
                         .unwrap_or_else(|_| "ws://localhost:3000".to_string());
-                    let (my_id, seen) = crate::identity::buzz_relay::join_and_chat(
+                    let (my_id, seen) = crate::identity::buzz_relay::join_and_chat_mentioning(
                         &relay_url,
                         keys,
                         group_id,
                         message,
+                        mention.as_deref(),
                         8,
                     )
                     .await?;

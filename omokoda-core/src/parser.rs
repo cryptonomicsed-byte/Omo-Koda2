@@ -101,6 +101,7 @@ const VALID_SLASH_COMMANDS: &[&str] = &[
     "cloak",
     "buzz",
     "buzz-join",
+    "buzz-key",
 ];
 
 fn contains_blocked_identifiers(input: &str) -> bool {

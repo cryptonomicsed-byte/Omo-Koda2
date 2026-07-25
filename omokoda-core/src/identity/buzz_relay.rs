@@ -20,6 +20,21 @@ pub async fn join_and_chat(
     message: &str,
     listen_secs: u64,
 ) -> Result<(EventId, Vec<Event>), String> {
+    join_and_chat_mentioning(relay_url, keys, group_id, message, None, listen_secs).await
+}
+
+/// Same as `join_and_chat`, but if `mention_pubkey_hex` is set, tags the
+/// chat event with a real NIP-01 `p` tag -- the thing buzz-acp's mention
+/// subscription actually filters on (a literal "@name" in the text is not
+/// enough to trigger a mention-based agent).
+pub async fn join_and_chat_mentioning(
+    relay_url: &str,
+    keys: Keys,
+    group_id: &str,
+    message: &str,
+    mention_pubkey_hex: Option<&str>,
+    listen_secs: u64,
+) -> Result<(EventId, Vec<Event>), String> {
     let client = Client::new(keys.clone());
     client
         .add_relay(relay_url)
@@ -57,8 +72,13 @@ pub async fn join_and_chat(
         .map_err(|e| format!("subscribe failed: {e}"))?;
 
     // Post our own kind:9 chat message into the group.
-    let chat_event = EventBuilder::new(Kind::Custom(9), message)
-        .tag(Tag::custom(TagKind::SingleLetter(SingleLetterTag::lowercase(Alphabet::H)), [group_id]))
+    let mut builder = EventBuilder::new(Kind::Custom(9), message)
+        .tag(Tag::custom(TagKind::SingleLetter(SingleLetterTag::lowercase(Alphabet::H)), [group_id]));
+    if let Some(pk_hex) = mention_pubkey_hex {
+        let mentioned = PublicKey::from_hex(pk_hex).map_err(|e| format!("bad mention pubkey: {e}"))?;
+        builder = builder.tag(Tag::public_key(mentioned));
+    }
+    let chat_event = builder
         .sign(&keys)
         .await
         .map_err(|e| format!("chat event signing failed: {e}"))?;

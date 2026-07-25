@@ -157,9 +157,20 @@ async fn handle_message(state: &AcpState, msg: Value, stdout: &std::io::Stdout) 
                         "session/update",
                         json!({
                             "sessionId": session_id,
-                            "update": { "sessionUpdate": "agent_message_chunk", "content": { "type": "text", "text": reply } }
+                            "update": { "sessionUpdate": "agent_message_chunk", "content": { "type": "text", "text": reply.clone() } }
                         }),
                     );
+                    // agent_message_chunk alone is NOT published to Buzz by
+                    // the harness -- buzz-acp only logs it. Real agents
+                    // (goose/codex/claude-code) publish replies themselves
+                    // via `buzz messages send`, using their own shell tool.
+                    // We have no tool loop, so we shell out to the same CLI
+                    // directly here. Found live 2026-07-25: without this,
+                    // agent_returned=ok fires but nothing ever reaches the
+                    // relay -- a silent gap, not an error.
+                    if let Err(e) = publish_to_buzz(&reply).await {
+                        eprintln!("omokoda-acp: buzz-cli publish failed (reply still returned via ACP): {e}");
+                    }
                     write_response(stdout, id, json!({ "stopReason": "end_turn" }));
                 }
                 Err(e) => {
@@ -218,4 +229,33 @@ async fn call_cognition(state: &AcpState, text: &str) -> Result<String, String> 
         .and_then(|r| r.as_str())
         .map(|s| s.to_string())
         .ok_or_else(|| "no 'reply' field in kernel response".to_string())
+}
+
+/// Actually publish `content` to Buzz via `buzz messages send`. Reuses
+/// BUZZ_RELAY_URL / BUZZ_PRIVATE_KEY from our own environment (inherited
+/// from buzz-acp, which set them when it spawned us -- same identity that
+/// joined the channel). Targets the first channel in BUZZ_ACP_CHANNELS
+/// (single-channel v1 scope, matching /v1/cognition's single-agent scope).
+async fn publish_to_buzz(content: &str) -> Result<(), String> {
+    let channel = std::env::var("BUZZ_ACP_CHANNELS")
+        .ok()
+        .and_then(|s| s.split(',').next().map(|c| c.trim().to_string()))
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "BUZZ_ACP_CHANNELS not set, don't know which channel to reply in".to_string())?;
+    let cli = std::env::var("BUZZ_CLI_PATH").unwrap_or_else(|_| "buzz".to_string());
+
+    let output = tokio::process::Command::new(&cli)
+        .args(["messages", "send", "--channel", &channel, "--content", content])
+        .output()
+        .await
+        .map_err(|e| format!("failed to spawn '{cli}': {e}"))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "buzz messages send exited {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(())
 }

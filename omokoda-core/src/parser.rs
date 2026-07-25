@@ -100,6 +100,7 @@ const VALID_SLASH_COMMANDS: &[&str] = &[
     "think",
     "cloak",
     "buzz",
+    "buzz-join",
 ];
 
 fn contains_blocked_identifiers(input: &str) -> bool {
@@ -208,7 +209,7 @@ fn parse_slash_cmd(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
         // LARQL query (e.g. `VERIFY WHERE entity = "Vantage"`), not a
         // single subcommand token like "sessions list" -- every other
         // slash command's arg fits in one word.
-        let arg = if command == "memory" {
+        let arg = if command == "memory" || command == "buzz-join" {
             let rest = tokens.consume_rest_of_input_with_current_word();
             tokens.pos = tokens.input.len(); // consumes the rest of the line, like the skill-slash path below
             (!rest.is_empty()).then_some(rest)

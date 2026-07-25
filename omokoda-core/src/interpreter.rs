@@ -2691,13 +2691,56 @@ impl Steward {
                         "private memory is sealed; /unlock <password> first".to_string()
                     })?;
                     let npub = crate::identity::buzz::buzz_npub(private_data.odu_seed.as_bytes())?;
+                    let pubkey_hex = crate::identity::buzz::buzz_pubkey_hex(private_data.odu_seed.as_bytes())?;
                     Ok(ExecutionResult {
                         receipt: None,
                         private_mode: false,
                         tool_output: Some(format!(
-                            "Buzz/Nostr identity (npub, safe to publish/register): {}\n\nDerived deterministically from this agent's own Odù seed (separate secp256k1 keyspace from its Ed25519/Sui identity) -- re-derivable any time from the same sealed seed, nothing new stored.",
-                            npub
+                            "Buzz/Nostr identity (npub, safe to publish/register): {}\nRaw hex pubkey (for relay config, e.g. RELAY_OWNER_PUBKEY): {}\n\nDerived deterministically from this agent's own Odù seed (separate secp256k1 keyspace from its Ed25519/Sui identity) -- re-derivable any time from the same sealed seed, nothing new stored.",
+                            npub, pubkey_hex
                         )),
+                    })
+                }
+                "buzz-join" => {
+                    let agent = self.ensure_born()?;
+                    let private_data = agent.private_data.as_ref().ok_or_else(|| {
+                        "private memory is sealed; /unlock <password> first".to_string()
+                    })?;
+                    let keys = crate::identity::buzz::derive_buzz_keys(
+                        private_data.odu_seed.as_bytes(),
+                    )?;
+                    let raw = arg.ok_or_else(|| {
+                        "buzz-join requires '<group_id> <message...>'".to_string()
+                    })?;
+                    let (group_id, message) = raw.split_once(' ').ok_or_else(|| {
+                        "buzz-join requires '<group_id> <message...>'".to_string()
+                    })?;
+                    let relay_url = std::env::var("BUZZ_RELAY_URL")
+                        .unwrap_or_else(|_| "ws://localhost:3000".to_string());
+                    let (my_id, seen) = crate::identity::buzz_relay::join_and_chat(
+                        &relay_url,
+                        keys,
+                        group_id,
+                        message,
+                        8,
+                    )
+                    .await?;
+                    let mut lines = vec![format!(
+                        "Joined buzz group '{}' on {} and posted (event {}).",
+                        group_id, relay_url, my_id
+                    )];
+                    if seen.is_empty() {
+                        lines.push("No other messages seen in the group.".to_string());
+                    } else {
+                        lines.push(format!("{} message(s) seen in the group:", seen.len()));
+                        for e in &seen {
+                            lines.push(format!("  [{}] {}: {}", e.created_at, e.pubkey, e.content));
+                        }
+                    }
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(lines.join("\n")),
                     })
                 }
                 _ => Err(format!(

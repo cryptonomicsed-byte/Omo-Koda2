@@ -34,6 +34,22 @@ pub fn buzz_npub(odu_seed: &[u8]) -> Result<String, String> {
         .map_err(|e| format!("bech32 encoding failed: {e}"))
 }
 
+/// This agent's Buzz pubkey as raw hex (not bech32) -- needed by relay
+/// operators for config (e.g. RELAY_OWNER_PUBKEY), which speak raw hex per
+/// NIP-01, not npub. Never exposes the secret half.
+pub fn buzz_pubkey_hex(odu_seed: &[u8]) -> Result<String, String> {
+    let keys = derive_buzz_keys(odu_seed)?;
+    Ok(keys.public_key().to_hex())
+}
+
+/// This agent's Buzz private key as raw hex -- for feeding into a relay
+/// client (BUZZ_PRIVATE_KEY env var) to actually sign and publish events.
+/// Never logged; caller is responsible for keeping it out of error paths.
+pub fn buzz_privkey_hex(odu_seed: &[u8]) -> Result<String, String> {
+    let keys = derive_buzz_keys(odu_seed)?;
+    Ok(keys.secret_key().to_secret_hex())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -58,6 +74,22 @@ mod tests {
     fn npub_is_well_formed_bech32() {
         let npub = buzz_npub(&[9u8; 32]).unwrap();
         assert!(npub.starts_with("npub1"));
+    }
+
+    #[test]
+    fn pubkey_hex_matches_the_bech32_pubkey() {
+        let seed = [3u8; 32];
+        let keys = derive_buzz_keys(&seed).unwrap();
+        let hex_pk = buzz_pubkey_hex(&seed).unwrap();
+        assert_eq!(hex_pk, keys.public_key().to_hex());
+    }
+
+    #[test]
+    fn privkey_hex_round_trips_into_the_same_public_key() {
+        let seed = [5u8; 32];
+        let sk_hex = buzz_privkey_hex(&seed).unwrap();
+        let reparsed = Keys::parse(&sk_hex).unwrap();
+        assert_eq!(reparsed.public_key(), derive_buzz_keys(&seed).unwrap().public_key());
     }
 
     #[test]

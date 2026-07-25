@@ -3240,6 +3240,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "omokoda-acp"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "omokoda-cli"
 version = "0.1.0"
 dependencies = [

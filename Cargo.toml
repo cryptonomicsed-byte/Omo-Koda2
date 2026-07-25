@@ -4,6 +4,7 @@ members = [
     "omokoda-hermetic",
     "omokoda-mesh",
     "omokoda-cli",
+    "omokoda-acp",
     "zangbeto-stub",
     "nautilus_integration",
     "nist_entropy",

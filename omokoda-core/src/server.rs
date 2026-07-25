@@ -349,13 +349,23 @@ fn mark_external_activity() {
 /// prompts -- including ones that merely mention a path or discuss
 /// "/something" in prose -- are completely unaffected. Shared by
 /// think_handler and cognition_handler so the two never drift.
+/// `trusted` distinguishes a directly authenticated caller (CLI, `/v1/think`
+/// with a real agent key) from text relayed through a lower-privilege bridge
+/// we don't control the other side of (Buzz via omokoda-acp, Vantage
+/// Copilot via `/v1/cognition`). Untrusted input is never parsed as a slash
+/// command -- it can only ever become a plain Think prompt, regardless of
+/// what the text looks like, so a Buzz @mention can't smuggle a real tool
+/// call (fund transfer, /act, etc) through with the sovereign owner's
+/// Allow-mode permissions. See the 2026-07-25 cross-session security finding
+/// this closes.
 fn prompt_to_statement(
     prompt: String,
     private: bool,
     agentic: bool,
     max_turns: Option<u32>,
+    trusted: bool,
 ) -> Statement {
-    if prompt.trim_start().starts_with('/') {
+    if trusted && prompt.trim_start().starts_with('/') {
         match crate::parser::parse(&prompt) {
             Ok(mut stmts) if stmts.len() == 1 => return stmts.remove(0),
             _ => {}
@@ -378,7 +388,7 @@ async fn think_handler(
     Json(req): Json<ThinkRequest>,
 ) -> impl IntoResponse {
     mark_external_activity();
-    let stmt = prompt_to_statement(req.prompt, req.private, req.agentic, req.max_turns);
+    let stmt = prompt_to_statement(req.prompt, req.private, req.agentic, req.max_turns, true);
     match dispatch_for_request(&state, &headers, stmt).await {
         Ok(result) => Json(ExecutionResponse::from(result)).into_response(),
         Err(resp) => resp,
@@ -524,7 +534,10 @@ async fn cognition_handler(
         Some(human_id) => format!("[from human:{human_id} via Vantage Copilot] {}", req.text),
         None => req.text,
     };
-    let stmt = prompt_to_statement(prompt, false, false, None);
+    // untrusted=true: this text arrived via a bridge we don't control the
+    // other end of (Vantage Copilot, or Buzz through omokoda-acp) -- never
+    // parse it as a slash command, only ever a plain Think prompt.
+    let stmt = prompt_to_statement(prompt, false, false, None, false);
 
     // Empty headers => routes to the sovereign owner steward, same path an
     // unauthenticated /v1/think call would take (see v1-scope note above).

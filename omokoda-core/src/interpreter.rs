@@ -2720,6 +2720,52 @@ impl Steward {
                         )),
                     })
                 }
+                "buzz-register" => {
+                    // Self-service onboarding: derive this agent's own
+                    // identity, join it to a group for real, and hand back
+                    // everything an operator needs to stand up a dedicated
+                    // buzz-acp instance for this agent -- the systemd
+                    // provisioning step itself stays operator-run (a
+                    // arbitrary HTTP-reachable agent silently spinning up
+                    // its own root-level daemon is a privilege-escalation
+                    // surface worth keeping a human/operator step around).
+                    let agent = self.ensure_born()?;
+                    let agent_id = agent.id().to_string();
+                    let private_data = agent.private_data.as_ref().ok_or_else(|| {
+                        "private memory is sealed; /unlock <password> first".to_string()
+                    })?;
+                    let group_id = arg.ok_or_else(|| {
+                        "buzz-register requires '<group_id>'".to_string()
+                    })?;
+                    let keys = crate::identity::buzz::derive_buzz_keys(
+                        private_data.odu_seed.as_bytes(),
+                    )?;
+                    let pubkey_hex = keys.public_key().to_hex();
+                    let privkey_hex = keys.secret_key().to_secret_hex();
+                    let relay_url = std::env::var("BUZZ_RELAY_URL")
+                        .unwrap_or_else(|_| "ws://localhost:3000".to_string());
+                    crate::identity::buzz_relay::self_join(&relay_url, keys, &group_id).await?;
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(format!(
+                            "Registered and joined group '{group_id}' on {relay_url} as pubkey {pubkey_hex}.\n\n\
+                            Env block for a dedicated buzz-acp instance (ares-omokoda-buzz-acp@{agent_id}):\n\
+                            BUZZ_RELAY_URL={relay_url}\n\
+                            BUZZ_PRIVATE_KEY={privkey_hex}\n\
+                            BUZZ_ACP_AGENT_COMMAND=/opt/ares/Omo-Koda2/target/release/omokoda-acp\n\
+                            BUZZ_ACP_CHANNELS={group_id}\n\
+                            BUZZ_ACP_RESPOND_TO=anyone\n\
+                            BUZZ_CLI_PATH=/opt/ares/buzz-relay/target/release/buzz\n\
+                            OMOKODA_KERNEL_URL=http://localhost:7777\n\
+                            OMOKODA_AGENT_ID={agent_id}\n\
+                            OMOKODA_AGENT_KEY=<this agent's own X-Agent-Key, from /v1/birth>\n\
+                            OMOKODA_COGNITION_TOKEN=<the kernel's OMOKODA_COGNITION_TOKEN>\n\n\
+                            Hand this to the operator to write as /etc/ares-env/omokoda-buzz-acp-{agent_id}.env \
+                            and run: systemctl enable --now ares-omokoda-buzz-acp@{agent_id}"
+                        )),
+                    })
+                }
                 "buzz-join" => {
                     let agent = self.ensure_born()?;
                     let private_data = agent.private_data.as_ref().ok_or_else(|| {

@@ -8,6 +8,31 @@
 use nostr_sdk::prelude::*;
 use std::time::Duration;
 
+/// Self-join a NIP-29 open group without posting a chat message -- for
+/// /buzz-register, where the point is just to become a real member the
+/// relay/buzz-acp will recognize, not to say anything yet.
+pub async fn self_join(relay_url: &str, keys: Keys, group_id: &str) -> Result<(), String> {
+    let client = Client::new(keys.clone());
+    client
+        .add_relay(relay_url)
+        .await
+        .map_err(|e| format!("add_relay failed: {e}"))?;
+    client.connect().await;
+
+    let join_event = EventBuilder::new(Kind::Custom(9021), "")
+        .tag(Tag::custom(TagKind::SingleLetter(SingleLetterTag::lowercase(Alphabet::H)), [group_id]))
+        .sign(&keys)
+        .await
+        .map_err(|e| format!("join event signing failed: {e}"))?;
+    client
+        .send_event(&join_event)
+        .await
+        .map_err(|e| format!("join send_event failed: {e}"))?;
+
+    client.disconnect().await;
+    Ok(())
+}
+
 /// Join a NIP-29 open group (`group_id`, an `#h` tag value) on `relay_url`
 /// and post one chat message into it, then listen briefly for any other
 /// kind:9 messages already in (or arriving in) that group -- proof this

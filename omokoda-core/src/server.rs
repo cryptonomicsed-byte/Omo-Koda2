@@ -484,6 +484,14 @@ pub struct CognitionRequest {
     pub text: String,
     #[serde(default)]
     pub human_id: Option<String>,
+    // Optional target-agent identity for multi-agent routing (e.g. a
+    // dedicated per-agent omokoda-acp/buzz-acp instance). When absent,
+    // routes to the sovereign owner steward as before -- unchanged
+    // default behavior for Vantage Copilot's existing single-agent call.
+    #[serde(default)]
+    pub agent_id: Option<String>,
+    #[serde(default)]
+    pub agent_key: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -539,10 +547,22 @@ async fn cognition_handler(
     // parse it as a slash command, only ever a plain Think prompt.
     let stmt = prompt_to_statement(prompt, false, false, None, false);
 
-    // Empty headers => routes to the sovereign owner steward, same path an
-    // unauthenticated /v1/think call would take (see v1-scope note above).
-    let empty_headers = axum::http::HeaderMap::new();
-    match dispatch_for_request(&state, &empty_headers, stmt).await {
+    // agent_id/agent_key present => route to that specific guest agent via
+    // the same X-Agent-Id/X-Agent-Key auth dispatch_for_request already
+    // enforces for direct callers. Absent => empty headers, same path an
+    // unauthenticated /v1/think call would take (routes to the sovereign
+    // owner steward, the original single-agent behavior).
+    let mut target_headers = axum::http::HeaderMap::new();
+    if let (Some(agent_id), Some(agent_key)) = (&req.agent_id, &req.agent_key) {
+        if let (Ok(id_val), Ok(key_val)) = (
+            axum::http::HeaderValue::from_str(agent_id),
+            axum::http::HeaderValue::from_str(agent_key),
+        ) {
+            target_headers.insert("x-agent-id", id_val);
+            target_headers.insert("x-agent-key", key_val);
+        }
+    }
+    match dispatch_for_request(&state, &target_headers, stmt).await {
         Ok(result) => {
             let reply = result
                 .tool_output

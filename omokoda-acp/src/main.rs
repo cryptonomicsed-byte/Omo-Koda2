@@ -27,6 +27,12 @@ struct AcpState {
     sessions: Mutex<HashMap<String, Session>>,
     kernel_url: String,
     cognition_token: Option<String>,
+    // Set via OMOKODA_AGENT_ID/OMOKODA_AGENT_KEY when this instance is
+    // dedicated to one specific (non-owner) Omo-Koda2 agent, e.g. spawned
+    // per /buzz-register. Absent => falls back to the original single
+    // sovereign-owner routing.
+    agent_id: Option<String>,
+    agent_key: Option<String>,
     http: reqwest::Client,
 }
 
@@ -44,6 +50,8 @@ async fn main() {
         sessions: Mutex::new(HashMap::new()),
         kernel_url: kernel_url(),
         cognition_token: cognition_token(),
+        agent_id: std::env::var("OMOKODA_AGENT_ID").ok(),
+        agent_key: std::env::var("OMOKODA_AGENT_KEY").ok(),
         http: reqwest::Client::new(),
     };
 
@@ -211,10 +219,15 @@ fn extract_prompt_text(params: &Value) -> String {
 }
 
 async fn call_cognition(state: &AcpState, text: &str) -> Result<String, String> {
+    let mut body = json!({ "agent_name": "buzz-acp", "text": text });
+    if let (Some(id), Some(key)) = (&state.agent_id, &state.agent_key) {
+        body["agent_id"] = json!(id);
+        body["agent_key"] = json!(key);
+    }
     let mut req = state
         .http
         .post(format!("{}/v1/cognition", state.kernel_url))
-        .json(&json!({ "agent_name": "buzz-acp", "text": text }));
+        .json(&body);
     if let Some(token) = &state.cognition_token {
         req = req.bearer_auth(token);
     }

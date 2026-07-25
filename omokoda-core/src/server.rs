@@ -624,7 +624,10 @@ fn sovereign_event_to_json(ev: &crate::bus::SovereignEvent) -> serde_json::Value
         Some(sovereign_event::Event::AgentBorn(e)) => json!({
             "type": "agent_born",
             "dna": e.dna,
-            "mnemonic": e.mnemonic,
+            // NEVER include e.mnemonic here -- it's the real BIP39 recovery
+            // phrase and /v1/events is unauthenticated. Found live 2026-07-25:
+            // it was being serialized in full. Only ever expose whether a
+            // birth happened, never any secret material from it.
             "odu": e.odu,
         }),
         Some(sovereign_event::Event::ThoughtSealed(e)) => json!({
@@ -1256,9 +1259,35 @@ mod multi_agent_tests {
 mod event_json_tests {
     use super::sovereign_event_to_json;
     use crate::bus::events::{
-        sovereign_event::Event, ManifestoClauseProposed, ManifestoClauseRatified, ResonanceScored,
-        SovereignEvent,
+        sovereign_event::Event, AgentBorn, ManifestoClauseProposed, ManifestoClauseRatified,
+        ResonanceScored, SovereignEvent,
     };
+
+    /// Regression lock for a real 2026-07-25 finding: /v1/events is
+    /// unauthenticated, and AgentBorn's real BIP39 recovery mnemonic was
+    /// being serialized into it in full. Never let it come back.
+    #[test]
+    fn agent_born_json_never_includes_the_mnemonic() {
+        let ev = SovereignEvent {
+            event: Some(Event::AgentBorn(AgentBorn {
+                dna: "dna-fingerprint".into(),
+                mnemonic: vec!["abandon".into(), "ability".into(), "able".into()],
+                odu: 7,
+            })),
+        };
+        let j = sovereign_event_to_json(&ev);
+        assert_eq!(j["type"], "agent_born");
+        assert_eq!(j["dna"], "dna-fingerprint");
+        assert_eq!(j["odu"], 7);
+        assert!(
+            j.get("mnemonic").is_none(),
+            "mnemonic must never appear in the public SSE stream: {j}"
+        );
+        assert!(
+            !j.to_string().contains("abandon"),
+            "a real mnemonic word leaked into the serialized event: {j}"
+        );
+    }
 
     #[test]
     fn manifesto_clause_proposed_json_shape() {

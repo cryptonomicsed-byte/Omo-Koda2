@@ -166,6 +166,18 @@ pub struct PrivateSessionData {
     pub odu_seed: OduSeed,
     pub odu_identity: OduIdentity,
     pub private_messages: Vec<ConversationMessage>,
+    /// This agent's Vantage API key -- captured at birth/registration and
+    /// never stored anywhere outside this sealed blob. See
+    /// omokoda-agent-vault-secrets design (2026-07-26).
+    #[serde(default)]
+    pub vantage_api_key: Option<String>,
+    /// Hex-encoded Ed25519 secret key bytes, the same wallet key already
+    /// derivable via Wallet::derive_from_mnemonic -- stored here so it
+    /// never needs to be re-derived through an unsealed mnemonic for
+    /// routine use, and so it lives inside the self-sealed vault like any
+    /// other agent-owned secret.
+    #[serde(default)]
+    pub wallet_private_key_hex: Option<String>,
 }
 
 impl Session {
@@ -234,21 +246,19 @@ impl Session {
     pub fn seal_private(
         &mut self,
         private_data: &PrivateSessionData,
-        odu_seed: &OduSeed,
         password_key: &[u8; 32],
     ) -> Result<(), String> {
-        self.seal_private_with_version(private_data, odu_seed, password_key, 1)
+        self.seal_private_with_version(private_data, password_key, 1)
     }
 
     fn seal_private_with_version(
         &mut self,
         private_data: &PrivateSessionData,
-        odu_seed: &OduSeed,
         password_key: &[u8; 32],
         key_version: u32,
     ) -> Result<(), String> {
         let salt = generate_salt(&self.agent_id, self.birth_timestamp);
-        let mut key = derive_session_key(odu_seed, &salt, password_key, key_version);
+        let mut key = derive_session_key(&salt, password_key, key_version);
 
         let mut json = serde_json::to_string(private_data)
             .map_err(|e| format!("failed to serialize private data: {e}"))?;
@@ -278,7 +288,6 @@ impl Session {
 
     pub fn unseal_private(
         &self,
-        odu_seed: &OduSeed,
         password_key: &[u8; 32],
     ) -> Result<PrivateSessionData, String> {
         let data = self
@@ -286,7 +295,7 @@ impl Session {
             .as_ref()
             .ok_or_else(|| "no encrypted private data found".to_string())?;
 
-        let mut key = derive_session_key(odu_seed, &data.salt, password_key, data.key_version);
+        let mut key = derive_session_key(&data.salt, password_key, data.key_version);
         let cipher = ChaCha20Poly1305::new(&key.into());
         key.zeroize();
         let nonce = Nonce::from_slice(&data.nonce);
@@ -304,18 +313,17 @@ impl Session {
 
     pub fn rotate_key(
         &mut self,
-        odu_seed: &OduSeed,
         old_password_key: &[u8; 32],
         new_password_key: &[u8; 32],
     ) -> Result<(), String> {
-        let private_data = self.unseal_private(odu_seed, old_password_key)?;
+        let private_data = self.unseal_private(old_password_key)?;
         let new_version = self
             .encrypted_private
             .as_ref()
             .map(|d| d.key_version)
             .unwrap_or(0)
             + 1;
-        self.seal_private_with_version(&private_data, odu_seed, new_password_key, new_version)?;
+        self.seal_private_with_version(&private_data, new_password_key, new_version)?;
         Ok(())
     }
 
@@ -444,10 +452,18 @@ pub fn generate_salt(agent_id: &AgentId, birth_timestamp: u64) -> [u8; 16] {
 
 /// Derive the AEAD key with Argon2id using frozen session parameters.
 ///
-/// The Odu seed participates in the KDF salt so ciphertext is bound to the born agent. The
-/// passphrase-derived `password_key` remains the ownership secret and must be zeroized by callers.
+/// Bound to the born agent via `salt` (derived from agent_id + birth_timestamp,
+/// see `generate_salt`) -- never the Odu seed itself. The seed used to also be
+/// mixed into this salt, which meant it had to stay readable in plaintext
+/// outside the sealed blob just so `unseal_private` could be called at all --
+/// a real bug (2026-07-26 finding): it defeated sealing for the seed and
+/// everything derived from it (wallet keys, Buzz identity, etc.), since a
+/// secret that must always be plaintext-readable to unlock its own vault
+/// isn't actually sealed. Salt doesn't need to be secret, only bound to the
+/// agent -- agent_id + birth_timestamp already provides that with no
+/// circularity. The passphrase-derived `password_key` remains the ownership
+/// secret and must be zeroized by callers.
 fn derive_session_key(
-    odu_seed: &OduSeed,
     salt: &[u8; 16],
     password_key: &[u8; 32],
     key_version: u32,
@@ -463,9 +479,8 @@ fn derive_session_key(
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
     let mut okm = [0u8; 32];
 
-    let mut combined_salt = Vec::with_capacity(52);
+    let mut combined_salt = Vec::with_capacity(20);
     combined_salt.extend_from_slice(salt);
-    combined_salt.extend_from_slice(odu_seed.as_bytes());
     combined_salt.extend_from_slice(&key_version.to_be_bytes());
 
     argon2

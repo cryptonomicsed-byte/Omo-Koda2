@@ -505,6 +505,73 @@ fn cognition_token() -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
+// ---------------------------------------------------------------------------
+// Vault secret injection (self-seal-at-birth design, 2026-07-26)
+// ---------------------------------------------------------------------------
+//
+// Lets an external system (Vantage) hand a freshly-issued credential (e.g.
+// its own API key for this agent) straight into the agent's self-sealed
+// vault at the moment of issuance -- never stored human-readable anywhere
+// after that point, on either side. Same shared bearer token as
+// /v1/cognition. Never echoes any secret value back, on success or error.
+
+#[derive(Deserialize)]
+pub struct SealSecretRequest {
+    pub agent_id: String,
+    #[serde(default)]
+    pub vantage_api_key: Option<String>,
+    #[serde(default)]
+    pub wallet_private_key_hex: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct SealSecretResponse {
+    pub sealed: bool,
+}
+
+async fn seal_secret_handler(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<SealSecretRequest>,
+) -> impl IntoResponse {
+    use axum::http::StatusCode;
+
+    let Some(expected) = cognition_token() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "vault seal endpoint not configured (OMOKODA_COGNITION_TOKEN unset)"
+            })),
+        )
+            .into_response();
+    };
+    let presented = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "));
+    if presented != Some(expected.as_str()) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({"error": "invalid or missing bearer token"})),
+        )
+            .into_response();
+    }
+
+    let mut guests = state.guests.lock().await;
+    let Some(steward) = guests.get_mut(&req.agent_id) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "unknown agent_id"})),
+        )
+            .into_response();
+    };
+
+    match steward.seal_additional_secrets(req.vantage_api_key, req.wallet_private_key_hex) {
+        Ok(()) => Json(SealSecretResponse { sealed: true }).into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e}))).into_response(),
+    }
+}
+
 async fn cognition_handler(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
@@ -933,6 +1000,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/v1/birth", post(birth_handler))
         .route("/v1/think", post(think_handler))
         .route("/v1/cognition", post(cognition_handler))
+        .route("/v1/vault/seal-secret", post(seal_secret_handler))
         .route("/v1/act", post(act_handler))
         .route("/v1/events", get(events_handler))
         .route("/v1/status", get(status_handler))

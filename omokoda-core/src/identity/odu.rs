@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OduSeed(pub [u8; 32]);
 
 impl OduSeed {
@@ -31,7 +31,7 @@ impl AsRef<[u8]> for OduSeed {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OduIdentity {
     pub primary_index: u8,
     pub mnemonic: String,

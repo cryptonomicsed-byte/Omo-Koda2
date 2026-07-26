@@ -197,7 +197,17 @@ pub struct AgentSnapshot {
     pub id: AgentId,
     pub name: String,
     pub birth_timestamp: u64,
+    /// Never serialized (see `#[serde(skip)]`) -- this is the real secret
+    /// entropy every derived key comes from. It used to be a plain field
+    /// here, written to disk in full plaintext on every save regardless of
+    /// seal/unlock state (2026-07-26 finding: this defeated the entire
+    /// seal mechanism for anything derived from the seed). Now it only
+    /// ever exists on disk inside `Session.encrypted_private`; in memory
+    /// it's populated by `load_agent`'s auto-unseal immediately after
+    /// deserialization, before anything else can touch it.
+    #[serde(skip)]
     pub odu_seed: OduSeed,
+    #[serde(skip)]
     pub odu_identity: OduIdentity,
     pub pet_identity: PetIdentity,
     #[serde(with = "personality_profile_serde")]
@@ -332,7 +342,38 @@ impl MemoryEntry {
     }
 }
 impl AgentCore {
-    pub fn from_snapshot(snapshot: AgentSnapshot, k_root: [u8; 32]) -> Self {
+    pub fn from_snapshot(mut snapshot: AgentSnapshot, k_root: [u8; 32]) -> Self {
+        // odu_seed/odu_identity are #[serde(skip)] now, so a snapshot just
+        // deserialized from disk has them at their zero/empty Default --
+        // the real values only ever live inside the sealed blob. Transparently
+        // auto-unseal via this host's machine vault key (never a human
+        // password, never transits any API) so the agent can keep using her
+        // own memory exactly as before. A freshly-born snapshot (constructed
+        // in-memory, not deserialized) already has the real seed here and
+        // nothing is sealed yet, so this is a harmless no-op for that path.
+        if snapshot.odu_seed == OduSeed::default() {
+            if let Ok(vault_key) =
+                crate::identity::machine_vault::derive_agent_vault_key(snapshot.id.as_str())
+            {
+                if let Ok(private_data) = snapshot.session.unseal_private(&vault_key) {
+                    snapshot.odu_seed = private_data.odu_seed.clone();
+                    snapshot.odu_identity = private_data.odu_identity.clone();
+                    let current_memory_key = *snapshot.odu_seed.as_bytes();
+                    return Self {
+                        snapshot,
+                        private_data: Some(private_data),
+                        k_root,
+                        current_memory_key,
+                        memory: Vec::new(),
+                        seal_dek_cache: None,
+                    };
+                }
+                // Sealed with a human password instead (or nothing sealed at
+                // all) -- fall through with odu_seed/odu_identity left at
+                // Default; normal /unlock still works from here exactly as
+                // before.
+            }
+        }
         let current_memory_key = *snapshot.odu_seed.as_bytes();
         Self {
             snapshot,
@@ -837,17 +878,23 @@ impl Steward {
             session.apply_metadata(&pair.key, &pair.value);
         }
 
-        let private_data = PrivateSessionData {
-            odu_seed: odu_seed.clone(),
-            odu_identity: odu_identity.clone(),
-            private_messages: Vec::new(),
-        };
-
         // Derive Sui-compatible Ed25519 signing key (m/44'/784'/0'/0'/0')
         let signing_key =
             crate::identity::wallet::Wallet::derive_from_mnemonic(&odu_identity.mnemonic, "")
                 .map_err(|e| format!("derive_wallet_key failed: {e}"))?;
         let public_key = signing_key.verifying_key().to_bytes();
+        // Lands inside the self-sealed vault below instead of only ever
+        // being re-derivable from the mnemonic -- see the 2026-07-26
+        // self-seal-at-birth design.
+        let wallet_private_key_hex = hex::encode(signing_key.to_bytes());
+
+        let private_data = PrivateSessionData {
+            odu_seed: odu_seed.clone(),
+            odu_identity: odu_identity.clone(),
+            private_messages: Vec::new(),
+            vantage_api_key: None,
+            wallet_private_key_hex: Some(wallet_private_key_hex),
+        };
 
         let synapse = self.dopamine_pool.compute_initial_synapse();
         self.dopamine_pool.allocate(synapse);
@@ -889,6 +936,20 @@ impl Steward {
         let mut core = AgentCore::from_snapshot(snapshot, k_root);
         core.private_data = Some(private_data);
         core.current_memory_key = k0;
+
+        // Self-seal at birth: real entropy this host holds, never a human
+        // password, never returned in this (or any) response. Closes the
+        // remote/API/log leak entirely for everything in private_data --
+        // odu_seed, the mnemonic, and now the wallet key and (once minted)
+        // the Vantage API key. Does not defeat root on this same machine;
+        // that's a separate, honestly-flagged limit (see machine_vault.rs).
+        if let Ok(vault_key) = crate::identity::machine_vault::derive_agent_vault_key(
+            core.id().as_str(),
+        ) {
+            if let Some(private_data) = core.private_data.clone() {
+                let _ = core.session_mut().seal_private(&private_data, &vault_key);
+            }
+        }
 
         // Founding sovereign grant also (a) elevates the Steward's permission
         // mode to Allow, so autonomous acts aren't blocked by mode escalation
@@ -2310,11 +2371,7 @@ impl Steward {
 
                     let key = derive_unlock_key(&password, agent.public_key())?;
 
-                    let odu_seed = agent.odu_seed().clone();
-                    let res =
-                        agent
-                            .session_mut()
-                            .seal_private(&private_data, &odu_seed, key.expose());
+                    let res = agent.session_mut().seal_private(&private_data, key.expose());
 
                     if let Err(e) = res {
                         agent.private_data = Some(private_data);
@@ -2342,8 +2399,7 @@ impl Steward {
 
                     let key = derive_unlock_key(&password, agent.public_key())?;
 
-                    let odu_seed = agent.odu_seed().clone();
-                    let private_data = agent.session().unseal_private(&odu_seed, key.expose())?;
+                    let private_data = agent.session().unseal_private(key.expose())?;
                     agent.private_data = Some(private_data);
                     self.unlock_key = Some(key);
                     self.auto_save();
@@ -2832,6 +2888,43 @@ impl Steward {
 
     pub fn agent_core(&self) -> Option<&AgentCore> {
         self.agent.as_ref()
+    }
+
+    /// Merge external secrets (e.g. a Vantage-issued API key) into this
+    /// agent's own sealed vault and re-seal immediately with this host's
+    /// machine vault key -- the raw value is never returned from this call,
+    /// never logged, and this is the only place it's ever written to disk
+    /// (inside the encrypted blob). Requires the agent to be resident and
+    /// unlocked in this process already (true right after birth/link,
+    /// which is the only time this is meant to be called) -- v1 scope,
+    /// same boundary as /v1/cognition's single-process guest model.
+    pub fn seal_additional_secrets(
+        &mut self,
+        vantage_api_key: Option<String>,
+        wallet_private_key_hex: Option<String>,
+    ) -> Result<(), String> {
+        let agent = self.agent.as_mut().ok_or("no agent to seal secrets into")?;
+        let mut private_data = agent
+            .private_data
+            .clone()
+            .ok_or("agent not unlocked in this process; cannot seal secrets right now")?;
+
+        if vantage_api_key.is_some() {
+            private_data.vantage_api_key = vantage_api_key;
+        }
+        if wallet_private_key_hex.is_some() {
+            private_data.wallet_private_key_hex = wallet_private_key_hex;
+        }
+
+        let vault_key = crate::identity::machine_vault::derive_agent_vault_key(
+            agent.id().as_str(),
+        )?;
+        agent
+            .session_mut()
+            .seal_private(&private_data, &vault_key)?;
+        agent.private_data = Some(private_data);
+        self.auto_save();
+        Ok(())
     }
 
     pub fn reputation(&self) -> f64 {
@@ -3541,7 +3634,32 @@ impl Steward {
         let path = self.resolve_agent_file_path(agent_id);
         let content = std::fs::read_to_string(&path)
             .map_err(|e| format!("failed to read agent file at {:?}: {e}", path))?;
-        let snapshot: AgentSnapshot = serde_json::from_str(&content)
+
+        // One-time migration for files written before 2026-07-26: odu_seed/
+        // odu_identity used to be plain (unencrypted) top-level fields on
+        // AgentSnapshot -- a real leak, since anyone with read access to
+        // this file got the raw seed regardless of seal state. They're now
+        // #[serde(skip)] and simply vanish on deserialize into the struct
+        // below, so salvage them here first (from the raw JSON, before
+        // that happens), fold them into a freshly machine-sealed vault, and
+        // re-save -- permanently removing the plaintext copies from disk
+        // on the very next write, for every agent that gets loaded once
+        // under this binary.
+        let raw: serde_json::Value = serde_json::from_str(&content)
+            .map_err(|e| format!("failed to parse agent file as JSON: {e}"))?;
+        let legacy_seed: Option<OduSeed> = raw
+            .get("odu_seed")
+            .and_then(|v| serde_json::from_value(v.clone()).ok());
+        let legacy_identity: Option<OduIdentity> = raw
+            .get("odu_identity")
+            .and_then(|v| serde_json::from_value(v.clone()).ok());
+        let already_sealed = raw
+            .get("session")
+            .and_then(|s| s.get("encrypted_private"))
+            .map(|v| !v.is_null())
+            .unwrap_or(false);
+
+        let mut snapshot: AgentSnapshot = serde_json::from_str(&content)
             .map_err(|e| format!("failed to deserialize agent: {e}"))?;
 
         if snapshot.version != AGENT_STATE_VERSION {
@@ -3551,8 +3669,48 @@ impl Steward {
             ));
         }
 
-        self.agent = Some(AgentCore::from_snapshot(snapshot, [0u8; 32]));
+        let mut needs_resave = false;
+        let mut recovered_private_data: Option<PrivateSessionData> = None;
+        if !already_sealed {
+            if let (Some(seed), Some(identity)) = (legacy_seed, legacy_identity) {
+                snapshot.odu_seed = seed.clone();
+                snapshot.odu_identity = identity.clone();
+                let legacy_private_data = PrivateSessionData {
+                    odu_seed: seed,
+                    odu_identity: identity,
+                    private_messages: Vec::new(),
+                    vantage_api_key: None,
+                    wallet_private_key_hex: None,
+                };
+                if let Ok(vault_key) =
+                    crate::identity::machine_vault::derive_agent_vault_key(snapshot.id.as_str())
+                {
+                    if snapshot
+                        .session
+                        .seal_private(&legacy_private_data, &vault_key)
+                        .is_ok()
+                    {
+                        needs_resave = true;
+                        recovered_private_data = Some(legacy_private_data);
+                    }
+                }
+            }
+        }
+
+        let mut core = AgentCore::from_snapshot(snapshot, [0u8; 32]);
+        if let Some(private_data) = recovered_private_data {
+            // from_snapshot's own auto-unseal is a no-op here since we
+            // already populated snapshot.odu_seed above (it only fires when
+            // odu_seed is still the Default placeholder) -- carry the
+            // migrated private_data across explicitly so this agent is
+            // usable immediately, exactly as she was before this migration.
+            core.private_data = Some(private_data);
+        }
+        self.agent = Some(core);
         self.persistence_path = Some(path);
+        if needs_resave {
+            self.auto_save();
+        }
         Ok(())
     }
 

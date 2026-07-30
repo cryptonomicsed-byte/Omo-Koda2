@@ -2776,6 +2776,48 @@ impl Steward {
                         )),
                     })
                 }
+                "git-sign-key" => {
+                    // Safe half -- for `git config user.signingkey` and for
+                    // anyone verifying this agent's commits. Same unlock
+                    // gate as /buzz for consistency, even though this value
+                    // is not itself secret.
+                    let agent = self.ensure_born()?;
+                    let private_data = agent.private_data.as_ref().ok_or_else(|| {
+                        "private memory is sealed; /unlock <password> first".to_string()
+                    })?;
+                    let pubkey_hex = crate::identity::git_sign::git_sign_pubkey_hex(
+                        private_data.odu_seed.as_bytes(),
+                    )?;
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(format!(
+                            "Git-signing pubkey (hex -- for 'git config user.signingkey', domain-separated from the Buzz identity): {}",
+                            pubkey_hex
+                        )),
+                    })
+                }
+                "git-sign-key-secret" => {
+                    // Exposes the secret half -- only for wiring
+                    // NOSTR_PRIVATE_KEY into a git-sign-nostr environment
+                    // this agent (or her operator) controls. Same unlock
+                    // gate as /buzz-key; never surfaced anywhere else.
+                    let agent = self.ensure_born()?;
+                    let private_data = agent.private_data.as_ref().ok_or_else(|| {
+                        "private memory is sealed; /unlock <password> first".to_string()
+                    })?;
+                    let privkey_hex = crate::identity::git_sign::git_sign_privkey_hex(
+                        private_data.odu_seed.as_bytes(),
+                    )?;
+                    Ok(ExecutionResult {
+                        receipt: None,
+                        private_mode: false,
+                        tool_output: Some(format!(
+                            "Git-signing secret key (hex -- for NOSTR_PRIVATE_KEY with git-sign-nostr, never share otherwise): {}",
+                            privkey_hex
+                        )),
+                    })
+                }
                 "buzz-register" => {
                     // Self-service onboarding: derive this agent's own
                     // identity, join it to a group for real, and hand back

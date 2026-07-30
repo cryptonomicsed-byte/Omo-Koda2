@@ -59,6 +59,8 @@ uuid = { version = "1.0", features = ["v4"] }
 zip = "2"
 nostr = "0.44.4"
 nostr-sdk = "0.44"
+k256 = { version = "0.13", features = ["ecdsa"] }
+base64 = "0.22"
 
 [dev-dependencies]
 criterion = "0.5"

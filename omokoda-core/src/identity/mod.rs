@@ -2,6 +2,8 @@ pub mod ase;
 pub mod bipon39;
 pub mod buzz;
 pub mod machine_vault;
+pub mod git_sign;
+pub mod x402;
 pub mod buzz_relay;
 pub mod cloak;
 pub mod dna;

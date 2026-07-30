@@ -103,6 +103,8 @@ const VALID_SLASH_COMMANDS: &[&str] = &[
     "buzz-join",
     "buzz-key",
     "buzz-register",
+    "git-sign-key",
+    "git-sign-key-secret",
 ];
 
 fn contains_blocked_identifiers(input: &str) -> bool {

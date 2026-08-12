@@ -1,6 +1,7 @@
 use std::path::Path;
 use wasmtime::{Engine, Linker, Module, Store};
 use wasmtime_wasi::WasiCtxBuilder;
+use wasmtime_wasi::p1::{self, WasiP1Ctx};
 
 /// Filesystem isolation mode for tool execution
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -379,17 +380,17 @@ impl WasmSandbox {
         _args: &[String],
         _sandboxed: bool,
     ) -> Result<String, String> {
-        let wasi = WasiCtxBuilder::new()
+        let wasi: WasiP1Ctx = WasiCtxBuilder::new()
             .inherit_stdout()
             .inherit_stderr()
-            .build();
+            .build_p1();
 
         let mut store = Store::new(&self.engine, wasi);
         let module = Module::from_file(&self.engine, module_path)
             .map_err(|e| format!("failed to load module: {}", e))?;
 
-        let mut linker = Linker::new(&self.engine);
-        wasmtime_wasi::add_to_linker(&mut linker, |s| s)
+        let mut linker: Linker<WasiP1Ctx> = Linker::new(&self.engine);
+        p1::add_to_linker_sync(&mut linker, |s| s)
             .map_err(|e| format!("failed to add wasi: {}", e))?;
 
         let instance = linker

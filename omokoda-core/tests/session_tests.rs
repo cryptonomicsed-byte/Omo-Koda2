@@ -70,13 +70,13 @@ fn session_encryption_roundtrip() {
         odu_seed: odu_seed.clone(),
         odu_identity: odu_identity.clone(),
         private_messages: vec![ConversationMessage::new_user("secret".to_string(), true)],
+        vantage_api_key: None,
+        wallet_private_key_hex: None,
     };
 
     // Seal
     let password_key = [0u8; 32];
-    session
-        .seal_private(&private_data, &odu_seed, &password_key)
-        .unwrap();
+    session.seal_private(&private_data, &password_key).unwrap();
     assert!(session.encrypted_private.is_some());
     let encrypted = session.encrypted_private.as_ref().unwrap();
     assert_eq!(encrypted.version, ENCRYPTED_SESSION_VERSION);
@@ -87,7 +87,7 @@ fn session_encryption_roundtrip() {
     assert_eq!(encrypted.kdf.output_len, ARGON2_OUTPUT_LEN);
 
     // Unseal
-    let decrypted = session.unseal_private(&odu_seed, &password_key).unwrap();
+    let decrypted = session.unseal_private(&password_key).unwrap();
     assert_eq!(decrypted.private_messages.len(), 1);
 
     if let ContentBlock::Text { text } = &decrypted.private_messages[0].blocks[0] {
@@ -95,33 +95,6 @@ fn session_encryption_roundtrip() {
     } else {
         panic!("Wrong block type");
     }
-}
-
-#[test]
-fn session_decryption_fails_with_wrong_seed() {
-    let agent_id = AgentId::from_str("agent-1");
-    let mut session = Session::new(agent_id, "luna".to_string(), 12345);
-
-    let odu_seed = OduSeed::new([1u8; 32]);
-    let odu_identity = OduIdentity {
-        primary_index: 0,
-        mnemonic: "test".to_string(),
-    };
-
-    let private_data = PrivateSessionData {
-        odu_seed: odu_seed.clone(),
-        odu_identity: odu_identity.clone(),
-        private_messages: vec![ConversationMessage::new_user("secret".to_string(), true)],
-    };
-
-    let password_key = [0u8; 32];
-    session
-        .seal_private(&private_data, &odu_seed, &password_key)
-        .unwrap();
-
-    let wrong_seed = OduSeed::new([2u8; 32]);
-    let result = session.unseal_private(&wrong_seed, &password_key);
-    assert!(result.is_err());
 }
 
 #[test]
@@ -139,15 +112,15 @@ fn session_decryption_fails_with_wrong_password_key() {
         odu_seed: odu_seed.clone(),
         odu_identity: odu_identity.clone(),
         private_messages: vec![ConversationMessage::new_user("secret".to_string(), true)],
+        vantage_api_key: None,
+        wallet_private_key_hex: None,
     };
 
     let password_key = [0u8; 32];
-    session
-        .seal_private(&private_data, &odu_seed, &password_key)
-        .unwrap();
+    session.seal_private(&private_data, &password_key).unwrap();
 
     let wrong_key = [1u8; 32];
-    let result = session.unseal_private(&odu_seed, &wrong_key);
+    let result = session.unseal_private(&wrong_key);
     assert!(result.is_err());
 }
 
@@ -166,21 +139,21 @@ fn session_key_rotation_works() {
         odu_seed: odu_seed.clone(),
         odu_identity: odu_identity.clone(),
         private_messages: vec![ConversationMessage::new_user("secret".to_string(), true)],
+        vantage_api_key: None,
+        wallet_private_key_hex: None,
     };
 
     let old_key = [0u8; 32];
-    session
-        .seal_private(&private_data, &odu_seed, &old_key)
-        .unwrap();
+    session.seal_private(&private_data, &old_key).unwrap();
 
     let new_key = [2u8; 32];
-    session.rotate_key(&odu_seed, &old_key, &new_key).unwrap();
+    session.rotate_key(&old_key, &new_key).unwrap();
 
     // Old key should fail
-    assert!(session.unseal_private(&odu_seed, &old_key).is_err());
+    assert!(session.unseal_private(&old_key).is_err());
 
     // New key should work
-    let decrypted = session.unseal_private(&odu_seed, &new_key).unwrap();
+    let decrypted = session.unseal_private(&new_key).unwrap();
     if let ContentBlock::Text { text } = &decrypted.private_messages[0].blocks[0] {
         assert_eq!(text, "secret");
     } else {
@@ -206,12 +179,12 @@ fn session_leakage_test() {
             "THIS_IS_A_SECRET".to_string(),
             true,
         )],
+        vantage_api_key: None,
+        wallet_private_key_hex: None,
     };
 
     let password_key = [0u8; 32];
-    session
-        .seal_private(&private_data, &odu_seed, &password_key)
-        .unwrap();
+    session.seal_private(&private_data, &password_key).unwrap();
 
     let serialized = serde_json::to_string(&session).unwrap();
 
@@ -239,11 +212,11 @@ fn session_export_keeps_private_content_encrypted() {
             "PRIVATE_EXPORT_SECRET".to_string(),
             true,
         )],
+        vantage_api_key: None,
+        wallet_private_key_hex: None,
     };
 
-    session
-        .seal_private(&private_data, &odu_seed, &[7u8; 32])
-        .unwrap();
+    session.seal_private(&private_data, &[7u8; 32]).unwrap();
     let exported = session.export_json().unwrap();
 
     assert!(!exported.contains("PRIVATE_EXPORT_SECRET"));

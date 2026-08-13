@@ -7,6 +7,7 @@ pub mod x402;
 pub mod buzz_relay;
 pub mod cloak;
 pub mod dna;
+pub mod nip06;
 pub mod duress;
 pub mod merkle;
 pub mod oauth;

@@ -10,6 +10,7 @@ use crate::sandbox::WasmSandbox;
 pub mod config_tool;
 pub mod file_ops;
 pub mod mesh_tools;
+pub mod nostr_identity_tool;
 pub mod repl;
 pub mod retry;
 pub mod skillforge;
@@ -205,6 +206,7 @@ impl ToolRegistry {
         registry.register(Box::new(wallet_tools::WalletCreateTool));
         registry.register(Box::new(wallet_tools::WalletSignTool));
         registry.register(Box::new(wallet_tools::WalletAlchemyApproveTool));
+        registry.register(Box::new(nostr_identity_tool::NostrIdentityTool));
 
         // Config-driven external service skills (ships with Vantage).
         for entry in skills::default_manifest().skills {

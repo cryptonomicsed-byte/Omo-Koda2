@@ -467,4 +467,221 @@ mod tests {
         let json = serde_json::json!({"unexpected": "shape"});
         assert_eq!(extract_minted_agent_info_id(&json), None);
     }
+
+    #[test]
+    fn parses_a_settlement_receipt_from_a_realistic_response_shape() {
+        // Shape modeled on route_transaction_tax's actual event struct
+        // (elegbara_router.move: EsuTaxCollected { gross, tax, net }) plus
+        // the digest field every sui client call --json response carries.
+        let json = serde_json::json!({
+            "digest": "7xK3z9mP2vQ8nR4tY6wL1cB5dF0gH3jK9mN2pQ4rS6tU",
+            "events": [
+                {
+                    "type": "0xabc123::elegbara_router::EsuTaxCollected",
+                    "parsedJson": {
+                        "gross": "1000000",
+                        "tax": "36900",
+                        "net": "963100"
+                    }
+                }
+            ]
+        });
+        assert_eq!(
+            parse_settlement_receipt(&json),
+            Some(SettlementReceipt {
+                tx_digest: "7xK3z9mP2vQ8nR4tY6wL1cB5dF0gH3jK9mN2pQ4rS6tU".to_string(),
+                gross: 1_000_000,
+                tax: 36_900,
+                net: 963_100,
+            })
+        );
+    }
+
+    #[test]
+    fn settlement_receipt_accepts_numeric_or_string_u64_fields() {
+        // Defensive: don't assume the RPC always stringifies u64s.
+        let json = serde_json::json!({
+            "digest": "abc",
+            "events": [
+                {
+                    "type": "0xabc::elegbara_router::EsuTaxCollected",
+                    "parsedJson": {"gross": 100, "tax": 4, "net": 96}
+                }
+            ]
+        });
+        assert_eq!(
+            parse_settlement_receipt(&json),
+            Some(SettlementReceipt {
+                tx_digest: "abc".to_string(),
+                gross: 100,
+                tax: 4,
+                net: 96,
+            })
+        );
+    }
+
+    #[test]
+    fn settlement_receipt_ignores_unrelated_events() {
+        let json = serde_json::json!({
+            "digest": "abc",
+            "events": [
+                {"type": "0xabc::garden::AgentBorn", "parsedJson": {"agent": "x"}}
+            ]
+        });
+        assert_eq!(parse_settlement_receipt(&json), None);
+    }
+
+    #[test]
+    fn settlement_receipt_missing_digest_returns_none() {
+        let json = serde_json::json!({
+            "events": [
+                {
+                    "type": "0xabc::elegbara_router::EsuTaxCollected",
+                    "parsedJson": {"gross": "1", "tax": "1", "net": "0"}
+                }
+            ]
+        });
+        assert_eq!(parse_settlement_receipt(&json), None);
+    }
+
+    #[test]
+    fn settlement_receipt_malformed_response_returns_none_not_a_panic() {
+        let json = serde_json::json!({"unexpected": "shape"});
+        assert_eq!(parse_settlement_receipt(&json), None);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Èṣù — elegbara_router settlement (Track B: the real cross-pillar gap)
+// ---------------------------------------------------------------------------
+//
+// As of 2026-08-12, no function in this kernel ever calls OSOVM's
+// `elegbara_router.move` — the live economic loop (Track A) settles
+// entirely off-chain through Vantage's bookkeeping (see
+// `tools/wallet_tools.rs`). This is the first real wiring of a settlement
+// call from the kernel to OSOVM's Move layer. It does not make Track A
+// itself go on-chain yet — it exists so the call path is real, tested, and
+// ready, rather than a second layer of doc-only integration.
+//
+// `route_transaction_tax<T>` in the active (`sources/`, not `deferred/`)
+// elegbara_router is a `public fun`, not `entry fun` — it takes a
+// `Coin<T>` by value and *returns* the net `Coin<T>` to the caller. Sui's
+// programmable-transaction-block model auto-transfers an unconsumed owned
+// return value back to the transaction sender at the end of the PTB, which
+// is what `sui client call` (a single-command PTB) relies on here — this
+// assumption is documented, not live-verified in this environment: the
+// `sui` binary is not installed on this host as of this writing, so this
+// path is exercised by the JSON-fixture parser tests below only, exactly
+// like every other on-chain call in this file before it's ever been run
+// against a live network from this kernel.
+//
+// Prerequisites this function does NOT create: the caller must already
+// hold a `Coin<T>` object of the settlement's gross amount (ordinary Sui
+// coin selection/merge-split, out of scope here), and the router's
+// package + shared-object id must be configured.
+//
+//   OMOKODA_ELEGBARA_PACKAGE    - published elegbara_router package id
+//                                 (required; unset = settlement skipped)
+//   OMOKODA_ELEGBARA_ROUTER_ID  - shared ElegbaraRouter<T> object id
+//                                 (required; unset = settlement skipped)
+
+/// A parsed, verifiable record of one `route_transaction_tax` call: the
+/// gross amount submitted, the 3.69% Èṣù tithe skimmed, the net amount
+/// returned to the caller, and the transaction digest that anchors all
+/// three numbers on-chain. This is the "receipt" the settlement gap
+/// analysis referred to — previously nothing produced one at all.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SettlementReceipt {
+    pub tx_digest: String,
+    pub gross: u64,
+    pub tax: u64,
+    pub net: u64,
+}
+
+/// Submit a real settlement transaction to `elegbara_router::route_transaction_tax<T>`
+/// and parse the resulting receipt back out of the transaction's emitted
+/// `EsuTaxCollected` event. Fail-open like every other call in this module:
+/// `None` on missing config, missing `sui` binary, insufficient gas, or any
+/// network/parse failure — settlement anchoring is not allowed to block the
+/// off-chain economic loop it is meant to eventually replace.
+///
+/// `coin_object_id` must be an object the calling wallet owns, of the exact
+/// type named by `coin_type` (a full Move type tag, e.g.
+/// `"0x2::sui::SUI"`), holding the full gross amount to be settled — the
+/// router skims 3.69% and the net remainder is auto-transferred back to the
+/// signer by the PTB return-value rule described above.
+pub async fn settle_transaction_tax(coin_object_id: &str, coin_type: &str) -> Option<SettlementReceipt> {
+    let package = std::env::var("OMOKODA_ELEGBARA_PACKAGE").ok()?;
+    let router = std::env::var("OMOKODA_ELEGBARA_ROUTER_ID").ok()?;
+    let gas_budget =
+        std::env::var("OMOKODA_SUI_GAS_BUDGET").unwrap_or_else(|_| DEFAULT_GAS_BUDGET.to_string());
+
+    let output = tokio::process::Command::new("sui")
+        .args([
+            "client",
+            "call",
+            "--package",
+            &package,
+            "--module",
+            "elegbara_router",
+            "--function",
+            "route_transaction_tax",
+            "--type-args",
+            coin_type,
+            "--args",
+            &router,
+            coin_object_id,
+            "--gas-budget",
+            &gas_budget,
+            "--json",
+        ])
+        .output()
+        .await
+        .ok()?;
+
+    if !output.status.success() {
+        eprintln!(
+            "[onchain] route_transaction_tax settlement failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return None;
+    }
+
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    parse_settlement_receipt(&json)
+}
+
+/// Pure parser: extract a `SettlementReceipt` from a `sui client call --json`
+/// response by finding the `EsuTaxCollected` event and reading `digest` from
+/// the top level. Split out from `settle_transaction_tax` so it's testable
+/// against realistic response-shape fixtures without a live `sui` binary or
+/// network call — same pattern as `extract_minted_agent_info_id` below.
+fn parse_settlement_receipt(json: &serde_json::Value) -> Option<SettlementReceipt> {
+    let digest = json.get("digest")?.as_str()?.to_string();
+    let events = json.get("events")?.as_array()?;
+
+    let parsed = events.iter().find_map(|e| {
+        let event_type = e.get("type")?.as_str()?;
+        if !event_type.ends_with("::elegbara_router::EsuTaxCollected") {
+            return None;
+        }
+        e.get("parsedJson")
+    })?;
+
+    // Move u64 fields are serialized as JSON strings by the Sui RPC to
+    // avoid f64 precision loss; accept either a string or a bare number
+    // so this doesn't silently break if that changes upstream.
+    let read_u64 = |field: &str| -> Option<u64> {
+        let v = parsed.get(field)?;
+        v.as_str()
+            .and_then(|s| s.parse::<u64>().ok())
+            .or_else(|| v.as_u64())
+    };
+
+    Some(SettlementReceipt {
+        tx_digest: digest,
+        gross: read_u64("gross")?,
+        tax: read_u64("tax")?,
+        net: read_u64("net")?,
+    })
 }

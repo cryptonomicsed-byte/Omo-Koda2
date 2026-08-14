@@ -791,6 +791,33 @@ impl Steward {
         // Identity derivation
         let entropy = blake3::derive_key("omokoda:entropy_v1", &k_root);
 
+        // NIST SP 800-22 entropy validation (frequency/runs/longest-run/
+        // avalanche) on the actual identity seed before it ever becomes a
+        // mnemonic. This is the one place getting entropy quality wrong is
+        // permanent -- unlike the onchain.rs calls' nice-to-have
+        // fail-open discipline, a birth is not allowed to proceed on
+        // provably weak entropy. birth_timestamp (and therefore phase,
+        // entropy_bytes, k_root, and this entropy) changes every second,
+        // so a failure here is not a permanent lockout for a given name --
+        // retrying birth moments later uses fresh entropy. In practice a
+        // blake3-derived key should reliably pass this battery; a failure
+        // is a genuine anomaly worth halting for, not routine noise.
+        let nist_report = nist_entropy::validate_entropy_seed(&entropy);
+        if !nist_report.all_passed {
+            // Not a permanent failure for this name -- birth_timestamp
+            // (and therefore phase/entropy) advances every second, so a
+            // simple retry a moment later uses fresh entropy. A properly
+            // calibrated 4-test battery at 99% confidence each has a real,
+            // expected combined failure rate around 2-3% even for
+            // genuinely good entropy (an AND across 4 tests, not a sign
+            // of anything wrong) -- see nist_entropy::validator for the
+            // full calibration rationale.
+            return Err(format!(
+                "birth entropy failed NIST SP 800-22 validation, refusing to mint an identity on weak entropy (retry: this is timestamp-dependent and will very likely succeed a moment later): {:#?}",
+                nist_report
+            ));
+        }
+
         let mnemonic = Bipon39::entropy_to_mnemonic(&entropy);
         let indices = Bipon39::mnemonic_to_indices(&mnemonic)
             .map_err(|e| format!("mnemonic_to_indices failed: {e}"))?;

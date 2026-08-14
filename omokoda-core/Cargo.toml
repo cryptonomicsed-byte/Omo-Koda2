@@ -43,6 +43,7 @@ ifascript = { git = "https://github.com/cryptonomicsed-byte/If-Script", rev = "3
 # derived glyph/odù metadata -- see divination.rs.
 larql-glyph = { git = "https://github.com/cryptonomicsed-byte/larql", rev = "149322efa11a2592b9cbebfbfa91c98d7b2d50a7" }
 zangbeto-enforcement = { path = "../zangbeto-stub" }
+nist_entropy = { path = "../nist_entropy" }
 omokoda-mesh = { path = "../omokoda-mesh" }
 omokoda-hermetic = { path = "../omokoda-hermetic" }
 glob = "0.3"

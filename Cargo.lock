@@ -3544,6 +3544,7 @@ dependencies = [
  "k256 0.13.4",
  "larql-glyph",
  "nautilus_integration",
+ "nist_entropy",
  "nostr",
  "nostr-sdk",
  "omokoda-hermetic",

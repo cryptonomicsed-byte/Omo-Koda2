@@ -781,40 +781,50 @@ impl Steward {
 
         let birth_timestamp = current_unix_timestamp();
 
-        // Layer A: SEAL vault forge + IfáScript deterministic entropy
-        let initial_seed = blake3::hash(name.as_bytes()).into();
-        let phase = (birth_timestamp % 7) as u8;
-        let entropy_bytes = deterministic_cowrie_entropy(initial_seed, phase);
+        // Layer A: SEAL vault forge + IfáScript deterministic entropy.
+        // The NIST gate below has an expected ~2-3% false-rejection rate
+        // on genuinely good entropy (an AND across 4 independently
+        // calibrated 99%-confidence tests). Rather than hard-failing a
+        // real user's birth on that noise, retry a bounded number of
+        // times with a deterministic per-attempt salt folded into the
+        // seed -- each attempt is independent, so P(all N fail) shrinks
+        // exponentially (~2.5%^5 < 0.001%) while staying fully
+        // deterministic and requiring no wall-clock wait.
+        const MAX_ENTROPY_ATTEMPTS: u8 = 5;
+        let mut last_report = None;
+        let mut entropy = [0u8; 32];
+        let mut k_root = [0u8; 32];
+        let mut found = false;
+        for attempt in 0..MAX_ENTROPY_ATTEMPTS {
+            let initial_seed = blake3::hash(name.as_bytes()).into();
+            let phase = ((birth_timestamp.wrapping_add(attempt as u64)) % 7) as u8;
+            let entropy_bytes = deterministic_cowrie_entropy(initial_seed, phase);
 
-        let k_root = SealVault::generate_deterministic_secret(&name, &entropy_bytes);
+            let salted_name = if attempt == 0 {
+                name.clone()
+            } else {
+                format!("{name}:retry{attempt}")
+            };
+            let candidate_k_root =
+                SealVault::generate_deterministic_secret(&salted_name, &entropy_bytes);
+            let candidate_entropy = blake3::derive_key("omokoda:entropy_v1", &candidate_k_root);
 
-        // Identity derivation
-        let entropy = blake3::derive_key("omokoda:entropy_v1", &k_root);
-
-        // NIST SP 800-22 entropy validation (frequency/runs/longest-run/
-        // avalanche) on the actual identity seed before it ever becomes a
-        // mnemonic. This is the one place getting entropy quality wrong is
-        // permanent -- unlike the onchain.rs calls' nice-to-have
-        // fail-open discipline, a birth is not allowed to proceed on
-        // provably weak entropy. birth_timestamp (and therefore phase,
-        // entropy_bytes, k_root, and this entropy) changes every second,
-        // so a failure here is not a permanent lockout for a given name --
-        // retrying birth moments later uses fresh entropy. In practice a
-        // blake3-derived key should reliably pass this battery; a failure
-        // is a genuine anomaly worth halting for, not routine noise.
-        let nist_report = nist_entropy::validate_entropy_seed(&entropy);
-        if !nist_report.all_passed {
-            // Not a permanent failure for this name -- birth_timestamp
-            // (and therefore phase/entropy) advances every second, so a
-            // simple retry a moment later uses fresh entropy. A properly
-            // calibrated 4-test battery at 99% confidence each has a real,
-            // expected combined failure rate around 2-3% even for
-            // genuinely good entropy (an AND across 4 tests, not a sign
-            // of anything wrong) -- see nist_entropy::validator for the
-            // full calibration rationale.
+            let nist_report = nist_entropy::validate_entropy_seed(&candidate_entropy);
+            if nist_report.all_passed {
+                entropy = candidate_entropy;
+                k_root = candidate_k_root;
+                found = true;
+                break;
+            }
+            last_report = Some(nist_report);
+        }
+        if !found {
+            // All MAX_ENTROPY_ATTEMPTS independent candidates failed --
+            // astronomically unlikely for genuinely good entropy, and a
+            // real anomaly worth halting for rather than routine noise.
             return Err(format!(
-                "birth entropy failed NIST SP 800-22 validation, refusing to mint an identity on weak entropy (retry: this is timestamp-dependent and will very likely succeed a moment later): {:#?}",
-                nist_report
+                "birth entropy failed NIST SP 800-22 validation across {MAX_ENTROPY_ATTEMPTS} independent attempts, refusing to mint an identity on weak entropy: {:#?}",
+                last_report
             ));
         }
 

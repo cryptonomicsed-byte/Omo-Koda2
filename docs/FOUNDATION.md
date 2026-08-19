@@ -154,7 +154,7 @@ We are giving humanity reliable, sovereign digital partners — each with privat
 | WASM Sandbox (Àṣẹ) | WASM/Rust | omokoda-core/sandbox.rs | ✅ Implemented |
 | Swarm Coordination | Elixir | omokoda-swarm | ✅ Active (:4000) |
 | Flow / Ops | Go | omokoda-ops | ✅ Active (:8080, runs as `ares-omokoda-oya`) |
-| Justice / On-Chain | Move | omokoda-on-chain | ✅ Active (`0x380e0599...`, testnet) |
+| Justice / On-Chain | Move | omokoda-on-chain | 🚧 Settlement call wired (`onchain.rs::settle_transaction_tax`), but `OMOKODA_ELEGBARA_ROUTER_ID` is unset in the live kernel service -- currently inert in production, not "Active". The `0x380e0599...` address here does not match any configured or verified deployment; needs a real router ID wired before this can be marked Active. |
 | Human Interface | TypeScript | omokoda-frontend | ✅ Active |
 | Economic Simulation | Python | omokoda-simulation | ✅ Active |
 | User Identity (Sui wallet/zkLogin/seed) | Rust | omokoda-core/identity/user.rs | ✅ Implemented |

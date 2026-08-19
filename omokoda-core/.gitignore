@@ -1,3 +1,7 @@
 steward_test_synapse_act.txt
 test_simple.wasm
 .omokoda/
+
+# SkillForge scratch output (test-run artifacts, never committed)
+skillforge_forge/
+skillforge_review/

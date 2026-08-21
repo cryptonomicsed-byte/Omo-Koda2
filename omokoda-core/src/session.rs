@@ -178,6 +178,35 @@ pub struct PrivateSessionData {
     /// other agent-owned secret.
     #[serde(default)]
     pub wallet_private_key_hex: Option<String>,
+    /// Additional chain keys derived from the same `odu_identity.mnemonic`
+    /// at birth, alongside the Sui key above -- one child key per chain,
+    /// same self-seal boundary. See `crate::identity::wallet` for the
+    /// per-chain derivation paths (ported from vanity-cloakseed's
+    /// chains.ts) and `Steward::birth()` for where these are minted.
+    #[serde(default)]
+    pub eth_private_key_hex: Option<String>,
+    #[serde(default)]
+    pub eth_address: Option<String>,
+    #[serde(default)]
+    pub btc_private_key_hex: Option<String>,
+    #[serde(default)]
+    pub btc_address: Option<String>,
+    #[serde(default)]
+    pub sol_private_key_hex: Option<String>,
+    #[serde(default)]
+    pub sol_address: Option<String>,
+    #[serde(default)]
+    pub cosmos_private_key_hex: Option<String>,
+    #[serde(default)]
+    pub cosmos_address: Option<String>,
+    #[serde(default)]
+    pub aptos_private_key_hex: Option<String>,
+    #[serde(default)]
+    pub aptos_address: Option<String>,
+    #[serde(default)]
+    pub nostr_private_key_hex: Option<String>,
+    #[serde(default)]
+    pub nostr_address: Option<String>,
 }
 
 impl Session {

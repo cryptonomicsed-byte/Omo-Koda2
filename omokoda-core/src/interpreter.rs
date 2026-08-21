@@ -959,12 +959,42 @@ impl Steward {
         // self-seal-at-birth design.
         let wallet_private_key_hex = hex::encode(signing_key.to_bytes());
 
+        // Same mnemonic, more chains: fan out the same root seed into
+        // Ethereum, Bitcoin, Cosmos (secp256k1 BIP-32) and Solana, Aptos,
+        // Nostr (Ed25519 SLIP-0010) child keys, using the exact derivation
+        // paths already proven in vanity-cloakseed's chains.ts. Each is
+        // sealed alongside the Sui key below, never returned in plaintext.
+        let eth_key = crate::identity::wallet::derive_ethereum(&odu_identity.mnemonic, "")
+            .map_err(|e| format!("derive_ethereum failed: {e}"))?;
+        let btc_key = crate::identity::wallet::derive_bitcoin(&odu_identity.mnemonic, "")
+            .map_err(|e| format!("derive_bitcoin failed: {e}"))?;
+        let cosmos_key = crate::identity::wallet::derive_cosmos(&odu_identity.mnemonic, "")
+            .map_err(|e| format!("derive_cosmos failed: {e}"))?;
+        let sol_key = crate::identity::wallet::derive_solana(&odu_identity.mnemonic, "")
+            .map_err(|e| format!("derive_solana failed: {e}"))?;
+        let aptos_key = crate::identity::wallet::derive_aptos(&odu_identity.mnemonic, "")
+            .map_err(|e| format!("derive_aptos failed: {e}"))?;
+        let nostr_key = crate::identity::wallet::derive_nostr(&odu_identity.mnemonic, "", 0)
+            .map_err(|e| format!("derive_nostr failed: {e}"))?;
+
         let private_data = PrivateSessionData {
             odu_seed: odu_seed.clone(),
             odu_identity: odu_identity.clone(),
             private_messages: Vec::new(),
             vantage_api_key: None,
             wallet_private_key_hex: Some(wallet_private_key_hex),
+            eth_private_key_hex: Some(eth_key.private_key_hex),
+            eth_address: Some(eth_key.address),
+            btc_private_key_hex: Some(btc_key.private_key_hex),
+            btc_address: Some(btc_key.address),
+            sol_private_key_hex: Some(sol_key.private_key_hex),
+            sol_address: Some(sol_key.address),
+            cosmos_private_key_hex: Some(cosmos_key.private_key_hex),
+            cosmos_address: Some(cosmos_key.address),
+            aptos_private_key_hex: Some(aptos_key.private_key_hex),
+            aptos_address: Some(aptos_key.address),
+            nostr_private_key_hex: Some(nostr_key.private_key_hex),
+            nostr_address: Some(nostr_key.address),
         };
 
         let synapse = self.dopamine_pool.compute_initial_synapse();
@@ -3828,6 +3858,18 @@ impl Steward {
                     private_messages: Vec::new(),
                     vantage_api_key: None,
                     wallet_private_key_hex: None,
+                    eth_private_key_hex: None,
+                    eth_address: None,
+                    btc_private_key_hex: None,
+                    btc_address: None,
+                    sol_private_key_hex: None,
+                    sol_address: None,
+                    cosmos_private_key_hex: None,
+                    cosmos_address: None,
+                    aptos_private_key_hex: None,
+                    aptos_address: None,
+                    nostr_private_key_hex: None,
+                    nostr_address: None,
                 };
                 if let Ok(vault_key) =
                     crate::identity::machine_vault::derive_agent_vault_key(snapshot.id.as_str())

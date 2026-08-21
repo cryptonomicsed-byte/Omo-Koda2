@@ -49,11 +49,20 @@ impl YtForgeTool {
     }
 
     /// Run scripts/yt_harvest.py — must print exactly one JSON object.
-    fn harvest(&self, url: &str) -> Result<Value, String> {
+    /// When `description` is provided, paste-mode is used: no network fetch
+    /// (datacenter IPs are bot-walled by YouTube), straight to repo
+    /// extraction + clone + classification.
+    fn harvest(&self, url: &str, description: Option<&str>, title: Option<&str>) -> Result<Value, String> {
         let script = self.scripts_dir.join("yt_harvest.py");
-        let out = Command::new("python3")
-            .arg(&script)
-            .arg(url)
+        let mut cmd = Command::new("python3");
+        cmd.arg(&script).arg(url);
+        if let Some(desc) = description {
+            cmd.arg("--description").arg(desc);
+            if let Some(t) = title {
+                cmd.arg("--title").arg(t);
+            }
+        }
+        let out = cmd
             .output()
             .map_err(|e| format!("failed to launch yt_harvest.py: {e}"))?;
         let stdout = String::from_utf8_lossy(&out.stdout);
@@ -96,6 +105,11 @@ impl Tool for YtForgeTool {
             "type": "object",
             "properties": {
                 "url": {"type": "string", "description": "YouTube video, playlist, or channel URL"},
+                "description": {"type": "string",
+                    "description": "paste the video description to skip the network fetch \
+                     (works from bot-walled datacenter IPs); fetch it anywhere first"},
+                "title": {"type": "string",
+                    "description": "video title, used with description"},
                 "max_forge": {"type": "integer",
                     "description": "max repos to forge through SkillForge (0 = classify only)"},
                 "approve": {"type": "boolean",
@@ -145,9 +159,14 @@ impl Tool for YtForgeTool {
         let transform = v.get("transform").and_then(|b| b.as_bool()).unwrap_or(true);
         let sandbox = v.get("sandbox").and_then(|b| b.as_bool()).unwrap_or(true);
         let max_forge = v.get("max_forge").and_then(|n| n.as_u64()).unwrap_or(0) as usize;
+        let description = v.get("description").and_then(|s| s.as_str());
+        let title = v.get("title").and_then(|s| s.as_str());
 
         // ---- Harvest + classify (Stage 0-0.5 of the locked plan) -----------
-        let harvest = self.harvest(&url)?;
+        // Paste-mode (description provided) skips the network fetch entirely
+        // — YouTube bot-walls datacenter IPs, so the description can be
+        // fetched from a residential network and handed in.
+        let harvest = self.harvest(&url, description, title)?;
         let repos = harvest.get("repos").cloned().unwrap_or_else(|| json!([]));
         let repo_list: Vec<Value> = repos.as_array().cloned().unwrap_or_default();
 

@@ -48,6 +48,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.parse
+import urllib.request
 from collections import Counter
 from pathlib import Path
 from typing import Optional
@@ -299,9 +301,72 @@ _PLAYER_RESPONSE_RE = re.compile(
     r"ytInitialPlayerResponse\s*=\s*(\{.*?\})\s*;\s*(?:var |</script>)"
 )
 
+# ── Web-search description fallback (no key, scrape-friendly endpoints) ───
+# Google/Bing/DDG SERPs index YouTube descriptions; snippets often carry the
+# full description text including repo links. This is the LAST fetch fallback
+# (after yt-dlp, HTTP page, Invidious) and is most reliable from residential
+# IPs — datacenter IPs frequently get bot-walled. It also doubles as the
+# "find the repos even when the video page itself is blocked" path.
 
-def _fetch_video(video_id: str) -> Optional[dict]:
-    """Return {id,title,description} or None. yt-dlp first, HTTP fallback."""
+_SEARCH_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+
+
+def _search_query_urls(video_id: str, title: str) -> list[str]:
+    """Build a small list of SERP URLs to try, most scrape-friendly first."""
+    queries = [f'"{video_id}"']
+    if title:
+        # Title words only (drop stopwords) keep the query tight.
+        words = [w for w in re.findall(r"[A-Za-z0-9]+", title)
+                 if w.lower() not in {"the", "and", "for", "with", "in", "of",
+                                      "a", "an", "to", "on", "2026"}][:6]
+        if len(words) >= 3:
+            queries.append(" ".join(words))
+    urls: list[str] = []
+    for q in queries:
+        qq = urllib.parse.quote_plus(q)
+        urls.append(f"https://lite.duckduckgo.com/lite/?q={qq}")
+        urls.append(f"https://html.duckduckgo.com/html/?q={qq}")
+        urls.append(f"https://www.bing.com/search?q={qq}")
+        urls.append(f"https://www.google.com/search?q={qq}&gbv=1")
+    return urls
+
+
+def _try_web_search(video_id: str, title: str) -> Optional[tuple[str, str]]:
+    """Search SERPs for the video's description text (title + repo links).
+
+    Returns (title, description) when a SERP snippet looks like a YouTube
+    description (contains the video ID or ≥2 github/gitlab/gitea links).
+    """
+    import urllib.request
+    import urllib.parse
+    for url in _search_query_urls(video_id, title):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": _SEARCH_UA})
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                html = resp.read().decode("utf-8", errors="replace")
+        except Exception:
+            continue
+        if not html:
+            continue
+        # A usable SERP either mentions the video ID or carries repo links.
+        repo_hits = _REPO_URL_RE.findall(html)
+        if not (video_id in html or len(repo_hits) >= 2):
+            continue
+        text = re.sub(r"<[^>]+>", " ", html)
+        text = re.sub(r"\s+", " ", text)
+        # Find the chunk around the first repo link — usually the description.
+        for m in _REPO_URL_RE.finditer(text):
+            start = max(0, m.start() - 600)
+            snippet = text[start:m.end() + 400]
+            if video_id in snippet or len(_REPO_URL_RE.findall(snippet)) >= 2:
+                return title or "", snippet
+    return None
+
+
+def _fetch_video(video_id: str, title: Optional[str] = None) -> Optional[dict]:
+    """Return {id,title,description} or None. yt-dlp → HTTP page → Invidious
+    → web-search SERP (last two most reliable from residential IPs)."""
     binary = _find_yt_dlp()
     if binary:
         try:
@@ -320,21 +385,37 @@ def _fetch_video(video_id: str) -> Optional[dict]:
         import urllib.request
         req = urllib.request.Request(
             f"https://www.youtube.com/watch?v={video_id}",
-            headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                                   "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+            headers={"User-Agent": _SEARCH_UA,
                      "Accept-Language": "en-US,en;q=0.9"},
         )
         with urllib.request.urlopen(req, timeout=FETCH_TIMEOUT_S) as resp:
             html = resp.read().decode("utf-8", errors="replace")
         m = _PLAYER_RESPONSE_RE.search(html)
-        if not m:
-            return None
-        data = json.loads(m.group(1))
-        details = data.get("videoDetails", {}) or {}
-        return {"id": video_id, "title": details.get("title", ""),
-                "description": details.get("shortDescription", "") or ""}
+        if m:
+            data = json.loads(m.group(1))
+            details = data.get("videoDetails", {}) or {}
+            return {"id": video_id, "title": details.get("title", ""),
+                    "description": details.get("shortDescription", "") or ""}
     except Exception:
-        return None
+        pass
+    # Invidious API pool (key-free metadata; many instances are dead — rotate).
+    for inst in ("inv.nadeko.net", "yewtu.be", "invidious.nerdvpn.de",
+                 "iv.melmac.space", "inv.tux.pizza", "invidious.f5.si"):
+        try:
+            import urllib.request
+            req = urllib.request.Request(
+                f"https://{inst}/api/v1/videos/{video_id}?fields=title,description",
+                headers={"User-Agent": _SEARCH_UA},
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8", errors="replace"))
+            if isinstance(data, dict) and data.get("description"):
+                return {"id": video_id, "title": data.get("title") or title or "",
+                        "description": data["description"]}
+        except Exception:
+            continue
+    # Web-search SERP fallback (user-requested path; best from residential IP).
+    return _try_web_search(video_id, title or "")
 
 
 def _resolve_urls(url: str) -> tuple[list[dict], str]:
@@ -381,7 +462,23 @@ def _resolve_urls(url: str) -> tuple[list[dict], str]:
 def main() -> int:
     ap = argparse.ArgumentParser(description="SkillForge YouTube harvest + frankenstein classify")
     ap.add_argument("url")
+    ap.add_argument("--description", help="skip the network fetch and use this pasted description")
+    ap.add_argument("--title", help="video title (used with --description)")
     args = ap.parse_args()
+
+    # Paste-mode: no network fetch at all — caller supplied the description
+    # (fetched from a residential network, e.g. the Mac panel). Works from
+    # any IP, including bot-walled datacenter hosts.
+    if args.description:
+        vid = _VIDEO_ID_RE.search(args.url)
+        video_id = vid.group(1) if vid else "pasted"
+        fetched = [{"id": video_id,
+                    "title": args.title or f"pasted:{video_id}",
+                    "description": args.description}]
+        kind = "video"
+        videos = [{"id": video_id, "title": args.title}]
+        harvest_errors: list[str] = []
+        return _emit(args.url, kind, videos, fetched, harvest_errors)
 
     videos, kind = _resolve_urls(args.url)
     if not videos:
@@ -411,6 +508,14 @@ def main() -> int:
         }))
         return 2
 
+    return _emit(args.url, kind, videos, fetched, harvest_errors)
+
+
+def _emit(source_url: str, kind: str, videos: list[dict],
+          fetched: list[dict], harvest_errors: list[str]) -> int:
+    """Shared tail: extract repo URLs from fetched descriptions, clone +
+    classify each, print the final JSON envelope. Used by both the network
+    fetch path and paste-mode (--description)."""
     # Extract + dedupe repos across videos (order-preserving, first seen wins).
     seen: dict[str, dict] = {}
     for info in fetched:
@@ -437,7 +542,7 @@ def main() -> int:
         repos.append(entry)
 
     print(json.dumps({
-        "ok": True, "source_url": args.url, "kind": kind,
+        "ok": True, "source_url": source_url, "kind": kind,
         "videos": [{"id": v["id"], "title": v["title"]} for v in fetched],
         "repos": repos,
         "harvest_error": (f"could not fetch {len(harvest_errors)}/{len(videos)} "

@@ -3785,6 +3785,42 @@ impl Steward {
             // usable immediately, exactly as she was before this migration.
             core.private_data = Some(private_data);
         }
+
+        // Sync permission mode to this agent's real reputation-derived tier.
+        // Steward::new() hardcodes permission_policy to WorkspaceWrite, and
+        // nothing previously called crate::reputation::mode_for_tier() to
+        // reconcile it against the resurrected agent's actual tier -- so a
+        // real Tier-5 agent (which mode_for_tier says should get
+        // PermissionMode::Allow) stayed stuck at WorkspaceWrite after every
+        // restart, denied tools like `bash` it was reputation-entitled to.
+        // A sovereign agent's tier() is already pinned to 5 (see AgentCore::
+        // tier()), so this naturally resolves to Allow for her too -- no
+        // separate branch needed.
+        //
+        // reputation::mode_for_tier returns reputation::PermissionMode, a
+        // separate (structurally identical) enum from the one
+        // set_permission_mode/PermissionPolicy actually use
+        // (permissions::PermissionMode) -- map explicitly rather than lean
+        // on the two happening to have matching variant names.
+        let tier_mode = match crate::reputation::mode_for_tier(core.tier()) {
+            crate::reputation::PermissionMode::ReadOnly => {
+                crate::permissions::PermissionMode::ReadOnly
+            }
+            crate::reputation::PermissionMode::WorkspaceWrite => {
+                crate::permissions::PermissionMode::WorkspaceWrite
+            }
+            crate::reputation::PermissionMode::DangerFullAccess => {
+                crate::permissions::PermissionMode::DangerFullAccess
+            }
+            crate::reputation::PermissionMode::Prompt => {
+                crate::permissions::PermissionMode::Prompt
+            }
+            crate::reputation::PermissionMode::Allow => {
+                crate::permissions::PermissionMode::Allow
+            }
+        };
+        self.set_permission_mode(tier_mode);
+
         self.agent = Some(core);
         self.persistence_path = Some(path);
         if needs_resave {

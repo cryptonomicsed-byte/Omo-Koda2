@@ -180,11 +180,12 @@ fn parse_statement(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
         return parse_slash_cmd(tokens);
     }
 
-    match tokens.next_word().as_deref() {
+    let first_word = tokens.next_word();
+    match first_word.as_deref() {
         Some("birth") => parse_birth(tokens),
         Some("think") => parse_think(tokens),
         Some("act") => parse_act(tokens),
-        Some(_) => Ok(Statement::Think {
+        Some(word) => {
             // Plain conversation, no "think"/"act" prefix required: every
             // turn runs the tool-using agentic loop (not private, since the
             // agentic path only calls tools/BYOK when non-private -- see
@@ -193,15 +194,31 @@ fn parse_statement(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
             // any other tool-using harness. Explicit `think "..."` / `act
             // "..." "..."` syntax above this match arm is unaffected --
             // still available for scripted/precise control.
-            prompt: tokens.consume_rest_of_input_with_current_word(),
-            private: false,
-            modifiers: ThinkModifiers {
-                loop_enabled: true,
-                max_iterations: Some(15),
-                priority: None,
-                sandbox: false,
-            },
-        }),
+            //
+            // `word` above already consumed the message's first word (it
+            // had to, to check it wasn't "birth"/"think"/"act"), so the
+            // prompt must be reassembled from it plus whatever's left --
+            // consume_rest_of_input_with_current_word() alone silently
+            // dropped every plain-chat message's first word otherwise
+            // (confirmed live: "hello" parsed to an empty prompt, DeepSeek
+            // just covered for it with a generic greeting).
+            let rest = tokens.consume_rest_of_input_with_current_word();
+            let prompt = if rest.is_empty() {
+                word.to_string()
+            } else {
+                format!("{word} {rest}")
+            };
+            Ok(Statement::Think {
+                prompt,
+                private: false,
+                modifiers: ThinkModifiers {
+                    loop_enabled: true,
+                    max_iterations: Some(15),
+                    priority: None,
+                    sandbox: false,
+                },
+            })
+        }
         None => Err(ParseError {
             code: ParseErrorCode::EmptyArgument,
             message: "empty statement".into(),

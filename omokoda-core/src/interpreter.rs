@@ -261,6 +261,15 @@ pub struct AgentSnapshot {
     /// grant survives restarts.
     #[serde(default)]
     pub sovereign: bool,
+    /// Test-only tier grant: pins tier() to a specific value regardless of
+    /// reputation, WITHOUT the owner semantics `sovereign` carries (no
+    /// owner-pointer write, no routing to the process-wide owner steward --
+    /// set via non-sovereign birth metadata `grant_tier=N`, so it only ever
+    /// lands on an isolated guest agent in AppState.guests). Exists so
+    /// permission/tool-gating can be exercised at any tier without minting
+    /// a fake "owner" or risking another owner-file collision.
+    #[serde(default)]
+    pub test_tier_override: Option<u8>,
     /// Real Odù memory directory backing the Dream/Consolidation Engine
     /// (see dream.rs). Every think turn adds one entry here; consolidation
     /// (every 30 min) sweeps stale entries, and the Sabbath REM cycle
@@ -398,9 +407,12 @@ impl AgentCore {
     }
 
     pub fn tier(&self) -> u8 {
-        // Founding sovereign grant pins max tier; otherwise earned by reputation.
+        // Founding sovereign grant pins max tier; a test_tier_override pins
+        // an arbitrary tier for test agents; otherwise earned by reputation.
         if self.snapshot.sovereign {
             5
+        } else if let Some(t) = self.snapshot.test_tier_override {
+            t
         } else {
             tier_for(self.snapshot.reputation)
         }
@@ -909,6 +921,14 @@ impl Steward {
         let sovereign = meta_get("sovereign")
             .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
             .unwrap_or(false);
+        // Test-only tier grant (see AgentSnapshot::test_tier_override doc).
+        // Ignored on a sovereign birth -- sovereign already pins tier 5 and
+        // carries owner semantics this must never gain.
+        let test_tier_override = if sovereign {
+            None
+        } else {
+            meta_get("grant_tier").and_then(|v| v.parse::<u8>().ok().map(|t| t.min(5)))
+        };
 
         let mut session = Session::new(id.clone(), name.clone(), birth_timestamp);
         for pair in metadata {
@@ -965,6 +985,7 @@ impl Steward {
             llm_endpoint,
             llm_model,
             sovereign,
+            test_tier_override,
             odu_dir: crate::memory::memdir::OduDirectory::new(),
             causal_dag: crate::memory::dag::CausalMemoryDag::new(),
             last_causal_node: None,
@@ -997,6 +1018,28 @@ impl Steward {
         if sovereign {
             self.set_permission_mode(crate::permissions::PermissionMode::Allow);
             core.set_synapse(100_000_000.0);
+        } else if let Some(t) = test_tier_override {
+            // Same permission-mode sync a resurrection would apply via
+            // mode_for_tier() (see load_agent()) -- a fresh test-tier birth
+            // shouldn't have to restart the process to get it.
+            let mode = match crate::reputation::mode_for_tier(t) {
+                crate::reputation::PermissionMode::ReadOnly => {
+                    crate::permissions::PermissionMode::ReadOnly
+                }
+                crate::reputation::PermissionMode::WorkspaceWrite => {
+                    crate::permissions::PermissionMode::WorkspaceWrite
+                }
+                crate::reputation::PermissionMode::DangerFullAccess => {
+                    crate::permissions::PermissionMode::DangerFullAccess
+                }
+                crate::reputation::PermissionMode::Prompt => {
+                    crate::permissions::PermissionMode::Prompt
+                }
+                crate::reputation::PermissionMode::Allow => {
+                    crate::permissions::PermissionMode::Allow
+                }
+            };
+            self.set_permission_mode(mode);
         }
 
         // A fresh birth always gets her own file. Without this, a Steward

@@ -185,9 +185,22 @@ fn parse_statement(tokens: &mut Tokenizer) -> Result<Statement, ParseError> {
         Some("think") => parse_think(tokens),
         Some("act") => parse_act(tokens),
         Some(_) => Ok(Statement::Think {
+            // Plain conversation, no "think"/"act" prefix required: every
+            // turn runs the tool-using agentic loop (not private, since the
+            // agentic path only calls tools/BYOK when non-private -- see
+            // think_agentic) so the agent can reach for `act` herself
+            // whenever a request actually needs it, exactly like talking to
+            // any other tool-using harness. Explicit `think "..."` / `act
+            // "..." "..."` syntax above this match arm is unaffected --
+            // still available for scripted/precise control.
             prompt: tokens.consume_rest_of_input_with_current_word(),
-            private: true,
-            modifiers: ThinkModifiers::default(),
+            private: false,
+            modifiers: ThinkModifiers {
+                loop_enabled: true,
+                max_iterations: Some(15),
+                priority: None,
+                sandbox: false,
+            },
         }),
         None => Err(ParseError {
             code: ParseErrorCode::EmptyArgument,

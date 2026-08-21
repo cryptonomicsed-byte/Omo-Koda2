@@ -1282,12 +1282,12 @@ mod multi_agent_tests {
         // (Steward.agent: Option<AgentCore> could only ever hold one).
         let state = fresh_state();
 
-        let resp1 = birth_handler(State(state.clone()), Json(birth_req("Agent-One")))
+        let resp1 = birth_handler(State(state.clone()), axum::http::HeaderMap::new(), Json(birth_req("Agent-One")))
             .await
             .into_response();
         assert_eq!(resp1.status(), axum::http::StatusCode::OK);
 
-        let resp2 = birth_handler(State(state.clone()), Json(birth_req("Agent-Two")))
+        let resp2 = birth_handler(State(state.clone()), axum::http::HeaderMap::new(), Json(birth_req("Agent-Two")))
             .await
             .into_response();
         assert_eq!(resp2.status(), axum::http::StatusCode::OK);
@@ -1303,7 +1303,7 @@ mod multi_agent_tests {
     #[tokio::test]
     async fn guest_dispatch_requires_matching_key() {
         let state = fresh_state();
-        let _ = birth_handler(State(state.clone()), Json(birth_req("Keyed-Agent")))
+        let _ = birth_handler(State(state.clone()), axum::http::HeaderMap::new(), Json(birth_req("Keyed-Agent")))
             .await
             .into_response();
 

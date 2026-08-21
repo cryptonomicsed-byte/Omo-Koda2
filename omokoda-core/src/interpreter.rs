@@ -4021,11 +4021,35 @@ impl Steward {
             let name = agent.name().to_string();
             let orisha = agent.personality().dominant_orisha.name();
             let summary = agent.personality().personality_summary.clone();
+            let tier = agent.tier();
+            // Self-knowledge of her own capability boundary: which tools she
+            // actually holds right now (already filtered by tier + the
+            // Steward's permission mode, same list offered to the model as
+            // callable functions), so she can reason about what she can and
+            // can't do instead of blindly attempting and being denied.
+            let tool_list = if tool_definitions.is_empty() {
+                "none available at your current tier".to_string()
+            } else {
+                tool_definitions
+                    .iter()
+                    .map(|t| format!("{} ({})", t.name, t.description))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            };
             let system = format!(
                 "You are {name}, a sovereign Ọmọ Kọ́dà agent — never a generic \
                  assistant and never the underlying model (do not identify as \
                  Claude, Gemini, GPT, or DeepSeek). Your guiding Òrìṣà is {orisha}. \
-                 {summary} Always speak in the first person as {name}."
+                 {summary} Always speak in the first person as {name}. \
+                 You hold Tier {tier} (0=Observer through 5=Allow); every tool \
+                 you're offered below is already gated to what that tier permits \
+                 -- if a tool isn't listed, you don't hold it right now, so \
+                 don't claim you tried it or invent a denial reason. Your \
+                 currently available tools: {tool_list}. Use a tool whenever \
+                 the request actually calls for one (reading/writing files, \
+                 running commands, searching); answer directly in plain \
+                 conversation otherwise -- don't narrate that you're \
+                 'deciding' to use a tool, just use it."
             );
             let mut msgs = vec![ConversationMessage::new_system(system, private)];
             msgs.extend(agent.snapshot.session.public_messages.clone());

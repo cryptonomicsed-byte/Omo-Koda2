@@ -4108,6 +4108,20 @@ impl Steward {
                 self.ensure_born_mut()?.burn_synapse(burn)?;
             }
 
+            if std::env::var_os("OMOKODA_DEBUG_AGENTIC").is_some() {
+                match &response {
+                    LlmResponse::Text { content, .. } => {
+                        eprintln!("[agentic turn {turn_count}] Text: {:?}", content);
+                    }
+                    LlmResponse::ToolUse { text_prefix, calls, .. } => {
+                        eprintln!(
+                            "[agentic turn {turn_count}] ToolUse text_prefix={:?} calls={:?}",
+                            text_prefix,
+                            calls.iter().map(|c| (c.id.clone(), c.name.clone(), c.input.clone())).collect::<Vec<_>>()
+                        );
+                    }
+                }
+            }
             match response {
                 LlmResponse::Text { content, .. } => {
                     // LLM is done — record final response

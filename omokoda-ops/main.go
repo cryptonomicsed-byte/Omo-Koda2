@@ -57,6 +57,11 @@ func main() {
 	mux.HandleFunc("/v1/status", proxyToSteward)
 	mux.HandleFunc("/v1/health", proxyToSteward)
 
+	// Ecosystem surface — agent-native front door over the Ares playground.
+	mux.HandleFunc("/ecosystem", ecosystemHandler)
+	mux.HandleFunc("/ecosystem/ui", ecosystemUIHandler)
+	mux.HandleFunc("/v1/token/", tokenIntakeHandler)
+
 	mux.Handle("/v1/events", hub)
 
 	mux.HandleFunc("/v1/devices", handleDevices)

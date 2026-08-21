@@ -199,6 +199,7 @@ impl PermissionPolicy {
             "image",
             "cron",
             "skillforge",
+            "ytforge",
             "mesh_propose",
             "mesh_respond",
             "mesh_signal_event",

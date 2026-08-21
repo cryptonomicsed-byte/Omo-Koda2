@@ -15,6 +15,7 @@ pub mod repl;
 pub mod retry;
 pub mod skillforge;
 pub mod skillforge_bus;
+pub mod ytforge;
 pub mod skills;
 pub mod sovereign;
 pub mod streaming;
@@ -216,6 +217,9 @@ impl ToolRegistry {
             registry.external_skills.clone(),
         )));
         registry.register(Box::new(skillforge::SkillForgeTool::new(
+            registry.external_skills.clone(),
+        )));
+        registry.register(Box::new(ytforge::YtForgeTool::new(
             registry.external_skills.clone(),
         )));
 

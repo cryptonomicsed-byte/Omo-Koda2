@@ -469,8 +469,23 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn consume_rest_of_input_with_current_word(&self) -> String {
-        self.input[self.pos..].trim().to_string()
+    fn consume_rest_of_input_with_current_word(&mut self) -> String {
+        // Must actually advance pos to EOF, not just read the remaining
+        // slice -- callers use this to claim "everything left on the line"
+        // as a single argument/prompt. Leaving pos unmoved meant the outer
+        // parse() loop's `while !tokens.is_eof()` saw unconsumed input and
+        // re-entered parse_statement() from the SAME text, one word at a
+        // time (next_word() is the only thing that was actually advancing
+        // pos) -- so any multi-word plain-chat message silently fanned out
+        // into one Statement::Think per word, each a near-duplicate,
+        // shrinking-by-one-word prompt. Confirmed live: a real 5-word
+        // message ("what are your current capabilities") produced 5
+        // separate agentic LLM round trips and 5 receipts. Same bug hit
+        // the /memory and /skill slash-command argument parsing (also
+        // callers of this fn) for any multi-word arg.
+        let rest = self.input[self.pos..].trim().to_string();
+        self.pos = self.input.len();
+        rest
     }
 
     fn next_quoted_string(&mut self) -> Option<String> {
@@ -530,6 +545,28 @@ mod slash_tests {
         let mut s = parse(input).expect("parse failed");
         assert_eq!(s.len(), 1, "expected exactly one statement");
         s.pop().unwrap()
+    }
+
+    #[test]
+    fn plain_multiword_chat_is_a_single_think_statement() {
+        // Regression test for a real bug: consume_rest_of_input_with_current_word()
+        // used to not advance the tokenizer's position, so parse()'s outer
+        // `while !tokens.is_eof()` loop re-entered parse_statement() from
+        // the same text one word at a time -- a 5-word message produced 5
+        // separate Statement::Think entries (confirmed live: 5 real
+        // agentic LLM round trips + 5 receipts for one line of chat).
+        let stmts = parse("what are your current capabilities").expect("parse failed");
+        assert_eq!(
+            stmts.len(),
+            1,
+            "a plain chat message must parse to exactly one statement, got {stmts:?}"
+        );
+        match &stmts[0] {
+            Statement::Think { prompt, .. } => {
+                assert_eq!(prompt, "what are your current capabilities");
+            }
+            other => panic!("expected Think, got {other:?}"),
+        }
     }
 
     #[test]

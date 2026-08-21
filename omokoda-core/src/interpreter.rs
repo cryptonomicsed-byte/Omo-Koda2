@@ -929,6 +929,20 @@ impl Steward {
         } else {
             meta_get("grant_tier").and_then(|v| v.parse::<u8>().ok().map(|t| t.min(5)))
         };
+        // Test-only synapse top-up (guest-only, same admin-token gate as
+        // grant_tier in birth_handler): a fresh guest's initial synapse
+        // scales down under global dopamine-pool pressure and can start
+        // below what even one tool call costs, which blocks exercising a
+        // test agent's tools for no reason related to what's being tested.
+        // Capped well below the sovereign agent's 100_000_000 pool so a
+        // test grant can never mimic her abundance.
+        let test_synapse_grant = if sovereign {
+            None
+        } else {
+            meta_get("grant_synapse")
+                .and_then(|v| v.parse::<f64>().ok())
+                .map(|s| s.clamp(0.0, 1_000_000.0))
+        };
 
         let mut session = Session::new(id.clone(), name.clone(), birth_timestamp);
         for pair in metadata {
@@ -1040,6 +1054,9 @@ impl Steward {
                 }
             };
             self.set_permission_mode(mode);
+        }
+        if let Some(s) = test_synapse_grant {
+            core.set_synapse(s);
         }
 
         // A fresh birth always gets her own file. Without this, a Steward

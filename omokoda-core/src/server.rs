@@ -205,7 +205,9 @@ async fn birth_handler(
     // Fail-closed: if OMOKODA_ADMIN_TOKEN isn't configured, grant_tier is
     // refused outright rather than silently left open to anyone who can
     // reach this port. Matching X-Admin-Token header required when set.
-    let requests_grant_tier = metadata.iter().any(|p| p.key == "grant_tier");
+    let requests_grant_tier = metadata
+        .iter()
+        .any(|p| p.key == "grant_tier" || p.key == "grant_synapse");
     if requests_grant_tier {
         let configured = std::env::var("OMOKODA_ADMIN_TOKEN").ok();
         let supplied = headers
@@ -220,7 +222,7 @@ async fn birth_handler(
             return (
                 axum::http::StatusCode::FORBIDDEN,
                 Json(serde_json::json!({
-                    "error": "grant_tier requires a valid X-Admin-Token header (OMOKODA_ADMIN_TOKEN must be configured server-side)"
+                    "error": "grant_tier/grant_synapse require a valid X-Admin-Token header (OMOKODA_ADMIN_TOKEN must be configured server-side)"
                 })),
             )
                 .into_response();

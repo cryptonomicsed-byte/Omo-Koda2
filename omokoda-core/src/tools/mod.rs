@@ -419,14 +419,76 @@ pub struct ToolSummary {
     pub description: String,
     pub params_schema:
         Option<std::collections::HashMap<String, crate::tools::tool_definitions::ToolProperty>>,
+    pub required: Vec<String>,
 }
 
 impl ToolRegistry {
     pub fn get_definition(&self, name: &str) -> Option<ToolSummary> {
-        self.tools.get(name).map(|t| ToolSummary {
-            name: t.name().to_string(),
-            description: t.description().to_string(),
-            params_schema: None, // Tools can override this later
+        self.tools.get(name).map(|t| {
+            // Convert the tool's own JSON-Schema params_schema() (used to
+            // validate real /v1/act calls) into the flat property map the
+            // agentic tool-calling loop hands the LLM. Without this, every
+            // tool -- even ones with a real schema like write_file -- fell
+            // back to a generic single string field named "input", which a
+            // well-behaved model dutifully wraps its real args JSON inside
+            // of (confirmed live: DeepSeek called read_file with
+            // {"input": "{\"path\": \"Cargo.toml\"}"}, and the tool then
+            // failed with "missing path" since it looks for a top-level
+            // `path` key, not a nested, re-stringified one).
+            let (params_schema, required) = match t.params_schema() {
+                Some(schema) => {
+                    let props = schema
+                        .get("properties")
+                        .and_then(|p| p.as_object())
+                        .map(|obj| {
+                            obj.iter()
+                                .map(|(k, v)| {
+                                    let type_ = v
+                                        .get("type")
+                                        .and_then(|t| t.as_str())
+                                        .unwrap_or("string")
+                                        .to_string();
+                                    let description = v
+                                        .get("description")
+                                        .and_then(|d| d.as_str())
+                                        .map(str::to_string);
+                                    let enum_values = v.get("enum").and_then(|e| e.as_array()).map(
+                                        |arr| {
+                                            arr.iter()
+                                                .filter_map(|x| x.as_str().map(str::to_string))
+                                                .collect()
+                                        },
+                                    );
+                                    (
+                                        k.clone(),
+                                        crate::tools::tool_definitions::ToolProperty {
+                                            type_,
+                                            description,
+                                            enum_values,
+                                        },
+                                    )
+                                })
+                                .collect()
+                        });
+                    let required = schema
+                        .get("required")
+                        .and_then(|r| r.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|x| x.as_str().map(str::to_string))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    (props, required)
+                }
+                None => (None, Vec::new()),
+            };
+            ToolSummary {
+                name: t.name().to_string(),
+                description: t.description().to_string(),
+                params_schema,
+                required,
+            }
         })
     }
 }

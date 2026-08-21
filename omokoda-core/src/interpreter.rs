@@ -3999,7 +3999,7 @@ impl Steward {
                                 );
                                 m
                             }),
-                            required: vec![],
+                            required: def.required,
                         },
                     })
                 })

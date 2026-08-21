@@ -185,6 +185,7 @@ impl From<ExecutionResult> for ExecutionResponse {
 
 async fn birth_handler(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<BirthRequest>,
 ) -> impl IntoResponse {
     let metadata: Vec<MetadataPair> = req
@@ -198,6 +199,33 @@ async fn birth_handler(
     let is_sovereign = metadata
         .iter()
         .any(|p| p.key == "sovereign" && (p.value.eq_ignore_ascii_case("true") || p.value == "1"));
+
+    // grant_tier bypasses normal reputation-earned tiers, so it needs its
+    // own gate even though it can only ever land on an isolated guest.
+    // Fail-closed: if OMOKODA_ADMIN_TOKEN isn't configured, grant_tier is
+    // refused outright rather than silently left open to anyone who can
+    // reach this port. Matching X-Admin-Token header required when set.
+    let requests_grant_tier = metadata.iter().any(|p| p.key == "grant_tier");
+    if requests_grant_tier {
+        let configured = std::env::var("OMOKODA_ADMIN_TOKEN").ok();
+        let supplied = headers
+            .get("X-Admin-Token")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+        let authorized = match (&configured, &supplied) {
+            (Some(want), Some(got)) => want == got,
+            _ => false,
+        };
+        if !authorized {
+            return (
+                axum::http::StatusCode::FORBIDDEN,
+                Json(serde_json::json!({
+                    "error": "grant_tier requires a valid X-Admin-Token header (OMOKODA_ADMIN_TOKEN must be configured server-side)"
+                })),
+            )
+                .into_response();
+        }
+    }
 
     if is_sovereign {
         // Unchanged: the owner's canonical identity, on the process-wide

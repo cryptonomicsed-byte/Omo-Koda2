@@ -999,6 +999,14 @@ impl Steward {
             core.set_synapse(100_000_000.0);
         }
 
+        // A fresh birth always gets her own file. Without this, a Steward
+        // that previously loaded a different agent (e.g. try_load_owner()
+        // resuming the owner) keeps that agent's persistence_path around,
+        // and auto_save() below would silently overwrite THAT agent's file
+        // with this brand-new one's data -- a real incident: a non-sovereign
+        // test birth in an owner-resumed REPL session clobbered the owner's
+        // own agent.json on disk. Every birth must point at its own file.
+        self.persistence_path = Some(self.agent_file_path(core.id()));
         self.agent = Some(core);
         self.auto_save();
         Ok(())

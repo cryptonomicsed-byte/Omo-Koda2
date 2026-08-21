@@ -6,6 +6,7 @@ use colored::Colorize;
 use omokoda_core::{
     interpreter::Steward,
     parser::{parse, Statement, ThinkModifiers},
+    AgentId,
 };
 use rustyline::{error::ReadlineError, DefaultEditor};
 use std::path::PathBuf;
@@ -323,7 +324,49 @@ fn session_list() -> Result<()> {
 
 async fn session_resume(id: &str) -> Result<()> {
     println!("{} {}", "Resuming session".yellow(), id);
-    let mut steward = load_or_new_steward();
+
+    // Resolve a (possibly partial) id against the session dir, same
+    // convention as `session list`, so `resume q2m2` works like `resume
+    // agent-q2m2RdlB3qEnn1ib`.
+    let dir = session_dir();
+    let mut matches: Vec<String> = Vec::new();
+    if dir.exists() {
+        for entry in std::fs::read_dir(&dir)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.contains(id) {
+                matches.push(name);
+            }
+        }
+    }
+
+    let resolved_id = match matches.len() {
+        0 => {
+            println!("{} no session matches '{}'", "Error:".red(), id);
+            return Ok(());
+        }
+        1 => matches.remove(0),
+        _ => {
+            println!(
+                "{} ambiguous id '{}' matches {} sessions: {}",
+                "Error:".red(),
+                id,
+                matches.len(),
+                matches.join(", ")
+            );
+            return Ok(());
+        }
+    };
+
+    let mut steward = Steward::new();
+    let agent_id = AgentId::from_str(&resolved_id);
+    if let Err(e) = steward.load_agent(&agent_id) {
+        println!("{} failed to load {}: {}", "Error:".red(), resolved_id, e);
+        return Ok(());
+    }
     run_slash(&mut steward, "status", None).await
 }
 

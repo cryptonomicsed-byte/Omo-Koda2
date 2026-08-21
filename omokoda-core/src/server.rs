@@ -258,6 +258,45 @@ async fn birth_handler(
     }
 }
 
+#[derive(Deserialize)]
+struct ResumeRequest {
+    agent_id: String,
+}
+
+/// Load an existing agent's persisted snapshot onto the owner's steward by
+/// id. Complements `try_load_owner()` (which only ever resumes whichever
+/// agent the `owner_agent_id` pointer names): this lets an operator
+/// explicitly resume any agent that has a saved session on disk, without
+/// restarting the process with a different pointer file. Mirrors the
+/// `sovereign` birth path in scope (operates on the single process-wide
+/// steward) but never creates anything -- errors if no such agent exists.
+async fn resume_handler(
+    State(state): State<AppState>,
+    Json(req): Json<ResumeRequest>,
+) -> impl IntoResponse {
+    let mut steward = state.steward.lock().await;
+    let agent_id = crate::identity::AgentId::from_str(&req.agent_id);
+    match steward.load_agent(&agent_id) {
+        Ok(()) => {
+            let payload = steward.agent_core().map(|a| {
+                serde_json::json!({
+                    "resumed": true,
+                    "id": a.id().as_str(),
+                    "name": a.name(),
+                    "reputation": a.reputation(),
+                    "tier": a.tier(),
+                })
+            });
+            Json(payload).into_response()
+        }
+        Err(e) => (
+            axum::http::StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": e})),
+        )
+            .into_response(),
+    }
+}
+
 /// Route a dispatch to either the owner's steward (no `X-Agent-Id` header
 /// -- every pre-existing caller) or a guest agent's steward (header
 /// present, matching `X-Agent-Key` required). Centralizes the auth check
@@ -998,6 +1037,7 @@ async fn post_glyph_merge(
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/v1/birth", post(birth_handler))
+        .route("/v1/resume", post(resume_handler))
         .route("/v1/think", post(think_handler))
         .route("/v1/cognition", post(cognition_handler))
         .route("/v1/vault/seal-secret", post(seal_secret_handler))

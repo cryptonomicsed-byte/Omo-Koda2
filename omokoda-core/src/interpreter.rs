@@ -769,6 +769,24 @@ fn dominant_orisha_for_hermetic_state(state: &HermeticState) -> Macro {
         .unwrap_or(Macro::Esu)
 }
 
+/// OSOVM_CODEX.md §42 (locked canon, owner 2026-08-22): the internal
+/// Yorùbá/Òrìṣà name never round-trips out to any user-facing surface
+/// (CLI output, API response, agent self-description). This is the
+/// authoritative functional-role mapping for wherever a dominant/guiding
+/// archetype needs a user-visible label -- e.g. `/status` -- instead of
+/// `Macro::name()`.
+fn orisha_universal_term(m: Macro) -> &'static str {
+    match m {
+        Macro::Esu => "Access / Identity",
+        Macro::Sango => "Score / Reputation",
+        Macro::Osun => "History / Memory",
+        Macro::Yemoja => "Spawn / Create",
+        Macro::Oya => "Sync / Flow",
+        Macro::Ogun => "Run / Action",
+        Macro::Obatala => "Policy / Rules",
+    }
+}
+
 /// Real, traditional Orisha personality traits, phrased as an unnamed
 /// mood -- the Think prompt uses this to color tone without ever stating
 /// which day-cycle Òrìṣà (see omokoda_hermetic::spiral::DAY_CYCLE) an
@@ -782,6 +800,58 @@ fn orisha_mood_words(day_osa: Macro) -> &'static str {
         Macro::Oya => "bold, transformative",
         Macro::Ogun => "direct, disciplined",
         Macro::Obatala => "calm, measured",
+    }
+}
+
+#[cfg(test)]
+mod orisha_wording_tests {
+    use super::*;
+
+    // OSOVM_CODEX.md §42 regression lock: the universal-term helper used by
+    // /status and the think/act system prompts must never return the raw
+    // Yoruba/Orisha name for any Macro variant.
+    #[test]
+    fn orisha_universal_term_never_returns_the_raw_name() {
+        for m in [
+            Macro::Esu,
+            Macro::Sango,
+            Macro::Osun,
+            Macro::Yemoja,
+            Macro::Oya,
+            Macro::Ogun,
+            Macro::Obatala,
+        ] {
+            let universal = orisha_universal_term(m);
+            let raw = m.name();
+            assert_ne!(
+                universal, raw,
+                "orisha_universal_term({raw}) returned the raw name unchanged"
+            );
+            assert!(
+                !universal.to_lowercase().contains(&raw.to_lowercase()),
+                "orisha_universal_term({raw}) embeds the raw name inside its output: {universal}"
+            );
+        }
+    }
+
+    #[test]
+    fn orisha_mood_words_never_returns_the_raw_name() {
+        for m in [
+            Macro::Esu,
+            Macro::Sango,
+            Macro::Osun,
+            Macro::Yemoja,
+            Macro::Oya,
+            Macro::Ogun,
+            Macro::Obatala,
+        ] {
+            let mood = orisha_mood_words(m);
+            assert!(
+                !mood.to_lowercase().contains(&m.name().to_lowercase()),
+                "orisha_mood_words({}) embeds the raw name: {mood}",
+                m.name()
+            );
+        }
     }
 }
 
@@ -2392,16 +2462,24 @@ impl Steward {
             Statement::SlashCmd { command, arg } => match command.as_str() {
                 "status" => {
                     let agent = self.ensure_born()?;
+                    // OSOVM_CODEX.md §42: the raw Òrìṣà name (dominant_orisha.name())
+                    // and personality_summary (which states it outright, e.g. "Sango
+                    // leads with elemental tone.") both leak internal cosmology onto
+                    // this user-facing command -- this was the confirmed live "who
+                    // are you -> Sango" bug's second surface. Use the universal term
+                    // + unnamed mood words instead, same pattern as the think/act
+                    // system prompts.
+                    let dominant = agent.personality().dominant_orisha;
                     let status = format!(
-                            "Agent Name: {}\nAgent ID: {}\nTier: {}\nReputation: {:.3}\nDNA: {}\nPet: {}\nOrisha: {}\nProfile: {}\nReceipts: {}\n",
+                            "Agent Name: {}\nAgent ID: {}\nTier: {}\nReputation: {:.3}\nDNA: {}\nPet: {}\nArchetype: {}\nProfile: {} register\nReceipts: {}\n",
                             agent.name(),
                             agent.id(),
                             agent.tier(),
                             agent.reputation(),
                             agent.dna_fingerprint(),
                             agent.pet_identity().pet(),
-                            agent.personality().dominant_orisha.name(),
-                            agent.personality().personality_summary,
+                            orisha_universal_term(dominant),
+                            orisha_mood_words(dominant),
                             agent.receipts().count()
                         );
                     Ok(ExecutionResult {

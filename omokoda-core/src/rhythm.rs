@@ -28,12 +28,76 @@ pub fn raw_codex_for_weekday(weekday: u8) -> &'static str {
     }
 }
 
+/// OSOVM_CODEX.md §42 (locked canon, owner 2026-08-22): user-facing surfaces
+/// use universal wording only, never the internal Yorùbá/Òrìṣà name. The
+/// embedded Kóòdù JSON files are internal canon content and stay as-is on
+/// disk, but the two fields that name the day's Òrìṣà outright -- the
+/// top-level `archetype` field and the `facets` entry literally labeled
+/// `"Òrìṣà"` -- must be translated before this data reaches `GET
+/// /v1/rhythm/today` or any other caller. Same weekday ordering as
+/// `agent_resonance`'s match arms below (Sunday=Èṣù .. Saturday=Ọbàtálá).
+fn universal_archetype_for_weekday(weekday: u8) -> &'static str {
+    match weekday % 7 {
+        0 => "Access / Identity",   // Sunday -- Èṣù
+        1 => "Score / Reputation",  // Monday -- Ṣàngó
+        2 => "History / Memory",    // Tuesday -- Ọ̀ṣun
+        3 => "Spawn / Create",      // Wednesday -- Yemọja
+        4 => "Sync / Flow",         // Thursday -- Ọ̀yá
+        5 => "Run / Action",        // Friday -- Ògún
+        _ => "Policy / Rules",      // Saturday -- Ọbàtálá
+    }
+}
+
+/// Rewrites the `archetype` field and the `"Òrìṣà"` facet (if present) in a
+/// parsed Kóòdù codex JSON to their §42 universal terms, in place. Leaves
+/// every other field (day name, element, tone, etc.) untouched -- those
+/// aren't Òrìṣà-name leaks, and a full field-by-field pass over the rest of
+/// the bilingual codex schema is a separate, larger piece of work.
+fn universalize_archetype(value: &mut Value, weekday: u8) {
+    let universal = universal_archetype_for_weekday(weekday);
+    if let Some(obj) = value.as_object_mut() {
+        if obj.contains_key("archetype") {
+            obj.insert("archetype".to_string(), Value::String(universal.to_string()));
+        }
+        if let Some(facets) = obj.get_mut("facets").and_then(|f| f.as_array_mut()) {
+            for facet in facets.iter_mut() {
+                if facet.get("name").and_then(|n| n.as_str()) == Some("Òrìṣà") {
+                    if let Some(f_obj) = facet.as_object_mut() {
+                        f_obj.insert("name".to_string(), Value::String("Archetype".to_string()));
+                        f_obj.insert("value".to_string(), Value::String(universal.to_string()));
+                    }
+                }
+            }
+        }
+        // house_role's field naming the same day's ruling deity (distinct
+        // from the top-level `archetype`, which house_role also has -- but
+        // house_role.archetype is already an English word, e.g. "Oracle", a
+        // character role, not the Òrìṣà name). Caught by the regression
+        // test below; the `archetype` and `facets` handling above didn't
+        // reach this nested object. The key itself is spelled
+        // inconsistently across the 7 source files -- "orisa" in six of
+        // them, "orisha" (with an h) in saturday.json only -- a pre-existing
+        // data quality issue in the source JSON, not something introduced
+        // here; handle both spellings rather than fixing only the one this
+        // file happened to be checked against.
+        if let Some(house_role) = obj.get_mut("house_role").and_then(|h| h.as_object_mut()) {
+            if house_role.contains_key("orisa") {
+                house_role.insert("orisa".to_string(), Value::String(universal.to_string()));
+            }
+            if house_role.contains_key("orisha") {
+                house_role.insert("orisha".to_string(), Value::String(universal.to_string()));
+            }
+        }
+    }
+}
+
 /// Returns today's Kóòdù resonance JSON parsed as a serde_json::Value --
 /// "what day is it for the hive right now," a legitimate wall-clock
 /// question, identical for every agent at a given moment. For an
 /// individual agent's own permanent resonance (which does NOT change day
 /// to day), use `agent_resonance` instead.
 pub fn today_resonance() -> Value {
+    let weekday_idx = Utc::now().weekday().num_days_from_sunday() as u8;
     let raw = match Utc::now().weekday() {
         Weekday::Sun => KOODU_SUNDAY,
         Weekday::Mon => KOODU_MONDAY,
@@ -43,7 +107,10 @@ pub fn today_resonance() -> Value {
         Weekday::Fri => KOODU_FRIDAY,
         Weekday::Sat => KOODU_SATURDAY,
     };
-    serde_json::from_str(raw).unwrap_or(serde_json::json!({"error": "parse failed"}))
+    let mut parsed: Value =
+        serde_json::from_str(raw).unwrap_or(serde_json::json!({"error": "parse failed"}));
+    universalize_archetype(&mut parsed, weekday_idx);
+    parsed
 }
 
 /// An agent's own permanent Kóòdù resonance, keyed on the `day_osa` layer
@@ -54,16 +121,19 @@ pub fn today_resonance() -> Value {
 /// regardless of what day it actually is when this is called.
 pub fn agent_resonance(day_osa: bipon39::Macro) -> Value {
     use bipon39::Macro;
-    let raw = match day_osa {
-        Macro::Esu => KOODU_SUNDAY,
-        Macro::Sango => KOODU_MONDAY,
-        Macro::Osun => KOODU_TUESDAY,
-        Macro::Yemoja => KOODU_WEDNESDAY,
-        Macro::Oya => KOODU_THURSDAY,
-        Macro::Ogun => KOODU_FRIDAY,
-        Macro::Obatala => KOODU_SATURDAY,
+    let (raw, weekday_idx) = match day_osa {
+        Macro::Esu => (KOODU_SUNDAY, 0),
+        Macro::Sango => (KOODU_MONDAY, 1),
+        Macro::Osun => (KOODU_TUESDAY, 2),
+        Macro::Yemoja => (KOODU_WEDNESDAY, 3),
+        Macro::Oya => (KOODU_THURSDAY, 4),
+        Macro::Ogun => (KOODU_FRIDAY, 5),
+        Macro::Obatala => (KOODU_SATURDAY, 6),
     };
-    serde_json::from_str(raw).unwrap_or(serde_json::json!({"error": "parse failed"}))
+    let mut parsed: Value =
+        serde_json::from_str(raw).unwrap_or(serde_json::json!({"error": "parse failed"}));
+    universalize_archetype(&mut parsed, weekday_idx);
+    parsed
 }
 
 /// Irreversible action categories that must pause on Sabbath.
@@ -325,5 +395,101 @@ mod tests {
                 }
             }
         }
+    }
+
+    // OSOVM_CODEX.md §42: regression lock for the "who are you -> Sango"
+    // leak class -- scoped to the *structured identification* fields this
+    // fix actually targets: the top-level `archetype` field, the facet
+    // literally named `"Òrìṣà"`, and `house_role`'s orisa/orisha key.
+    //
+    // Deliberately NOT a whole-document substring scan: the 49-facet
+    // schema's free-text *values* also mention the day's Òrìṣà by name in
+    // ordinary descriptive prose in places unrelated to self-identification
+    // -- e.g. facet 32 ("Metal") on Tuesday reads "Copper (Ọ̀ṣun's
+    // metal)". That's authored flavor-text content across potentially many
+    // of the 7×49 facets, not a self-identification leak, and scrubbing it
+    // is a much larger content-authoring task than this fix -- same
+    // carve-out class as the `yoruba_name` day-naming field and the
+    // odu_ifa corpus exception §42 itself calls out as "under review."
+    // Also caught here: `today_resonance()`'s equivalent test was
+    // day-of-week dependent (only failed if run on a day whose facets
+    // happen to mention the name in prose) -- scoping to structured fields
+    // makes both tests deterministic regardless of which day they run.
+    #[test]
+    fn agent_resonance_never_leaks_the_raw_orisha_name_in_structured_fields() {
+        use bipon39::Macro;
+        for m in [
+            Macro::Esu,
+            Macro::Sango,
+            Macro::Osun,
+            Macro::Yemoja,
+            Macro::Oya,
+            Macro::Ogun,
+            Macro::Obatala,
+        ] {
+            let v = agent_resonance(m);
+            assert_eq!(v["archetype"].as_str().unwrap(), universal_archetype_for_weekday_for_macro(m));
+            let facets = v["facets"].as_array().unwrap();
+            assert!(
+                facets.iter().all(|f| f["name"].as_str() != Some("Òrìṣà")),
+                "a facet is still literally named \"Òrìṣà\" for {}",
+                m.name()
+            );
+            if let Some(house_role) = v.get("house_role").and_then(|h| h.as_object()) {
+                for key in ["orisa", "orisha"] {
+                    if let Some(val) = house_role.get(key).and_then(|v| v.as_str()) {
+                        assert_eq!(
+                            val,
+                            universal_archetype_for_weekday_for_macro(m),
+                            "house_role.{key} still carries the raw name for {}",
+                            m.name()
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn today_resonance_never_leaks_the_raw_orisha_name_in_structured_fields() {
+        let v = today_resonance();
+        assert!(v["archetype"].as_str().is_some());
+        let raw_names = ["Ṣàngó", "Ọ̀ṣun", "Yemọja", "Ọ̀yá", "Ògún", "Ọbàtálá", "Èṣù"];
+        assert!(
+            !raw_names.contains(&v["archetype"].as_str().unwrap()),
+            "today_resonance()'s archetype field is still a raw Orisha name: {}",
+            v["archetype"]
+        );
+        let facets = v["facets"].as_array().unwrap();
+        assert!(
+            facets.iter().all(|f| f["name"].as_str() != Some("Òrìṣà")),
+            "a facet is still literally named \"Òrìṣà\""
+        );
+        if let Some(house_role) = v.get("house_role").and_then(|h| h.as_object()) {
+            for key in ["orisa", "orisha"] {
+                if let Some(val) = house_role.get(key).and_then(|v| v.as_str()) {
+                    assert!(
+                        !raw_names.contains(&val),
+                        "house_role.{key} is still a raw Orisha name: {val}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Test-only helper mirroring the same weekday order agent_resonance
+    /// uses, so the assertion above doesn't hardcode index numbers.
+    fn universal_archetype_for_weekday_for_macro(m: bipon39::Macro) -> &'static str {
+        use bipon39::Macro;
+        let idx = match m {
+            Macro::Esu => 0,
+            Macro::Sango => 1,
+            Macro::Osun => 2,
+            Macro::Yemoja => 3,
+            Macro::Oya => 4,
+            Macro::Ogun => 5,
+            Macro::Obatala => 6,
+        };
+        universal_archetype_for_weekday(idx)
     }
 }

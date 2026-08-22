@@ -240,8 +240,12 @@ impl SkillForgeTool {
             nuclei_high: analysis.nuclei.as_ref().map(|n| n.high).unwrap_or(0),
         };
         if let Some(result) = super::skillforge_bus::classify(&facts).await {
+            // OSOVM_CODEX.md §42: this note lands directly in the tool's JSON
+            // output (`analysis.notes`, see the `notes` field this stage feeds),
+            // so the internal service label ("Ọbàtálá") must not appear here --
+            // Ọbàtálá's §42 universal term is Policy / Rules.
             analysis.notes.push(format!(
-                "Ọbàtálá (symbolic): {} (confidence {:.2}) — {}",
+                "Policy (symbolic): {} (confidence {:.2}) — {}",
                 result.classification, result.confidence, result.reason
             ));
             analysis.classification = result.classification;

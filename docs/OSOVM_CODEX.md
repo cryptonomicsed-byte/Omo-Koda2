@@ -1219,3 +1219,48 @@ LLM-as-judge evals; prompt versioning; OpenTelemetry-compatible). FIT:
 - **Timing:** not seed-critical (handshake needs no semantic memory). First dep to reach for when agents start
   THINKING and need recall — the engine behind the §36 memory model. Wrap as `/Qdrant` via the Forge (§32); don't
   stand up another service during the seed.
+
+## 42. UNIVERSAL WORDING — LOCKED CANON (owner, 2026-08-22) — supersedes §9/§27b's dual-surface/toggle model
+**Decision: no toggle, no "revelation mode," no bilingual dual-surface. Every user-facing surface across the WHOLE
+ecosystem uses universal wording ONLY, always. Yorùbá/Ifá stays exclusively internal — code comments, module names,
+internal docs, this codex. It never round-trips back out to a user, API response, UI string, CLI output, or agent
+self-description under any toggle or mode.** This replaces §9's "civic outside, Ifá inside dual-surface" and §27b's
+"multi-tradition skinning" framing with something stricter: there is no initiate mode in the product. The mystery
+stays a mystery because it's never exposed, not because it's gated behind a puzzle.
+
+**Confirmed motivating bug:** the live Omo-Koda2 agent introduced itself as "Sango" when asked who it was — a direct
+leak of an internal name onto a user-facing surface. This canon exists to close that entire class of bug ecosystem-wide.
+
+**Locked mapping (functional-role based, resolves the §9/§27b/ensemble.rs three-way Ọbàtálá conflict — Ọbàtálá is
+Wisdom/Policy for all user-facing purposes, full stop):**
+| Òrìṣà | Domain | Universal term (user-facing) |
+|---|---|---|
+| Èṣù | Gatekeeper/router/identity | **Access** / Identity |
+| Ọ̀ṣun | Memory/resonance | **History** / Memory |
+| Yemọja | Creation/spawning | **Spawn** / Create |
+| Ọbàtálá | Wisdom/integration/ethics | **Policy** / Rules |
+| Ògún | Execution/forge | **Run** / Action |
+| Ọ̀yá | Flow/transformation | **Sync** / Flow |
+| Ṣàngó | Justice/accountability | **Score** / Reputation |
+| Ọ̀rúnmìlà | Divination/oracle | **Query** / Search |
+| **Àṣẹ** (life-force/power/token) | — | **Agency** (owner's final call, 2026-08-22 — supersedes §25/§27d's "Àṣẹ = human-facing token" naming; the ECONOMIC design in §25/§27d/§29 is untouched, only the public-facing NAME changes) |
+| Odù (identity seed) | — | **Signature** / Seed |
+| Ritual Codex / sacred time | — | **Schedule** / Daily Schedule |
+
+**Scope rule (already independently converged on by every repo-audit pane this session — confirms this is the
+right cut):** internal variable/module/service names, code comments, canon docs (like this file) → **leave as
+Yorùbá, no changes needed.** Anything a user or external caller can see or read → **must use the universal term.**
+Wire-level formats (JSON field names, on-chain contract fields, serde tags) count as user-facing and are HIGHEST
+priority to fix, since those are hardest to walk back once deployed/shipped.
+
+**If-Script's `odu_ifa` 256-entry corpus is the one deliberate exception under review:** the corpus itself may stay
+bilingual by design (it's a traditional divination corpus, not a generic UI string) — pending final confirmation,
+but leaning toward keeping the corpus content bilingual while everything AROUND it (error messages, field names,
+env vars) still converts to universal terms.
+
+**Digital Calabash (If-Script):** the calabash layer must be both (a) universal-named per this table and (b) made
+explicitly agent-native — not just human-readable. It's the artifact an Omo-Koda2 agent carries through its
+lifecycle, not a UI element for humans.
+
+TechGnØŞ.EXE's own naming (shrine/church framing) is a separate, still-open question — not resolved by this
+section; this section governs Omo-Koda2/OSOVM/Vantage and the satellite repos' user-facing surfaces only.

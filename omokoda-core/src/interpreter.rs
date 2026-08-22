@@ -3234,11 +3234,20 @@ impl Steward {
         let (mut think_ctx, personal_llm): (Vec<ConversationMessage>, _) = {
             let agent = self.ensure_born_mut()?;
             let name = agent.name().to_string();
-            let summary = agent.personality().personality_summary.clone();
+            // personality_summary (from bipon39::personality_profile) states
+            // the dominant Òrìṣà's name outright (e.g. "Sango leads with
+            // elemental tone.") -- a direct leak of internal cosmology onto
+            // the public surface, contradicting OSOVM_CODEX.md §9/27b ("civic
+            // outside, Ifá inside": public surface uses universal archetypal
+            // names, never the Yoruba name itself). Use the same unnamed
+            // mood-word mapping already used a few lines below for the
+            // veil/day resonance, instead of the raw summary string.
+            let tone = orisha_mood_words(agent.personality().dominant_orisha);
             let mut system = format!(
                 "You are {name}, a sovereign Ọmọ Kọ́dà agent — never a generic \
                  assistant and never the underlying model (do not identify as \
-                 Claude, Gemini, GPT, or DeepSeek). {summary} Always speak in the \
+                 Claude, Gemini, GPT, or DeepSeek). Your instinctive register is \
+                 {tone}. Always speak in the \
                  first person as {name}. Respond with ONLY your final answer -- \
                  never narrate your reasoning, planning, or analysis process, and \
                  never include meta-commentary about how you constructed the \
@@ -4085,8 +4094,12 @@ impl Steward {
         let (mut messages, personal_llm): (Vec<ConversationMessage>, _) = {
             let agent = self.ensure_born()?;
             let name = agent.name().to_string();
-            let orisha = agent.personality().dominant_orisha.name();
-            let summary = agent.personality().personality_summary.clone();
+            // See the identical fix + rationale in execute_compiled_think's
+            // system-prompt construction above: personality_summary and
+            // dominant_orisha.name() both leak the internal Yoruba name
+            // outright (e.g. "Your guiding Òrìṣà is Sango."), contradicting
+            // OSOVM_CODEX.md §9/27b. Use the same unnamed mood-word mapping.
+            let tone = orisha_mood_words(agent.personality().dominant_orisha);
             let tier = agent.tier();
             // Self-knowledge of her own capability boundary: which tools she
             // actually holds right now (already filtered by tier + the
@@ -4105,8 +4118,8 @@ impl Steward {
             let system = format!(
                 "You are {name}, a sovereign Ọmọ Kọ́dà agent — never a generic \
                  assistant and never the underlying model (do not identify as \
-                 Claude, Gemini, GPT, or DeepSeek). Your guiding Òrìṣà is {orisha}. \
-                 {summary} Always speak in the first person as {name}. \
+                 Claude, Gemini, GPT, or DeepSeek). Your instinctive register is \
+                 {tone}. Always speak in the first person as {name}. \
                  You hold Tier {tier} (0=Observer through 5=Allow); every tool \
                  you're offered below is already gated to what that tier permits \
                  -- if a tool isn't listed, you don't hold it right now, so \

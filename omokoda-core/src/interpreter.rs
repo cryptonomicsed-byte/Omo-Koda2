@@ -1936,6 +1936,10 @@ impl Steward {
                     event: Some(sovereign_event::Event::ThoughtSealed(ThoughtSealed {
                         intent_hash: blake3::hash(prompt.as_bytes()).as_bytes().to_vec(),
                         hermetic_score: hermetic_score as f32,
+                        agent: self
+                            .agent_core()
+                            .map(|a| a.id().as_str().to_string())
+                            .unwrap_or_default(),
                     })),
                 };
                 let _ = self.event_bus.publish(event);
@@ -2321,6 +2325,10 @@ impl Steward {
                         tool: tool.clone(),
                         receipt_merkle: hex::decode(&receipt.merkle_root).unwrap_or_default(),
                         f1_score: hermetic_score as f32,
+                        agent: self
+                            .agent_core()
+                            .map(|a| a.id().as_str().to_string())
+                            .unwrap_or_default(),
                     })),
                 };
                 let _ = self.event_bus.publish(event);
@@ -3641,6 +3649,10 @@ impl Steward {
                 tool: call.tool.clone(),
                 receipt_merkle: hex::decode(&receipt.merkle_root).unwrap_or_default(),
                 f1_score: hermetic_score as f32,
+                agent: self
+                    .agent_core()
+                    .map(|a| a.id().as_str().to_string())
+                    .unwrap_or_default(),
             })),
         };
         let _ = self.event_bus.publish(event);

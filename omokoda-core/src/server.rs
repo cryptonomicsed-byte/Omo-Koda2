@@ -770,12 +770,14 @@ fn sovereign_event_to_json(ev: &crate::bus::SovereignEvent) -> serde_json::Value
             "type": "thought_sealed",
             "intent_hash": hex::encode(&e.intent_hash),
             "hermetic_score": e.hermetic_score,
+            "agent": e.agent,
         }),
         Some(sovereign_event::Event::ActExecuted(e)) => json!({
             "type": "act_executed",
             "tool": e.tool,
             "receipt_merkle": hex::encode(&e.receipt_merkle),
             "f1_score": e.f1_score,
+            "agent": e.agent,
         }),
         Some(sovereign_event::Event::TocMinted(e)) => json!({
             "type": "toc_minted",

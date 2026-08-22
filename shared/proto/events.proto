@@ -11,12 +11,21 @@ message AgentBorn {
 message ThoughtSealed {
   bytes intent_hash = 1;
   float hermetic_score = 2;
+  // Agent id (AgentId::as_str()) this thought belongs to. Added so
+  // consumers of the unauthenticated /v1/events stream (e.g.
+  // Triune-Memory's SSE subscriber) can attribute events under a
+  // concurrent multi-agent kernel instead of guessing from the last
+  // AgentBorn seen. Empty string on any event published before this
+  // field existed (old readers must tolerate absence).
+  string agent = 3;
 }
 
 message ActExecuted {
   string tool = 1;
   bytes receipt_merkle = 2;
   float f1_score = 3;
+  // See ThoughtSealed.agent.
+  string agent = 4;
 }
 
 message TocMinted {

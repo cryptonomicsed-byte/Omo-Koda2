@@ -976,6 +976,14 @@ impl Steward {
             .map_err(|e| format!("derive_aptos failed: {e}"))?;
         let nostr_key = crate::identity::wallet::derive_nostr(&odu_identity.mnemonic, "", 0)
             .map_err(|e| format!("derive_nostr failed: {e}"))?;
+        // minipae NIP-AE agent identity: sibling derivation from the same
+        // mnemonic (m/44'/30174'/<agent_index>'/0'), not a second unrelated
+        // key -- owner_index=0 (self-owned) until a real owner reconciliation
+        // policy exists. agent_index is deterministic from this agent's name.
+        let minipae_agent_index = crate::identity::wallet::minipae_index_for(&name);
+        let minipae_key =
+            crate::identity::wallet::derive_minipae_key(&odu_identity.mnemonic, "", minipae_agent_index, 0)
+                .map_err(|e| format!("derive_minipae_key failed: {e}"))?;
 
         let private_data = PrivateSessionData {
             odu_seed: odu_seed.clone(),
@@ -995,6 +1003,8 @@ impl Steward {
             aptos_address: Some(aptos_key.address),
             nostr_private_key_hex: Some(nostr_key.private_key_hex),
             nostr_address: Some(nostr_key.address),
+            minipae_private_key_hex: Some(minipae_key.private_key_hex),
+            minipae_npub: Some(minipae_key.address),
         };
 
         let synapse = self.dopamine_pool.compute_initial_synapse();
@@ -3870,6 +3880,8 @@ impl Steward {
                     aptos_address: None,
                     nostr_private_key_hex: None,
                     nostr_address: None,
+                    minipae_private_key_hex: None,
+                    minipae_npub: None,
                 };
                 if let Ok(vault_key) =
                     crate::identity::machine_vault::derive_agent_vault_key(snapshot.id.as_str())

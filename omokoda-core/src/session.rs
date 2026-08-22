@@ -207,6 +207,13 @@ pub struct PrivateSessionData {
     pub nostr_private_key_hex: Option<String>,
     #[serde(default)]
     pub nostr_address: Option<String>,
+    /// minipae NIP-AE agent identity (m/44'/30174'/<agent_index>'/<owner_index>'),
+    /// a sibling derivation from the same mnemonic -- not a second unrelated
+    /// key. See `crate::identity::wallet::derive_minipae_key`.
+    #[serde(default)]
+    pub minipae_private_key_hex: Option<String>,
+    #[serde(default)]
+    pub minipae_npub: Option<String>,
 }
 
 impl Session {

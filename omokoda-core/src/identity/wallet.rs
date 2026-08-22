@@ -150,6 +150,53 @@ pub fn derive_nostr(mnemonic: &str, passphrase: &str, account: u32) -> Result<Ch
     })
 }
 
+/// minipae NIP-AE agent key: secp256k1 BIP-32, path m/44'/30174'/<agent_index>'/<owner_index>'
+/// (hardened only), matching minipae's own derive.py exactly (30174' is the
+/// NIP-AE application constant, same root-derivation scheme as Ethereum's
+/// m/44'/60'/0'/0 above -- purpose/application/agent/owner instead of
+/// purpose/coin/account/change). This is a sibling derivation from the same
+/// BIPON39 mnemonic every agent already gets at birth, not a second
+/// unrelated key: minipae never needs to see the mnemonic, only this leaf.
+/// agent_index/owner_index must each be < 2^31 (BIP-32 hardened-index limit);
+/// callers derive them from the agent's own identifier (e.g. first 4 bytes
+/// of sha256(agent_name) masked to 31 bits), owner_index=0 for self-owned.
+/// Address = bech32 npub of the x-only (BIP-340) pubkey, matching minipae's
+/// own NIP-AE author-field convention.
+pub fn derive_minipae_key(
+    mnemonic: &str,
+    passphrase: &str,
+    agent_index: u32,
+    owner_index: u32,
+) -> Result<ChainKey, String> {
+    if agent_index >= HARDENED || owner_index >= HARDENED {
+        return Err("agent_index/owner_index must be < 2^31".into());
+    }
+    let seed = mnemonic_to_seed(mnemonic, passphrase);
+    let path = format!("m/44'/30174'/{}'/{}'", agent_index, owner_index);
+    let xprv = bip32::XPrv::derive_from_path(
+        seed,
+        &path.parse::<bip32::DerivationPath>().map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    let signing_key: k256::ecdsa::SigningKey = xprv.private_key().clone();
+    let verifying_key = signing_key.verifying_key();
+    let compressed = verifying_key.to_encoded_point(true);
+    // BIP-340/Nostr x-only pubkey: drop the parity-flag byte, keep the X coordinate.
+    let x_only: [u8; 32] = compressed.as_bytes()[1..33].try_into().map_err(|_| "bad pubkey length")?;
+    let address = bech32_npub(&x_only)?;
+    Ok(ChainKey {
+        private_key_hex: hex::encode(signing_key.to_bytes()),
+        address,
+    })
+}
+
+/// Deterministic BIP-32 hardened index (< 2^31) for a minipae agent/owner
+/// identifier string -- first 4 bytes of sha256, masked to 31 bits.
+pub fn minipae_index_for(id: &str) -> u32 {
+    let digest = Sha256::digest(id.as_bytes());
+    u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]) & 0x7fff_ffff
+}
+
 const HARDENED: u32 = 0x8000_0000;
 
 fn bech32_p2wpkh(hrp_str: &str, hash160: &[u8]) -> Result<String, String> {

@@ -565,15 +565,19 @@ mod tests {
 //
 // `route_transaction_tax<T>` in the active (`sources/`, not `deferred/`)
 // elegbara_router is a `public fun`, not `entry fun` — it takes a
-// `Coin<T>` by value and *returns* the net `Coin<T>` to the caller. Sui's
-// programmable-transaction-block model auto-transfers an unconsumed owned
-// return value back to the transaction sender at the end of the PTB, which
-// is what `sui client call` (a single-command PTB) relies on here — this
-// assumption is documented, not live-verified in this environment: the
-// `sui` binary is not installed on this host as of this writing, so this
-// path is exercised by the JSON-fixture parser tests below only, exactly
-// like every other on-chain call in this file before it's ever been run
-// against a live network from this kernel.
+// `Coin<T>` by value and *returns* the net `Coin<T>` to the caller. A single
+// `sui client call` does NOT auto-transfer that unconsumed owned return
+// value back to the sender (confirmed live, 2026-08-22: it aborts with
+// `UnusedValueWithoutDrop` — a `Coin<T>` never has `drop`). The real fix is
+// a `sui client ptb` with an explicit transfer: resolve the PTB sender via
+// `sui::tx_context::sender`, call the router, then `--transfer-objects` the
+// returned net coin to that sender. Live-EXECUTED (not just dry-run)
+// 2026-08-22 against the real elegbara_router testnet deployment (package
+// 0xb3b6...8050af, router 0xe3de...41dc): tx digest
+// AwYGMdgDspQg5MnoqBaBddTRjQrpgSTBmmAPLVmW3xV7, `"status": "success"`,
+// real `EsuTaxCollected` event emitted (44312120 gross -> 1635117 tax
+// (3.69%) -> 42677003 net) and the net coin genuinely landed back in the
+// sender's wallet.
 //
 // Prerequisites this function does NOT create: the caller must already
 // hold a `Coin<T>` object of the settlement's gross amount (ordinary Sui
@@ -608,29 +612,37 @@ pub struct SettlementReceipt {
 /// `coin_object_id` must be an object the calling wallet owns, of the exact
 /// type named by `coin_type` (a full Move type tag, e.g.
 /// `"0x2::sui::SUI"`), holding the full gross amount to be settled — the
-/// router skims 3.69% and the net remainder is auto-transferred back to the
-/// signer by the PTB return-value rule described above.
+/// router skims 3.69% and this PTB explicitly transfers the net remainder
+/// back to the signer (see the PTB-vs-plain-call note above the type).
 pub async fn settle_transaction_tax(coin_object_id: &str, coin_type: &str) -> Option<SettlementReceipt> {
     let package = std::env::var("OMOKODA_ELEGBARA_PACKAGE").ok()?;
     let router = std::env::var("OMOKODA_ELEGBARA_ROUTER_ID").ok()?;
     let gas_budget =
         std::env::var("OMOKODA_SUI_GAS_BUDGET").unwrap_or_else(|_| DEFAULT_GAS_BUDGET.to_string());
 
+    let move_call_target = format!("{package}::elegbara_router::route_transaction_tax");
+    let type_arg = format!("<{coin_type}>");
+    let router_arg = format!("@{router}");
+    let coin_arg = format!("@{coin_object_id}");
+
     let output = tokio::process::Command::new("sui")
         .args([
             "client",
-            "call",
-            "--package",
-            &package,
-            "--module",
-            "elegbara_router",
-            "--function",
-            "route_transaction_tax",
-            "--type-args",
-            coin_type,
-            "--args",
-            &router,
-            coin_object_id,
+            "ptb",
+            "--move-call",
+            "sui::tx_context::sender",
+            "--assign",
+            "sender",
+            "--move-call",
+            &move_call_target,
+            &type_arg,
+            &router_arg,
+            &coin_arg,
+            "--assign",
+            "net",
+            "--transfer-objects",
+            "[net]",
+            "sender",
             "--gas-budget",
             &gas_budget,
             "--json",

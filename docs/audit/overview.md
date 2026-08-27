@@ -1,5 +1,7 @@
 # Audit Overview: Ọmọ Kọ́dà
 
+> **⚠️ STALE — 2026-08-27.** This document's "5.5/10, ~800 lines, no WASM, no RACK, no Justice module" assessment describes an early snapshot of `omokoda-core` and is no longer accurate. Real current state (verified by direct source read, not re-scored): `omokoda-core/src` is **47,295 lines** across dozens of real modules, including a working WASM sandbox (`sandbox.rs`), the rhythm/Sabbath temporal-gate system (`rhythm.rs` + `koodu/*.json`), a real `JusticeEngine` wired into the interpreter (`justice.rs`, `interpreter.rs:13,1208-1209,1688`), Merkle-anchored identity (`identity/merkle.rs`), an MCP tool hub, and a full multi-chain wallet. (RACK cache-eviction specifically was checked and is still genuinely absent — not every "no X yet" claim below is stale, just the overall score/line-count framing.) This doc has not been re-run against current source — treat every specific claim below as historical, and see `docs/audit/reference-repo-map.md` §5 (2026-08-27) for the up-to-date reference-repo verdict table.
+
 ## 1. Vision Summary
 Ọmọ Kọ́dà ("Child of Code") is an ambitious sovereign Agent OS that treats agents not as disposable tools but as persistent digital entities with:
 - **Identity**: Unique soul derived from 256 Odu Ifá entropy.

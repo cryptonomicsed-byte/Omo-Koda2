@@ -1,5 +1,7 @@
 # Implementation Roadmap: Ọmọ Kọ́dà
 
+> **⚠️ STALE — 2026-08-27.** Written against an early `omokoda-core` snapshot; its "WASM Security Sandbox," "RACK Evictor," and "Justice & Reputation" items are listed here as future phases, but two of the three are now real and shipped: WASM sandbox (`sandbox.rs`) and Justice (`JusticeEngine`, wired into `interpreter.rs`). The RACK evictor specifically was **not found** in current source (`grep`'d for "evict"/"Random Approximate"/cache-kicking logic across `omokoda-core/src`, no hits) — still an open gap, not a false claim to correct. This roadmap has not been re-run against current source (47,295 real lines in `omokoda-core/src` as of this date) — treat phase-completion claims below as historical planning, not current status. See `docs/audit/reference-repo-map.md` §5 for the current, source-verified reference-repo state.
+
 This roadmap outlines the phased development of the Ọmọ Kọ́dà sovereign Agent OS, leveraging patterns from reference repositories while maintaining the core vision.
 
 ## Phase 0: Foundation (Week 2)

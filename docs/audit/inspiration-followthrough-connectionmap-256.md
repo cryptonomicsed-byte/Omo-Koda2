@@ -166,9 +166,14 @@ rest of the file's fidelity to the spec, likely present or trivial to add.
 
 **§5 should be read as done, not as a todo list**, same caveat as §0.
 
-### §6 Omo-Koda2 core, per-Òrìṣà — 🟡 MIXED, real evidence for Rust/Python; unverified for Julia/Elixir/Clojure/Go
+### §6 Omo-Koda2 core, per-Òrìṣà — ✅ MOSTLY DONE (6/7), 1 confirmed not started
 
-Directly grepped `omokoda-core/src/waggle/mod.rs` (the Rust/Èṣù side):
+Directly grepped `omokoda-core/src/waggle/mod.rs` (the Rust/Èṣù side) plus,
+**follow-up 2026-08-28**, the actual per-language subsystem directories —
+`Omo-Koda2` turns out to be a monorepo with real dedicated dirs per Òrìṣà
+(`omokoda-julia`, `omokoda-swarm` [Elixir]), and Ọya's home is confirmed to
+be `agentic-waggle/core` (Go) since Ọya *is* `waggled` per the doc's own
+framing, not a separate repo:
 
 | Item | Status | Evidence |
 |---|---|---|
@@ -176,14 +181,14 @@ Directly grepped `omokoda-core/src/waggle/mod.rs` (the Rust/Èṣù side):
 | Èṣù: mark rate-limiting (NEW) | ✅ DONE | `MarkThrottle` token-bucket, tested (`mark_throttle_caps_burst_and_refills`) |
 | Ọbàtálá: taboo channel + justification metadata (NEW) | ✅ DONE | `taboo_from_halt()` — deposits `principle`/`justification`/`source` in signal meta on every gatekeeper HALT |
 | Ògún: tool-outcome auto-signaling (NEW) | ✅ DONE | `tool_outcome()` via a registered `watch`, success→gold/failure→dead-end |
-| Ọ̀ṣun: `recall`-based resonance consolidation (NEW) | ⬜ NOT VERIFIED | lives in Julia, not this Rust crate — needs checking in Ọ̀ṣun's own repo, not omokoda-core |
-| Yemọja: supervision-tree topology mirrors Hilbert territory (NEW) | ⬜ NOT VERIFIED | Elixir-side, same caveat |
-| Ọya: tunable per-territory heartbeat rate (NEW) | ⬜ NOT VERIFIED | Go-side (this is `waggled` itself — `agentic-waggle/core`), not grepped for this specific tunable |
+| Ọ̀ṣun: `recall`-based resonance consolidation (NEW) | ✅ DONE | `omokoda-julia/src/resonance_consolidation.jl` (106 lines, cites §6.3–6.4 inline) — `resonance_over_history()` samples `recall` at N instants over a time window, scores resources by cross-time persistence (not just current loudness); `consolidate!()` promotes above-threshold patterns into durable memory at `osun/consolidated/<territory>`. Faithful, complete implementation, plus a real `RackMemory.jl`/`Resonance.jl` under `omokoda-julia/src/soma/` backing it |
+| Yemọja: supervision-tree topology mirrors Hilbert territory (NEW) | 🔴 NOT STARTED | `omokoda-swarm/lib/omokoda_swarm/swarm_supervisor.ex` is a real, working `DynamicSupervisor` — but generic `:one_for_one`, zero territory/prefix partitioning. Checked all 4 supervisor files in the repo (`swarm_supervisor.ex`, `constitutional_supervisor.ex`, `mesh/neighbor_supervisor.ex`, `memory/supervisor.ex`) — zero matches for `territory`/`Hilbert` anywhere. The swarm coordination layer is real; the territory-topology-mirroring idea specifically is not built |
+| Ọya: tunable per-territory heartbeat rate (NEW) | ✅ DONE | `agentic-waggle/core/swarm.go:285`, section literally titled `// ---- Territories (Ọya's heartbeat) ----`. `Territories.Set(prefix, tempo)` / `.Tempo(resource)` — longest-prefix-match tempo multiplier scales the default half-life per territory (fast-moving trading-book territory can run tempo<1, slow ethics-judgment territory tempo>1), exposed via `POST /v1/territories`. Exactly what §6.12 describes |
 
-**Still needs doing / needs checking (§6):** the three ⬜ rows — genuinely
-not verifiable from `omokoda-core/src` alone since Ọ̀ṣun/Yemọja/Ọya are
-separate-language subsystems this repo doesn't contain. Flag for a follow-up
-pass with those specific repos checked out, don't assume either way.
+**Revised verdict: §6 is 6/7 done.** Same pattern as §0/§1/§5 — the doc
+undersells reality. The one real gap is **Yemọja's territory-aware
+supervision topology** — real supervisor infrastructure exists, the
+Hilbert-boundary-mirroring specifically does not.
 
 ### §7 Ṣàngó / Move contracts — 🟡 PARTIAL
 
@@ -316,11 +321,16 @@ other open items):
    reputation.** The on-chain foundation is real; these two specific
    integrations (§7 items 3–4) are not. Small, scoped, buildable now that
    §0's `bounded` channel and decay math are done.
-4. **Ọ̀ṣun/Yemọja/Ọya-specific NEW items (§6)** — resonance consolidation,
-   supervision-topology mirroring, tunable heartbeat. Not verified either way
-   this pass (wrong-language repos, out of scope for a fast grep) — **next
-   step is a dedicated pass reading those three repos directly**, not
-   assuming absence.
+4. ~~Ọ̀ṣun/Yemọja/Ọya-specific NEW items (§6)~~ **DONE 2026-08-28**: 2 of 3
+   built. Ọ̀ṣun's resonance consolidation (`omokoda-julia/src/
+   resonance_consolidation.jl`) and Ọya's per-territory tunable heartbeat
+   (`agentic-waggle/core/swarm.go`, `Territories.Set/Tempo`) are both real
+   and faithful to spec. **The one real remaining gap: Yemọja's
+   territory-aware supervision topology** — `omokoda-swarm`'s supervisors
+   are real but generically `:one_for_one`, zero Hilbert/territory
+   partitioning anywhere in the repo. Small, scoped, independently
+   buildable now that the territory concept itself (Ọya's `Territories`
+   type) already exists to mirror.
 5. ~~ỌṢỌVM §1 item-by-item verification~~ **DONE 2026-08-28**: 8/10 built.
    Real remaining gaps: **§1.1 Axiom GraphEngine bridge (OSOVM's side)** and
    **§1.3 Wasm ABI export** — both confirmed absent, small enough to be
@@ -353,11 +363,20 @@ sniff_explain, batched sniff, full `wag` CLI, Python SDK), §1 (ỌṢỌVM +
 Techgnosis pipeline: 8 of 10 items — stage signaling, dead-end tagging,
 content-addressed bytecode cache, the full Mandelbrot perturbation build
 gate, Zangbeto evidence-tier promotion, recall-backed regression detection),
-and §5 (LOOM: all six trade/oracle/reputation integrations) are **done**.
+§5 (LOOM: all six trade/oracle/reputation integrations), and §6 (Omo-Koda2
+core per-Òrìṣà: 6 of 7 — Èṣù's capability gate + throttle, Ọbàtálá's taboo
+justification, Ògún's tool-outcome signaling, Ọ̀ṣun's resonance
+consolidation, Ọya's per-territory tunable heartbeat) are **done**.
 Re-implementing any of these would be pure duplication. §8's fractal-oracle
 standalone service is also done. The Hermetic-principle-as-gate idea from
 `256---65536.md` is superseded by real, more mature gate code already in
 `omokoda-core/src/gates/` and `steward/`.
+
+**Confirmed real gaps, worth picking up (small and scoped, not "still
+mostly unbuilt" like §2 Axiom):** Yemọja's territory-aware supervision
+topology (§6.6 — the `Territories` concept it would mirror already exists
+in `agentic-waggle`), the OSOVM↔Axiom `GraphEngine` bridge (§1.1/§2.4 — two
+sides of one contract, neither built), and the Wasm ABI export (§1.3).
 
 **By contrast, §2 (Axiom) is genuinely mostly unbuilt** — 6 of its 8 items
 confirmed not started as of 2026-08-28. Don't extend the "already done"

@@ -1,8 +1,9 @@
 module omokoda::soul {
-    use sui::object::{Self, UID};
+    use sui::object::{Self, UID, ID};
     use sui::tx_context::{Self, TxContext};
     use sui::transfer;
     use sui::clock::{Self, Clock};
+    use sui::event;
     use std::vector;
 
     /// The immutable soul record — forged once at birth, never modified.
@@ -15,6 +16,16 @@ module omokoda::soul {
         odu_index: u8,
         dna_fingerprint: vector<u8>,
         hermetic_seed_hash: vector<u8>,
+    }
+
+    /// Emitted once, at forge time. Makes on-chain agent birth queryable
+    /// (e.g. via a Sui indexer/subscription) without reading object state.
+    struct SoulForged has copy, drop {
+        soul_id: ID,
+        agent_id: vector<u8>,
+        owner: address,
+        birth_timestamp: u64,
+        odu_index: u8,
     }
 
     /// Error codes
@@ -46,7 +57,15 @@ module omokoda::soul {
             dna_fingerprint,
             hermetic_seed_hash,
         };
-        transfer::transfer(soul, tx_context::sender(ctx));
+        let owner = tx_context::sender(ctx);
+        event::emit(SoulForged {
+            soul_id: object::id(&soul),
+            agent_id: soul.agent_id,
+            owner,
+            birth_timestamp,
+            odu_index,
+        });
+        transfer::transfer(soul, owner);
     }
 
     public fun agent_id(soul: &SoulRecord): &vector<u8> { &soul.agent_id }

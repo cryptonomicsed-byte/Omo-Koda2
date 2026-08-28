@@ -1,7 +1,8 @@
 module omokoda::agent {
-    use sui::object::{Self, UID};
+    use sui::object::{Self, UID, ID};
     use sui::tx_context::{Self, TxContext};
     use sui::transfer;
+    use sui::event;
 
     /// AgentState dNFT — tracks tier, reputation, and on-chain identity.
     /// reputation stored as u64 scaled ×1000 (50.123 reputation = 50123u64)
@@ -15,6 +16,27 @@ module omokoda::agent {
         dna_metadata: vector<u8>,
         synapse_balance: u64,
         total_acts: u64,
+    }
+
+    /// Emitted once, at creation. Pairs with soul::SoulForged to make full
+    /// on-chain agent birth (soul + state) queryable without reading object
+    /// state directly.
+    struct AgentCreated has copy, drop {
+        agent_state_id: ID,
+        agent_id: vector<u8>,
+        soul_ref: address,
+        owner: address,
+        birth_timestamp: u64,
+    }
+
+    /// Emitted on every tier change, since tier is derived (compute_tier)
+    /// rather than set directly -- lets an indexer track promotion/demotion
+    /// without diffing reputation on every update.
+    struct TierChanged has copy, drop {
+        agent_state_id: ID,
+        old_tier: u8,
+        new_tier: u8,
+        reputation: u64,
     }
 
     const E_INVALID_TIER: u64 = 1;
@@ -42,7 +64,15 @@ module omokoda::agent {
             synapse_balance: 1_000_000,
             total_acts: 0,
         };
-        transfer::transfer(state, tx_context::sender(ctx));
+        let owner = tx_context::sender(ctx);
+        event::emit(AgentCreated {
+            agent_state_id: object::id(&state),
+            agent_id: state.agent_id,
+            soul_ref,
+            owner,
+            birth_timestamp,
+        });
+        transfer::transfer(state, owner);
     }
 
     entry fun record_act(state: &mut AgentState) {
@@ -52,7 +82,17 @@ module omokoda::agent {
     entry fun update_reputation(state: &mut AgentState, new_reputation: u64) {
         assert!(new_reputation <= MAX_REPUTATION, E_REPUTATION_OVERFLOW);
         state.reputation = new_reputation;
-        state.tier = compute_tier(new_reputation);
+        let old_tier = state.tier;
+        let new_tier = compute_tier(new_reputation);
+        state.tier = new_tier;
+        if (new_tier != old_tier) {
+            event::emit(TierChanged {
+                agent_state_id: object::id(state),
+                old_tier,
+                new_tier,
+                reputation: new_reputation,
+            });
+        };
     }
 
     entry fun burn_synapse(state: &mut AgentState, amount: u64) {

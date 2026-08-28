@@ -100,3 +100,35 @@ The 3 repos above (Claw-code, Claude-2, Swibe) had real verdicts. The other 43 l
 - **Deferred** (real, scoped, not yet built): Ifascript, paradigm, AIOS — 3.
 - **Not-applicable** (domain mismatch or external tool): Nex-, Kimi-bino, franken-stream, Techgnosis, Zangbeto, NarratorIDE, Sign-wise, Twelve-thrones, Npc-forge, Agent.TV, eternal-orisa-loom-v8, warp, gptos app, aider, Agent Zero, OpenFang, TradingAgents — 17.
 - Duplicates in the source list (#3/#32, #4/#33/§3, #14/#30, #17/#34, #18/#35, #42/#43, #44): resolved to their single real verdict, not double-counted.
+
+---
+
+## Re-verification (2026-08-27): Bino-Elgua "Inspiration Pattern Repos" — 5 repos
+
+Read-only shallow clones of `github.com/Bino-Elgua/{Droidclaw, Oso-Aether, Kimi-bino, OsO, NarratorIDE}`. Confirms/updates the §2 verdicts with fresh evidence from the real Bino-Elgua repos.
+
+### 1. Droidclaw — **incorporated** (CONFIRMED, with two corrections)
+- `memory/soma.rs` L1: "SOMA — Self-Organizing Memory Architecture (from Droidclaw)" — and it implements **MemCells** (`tension`, `connection_depth`, `activation_count`), so the "emotionally weighted memory" idea is ported *more deeply* than the old verdict said.
+- `steward/soul.rs` + `bus/` — shipped (confirmed).
+- `emotion.rs` (`EmotionState { energy, tension, connection, focus }`) exists and its doc reads "Influences IRIS routing" — so the emotion engine is **also already present**, contrary to the old "IRIS/emotion-engine remain unbuilt" note.
+- **Correction A:** the "9-language 'Orisha distribution'" is **not in Droidclaw** (no `orisha`/`9-language` hits in src or README) — that line in the prior verdict is inaccurate.
+- **Correction B:** still genuinely worth pulling (optional): IRIS's full person-state *response-architecture* routing table (GENTLE/DIRECT/… per tension, `src/core/iris.js`) — only the state + a routing *hint* is ported, not the routing table; and `src/core/sense.js` (phone-sensor → emotion) belongs to the agent-phone device pillar, not the kernel.
+
+### 2. Oso-Aether — **incorporated** (CONFIRMED)
+- Rust/WASM; `core/interpreter/` has the full `birth`/`think`/`act` grammar with tier gates (`ActionBlockedTier0`, `ToolLocked`, `UnknownTool`) — matches `omokoda-core/src/parser.rs` (`parse_birth/parse_think/parse_act`) + `reputation.rs`.
+- Still worth pulling: the **ASCII-pet deterministic renderer** + 86-char DNA (`core/interpreter`, frontend). omokoda-core has the DNA fingerprint but the pet/31-mask feature is unbuilt — this repo is the direct reference.
+
+### 3. OsO — **incorporated** (CONFIRMED)
+- Earliest generation: `translator/` (Python) drives the `birth`/`think`/`act` prompts (`process_birth/process_think/process_act`). Conceptually superseded by Oso-Aether (Rust/WASM) + the `omokoda-core` parser. Nothing new to pull.
+
+### 4. Kimi-bino — **not-applicable** (verdict stands, but the REASONING was stale)
+- **Not** a "vanilla Vite+React scaffold". It is actually **"Aether Orchestra"**: a real multi-agent orchestration frontend — React Three Fiber 3D `AgentPortal`, `OrchestraLive`, Dashboard/TaskInput/Settings/History, Zustand stores (`useOrchestraStore`, `useTaskAgentStore`) — plus `openclaw/SOUL.md` (Maestro orchestrator + specialist agents + ralph-loop), `openclaw/config.yaml` (gateway :18789, rate limits), and `docs/MONETIZATION.md` (freemium tiers).
+- **Correction:** there is **no Kimi/moonshot API code** (`grep kimi|moonshot` = empty) — the repo name is misleading; it's the Aether Orchestra UI, not a Kimi integration. `package.json` name is still `"my-app"` (generic scaffold base).
+- Still **not-applicable to `omokoda-core`**: it's a frontend + OpenClaw runtime config, not a Rust-kernel pattern source. Plausible reuse is elsewhere — the multi-agent orchestration UI → `omokoda-frontend`/Axiom (not the kernel), and the OpenClaw SOUL/config as a *separate* orchestration runtime (adjacent to mesh, not core).
+
+### 5. NarratorIDE — **not-applicable to omokoda-core** (CONFIRMED correct)
+- Bino-Elgua/NarratorIDE = the multi-LLM code-narration engine (`src/thinking-narrator.js`, `narrator.js`, `personas.js`, `llm-provider.js`). `omokoda-core` has **no** narrator/voice/persona concept (grep: only `compact.rs` "narrative summary" text + `output_style.rs` "no narrative" — unrelated to persona-voiced narration). It was ported into **Vantage's** voice pipeline (`ThinkingNarrator`), not the kernel.
+- Given the doc's "IDE / narrative interface for Omo-Koda2 directly" framing: still the right call — there is no narration layer in the shipped kernel. If Omo-Koda2 ever wants persona-voiced narration over its `think` reasoning, `thinking-narrator.js` is the reference to port into `omokoda-core` (future inspiration, not current).
+
+### Net effect on summary counts
+No verdict changes: Droidclaw/Oso-Aether/OsO remain **incorporated**; Kimi-bino + NarratorIDE remain **not-applicable**. (Only the Kimi-bino *reasoning* and the Droidclaw *corrections* are updated above.)

@@ -21,6 +21,14 @@ defmodule OmokodaSwarm.SwarmSupervisor do
 
   @doc """
   Starts a new agent in the swarm.
+
+  When `config` carries a `:territory` key (a Waggle scent-territory prefix),
+  the agent is started under `OmokodaSwarm.TerritorySupervisor`'s
+  per-territory `DynamicSupervisor` instead of the single global
+  `AgentSupervisor` -- so a crash/restart only affects agents working the
+  same scent-territory (YEMỌJA territory-aligned supervision, Connection
+  Map v2 §6.5-6.6). No `:territory` key means the pre-existing global
+  behavior, unchanged -- this is purely additive/opt-in.
   """
   def start_agent(agent_id, config \\ %{}) do
     spec = %{
@@ -29,7 +37,31 @@ defmodule OmokodaSwarm.SwarmSupervisor do
       restart: :transient
     }
 
-    DynamicSupervisor.start_child(OmokodaSwarm.AgentSupervisor, spec)
+    case Map.get(config, :territory) do
+      nil -> DynamicSupervisor.start_child(OmokodaSwarm.AgentSupervisor, spec)
+      territory -> OmokodaSwarm.TerritorySupervisor.start_worker(territory, spec)
+    end
+  end
+
+  @doc """
+  Lists agent ids running under a specific scent-territory's supervisor
+  (agents started via `start_agent/2` with a `:territory` key). Agents
+  started without a territory live under the global `AgentSupervisor` and
+  are only visible via `list_agents/0`.
+  """
+  def list_territory_agents(territory) do
+    OmokodaSwarm.TerritorySupervisor.list_territory(territory)
+    |> Enum.flat_map(fn
+      {_, :restarting, _, _} ->
+        []
+
+      {_, pid, _, _} ->
+        try do
+          [OmokodaSwarm.Agent.get_id(pid)]
+        catch
+          :exit, _ -> []
+        end
+    end)
   end
 
   @doc """

@@ -410,3 +410,103 @@ sides of one contract, neither built), and the Wasm ABI export (§1.3).
 confirmed not started as of 2026-08-28. Don't extend the "already done"
 assumption to Axiom just because §0/§1/§5 turned out that way — verify
 per-section, this repo set does not have one uniform completion level.
+
+---
+
+## Addendum 2026-08-28 — the Ọ̀ṣun/Ọbàtálá/Ọya/Yemọja HTTP bridges: deployment audit
+
+Separate follow-up, prompted by a direct question about whether
+`omokoda-core`'s per-Òrìṣà HTTP clients (`OsunClient`, `ObatalaClient`,
+`OyaClient`, `YemojaClient` — `omokoda-core/src/bus/clients.rs` +
+`http_clients.rs`) are live in production, falling back to stubs, or
+neither. Findings below correct an assumption baked into the original
+question — worth recording precisely since it'll come up again.
+
+### Architecture correction: nothing "falls back to a stub" in production
+
+`bus/clients.rs` defines a clean trait + `Local*Stub` + `Http*Client`
+dependency-injection pattern, and it looks designed to be selected once at
+startup (real service vs. stub) and injected as a `Box<dyn OsunClient>` (etc.)
+field. **That selection never happens anywhere in the real interpreter** —
+grepped all of `src/` for `dyn OsunClient`/`dyn ObatalaClient`/`dyn
+OyaClient`/`dyn YemojaClient` as a struct field: zero matches. The
+`Local*Stub` types exist **only for unit tests** (`#[cfg(test)]` blocks in
+`clients.rs`).
+
+The real production pattern is architecturally different: scattered inline
+`if let Ok(url) = std::env::var("X_URL") { ... }` checks at each call site.
+When a var is unset, the feature is **skipped entirely** — no stub object is
+ever constructed, no `HermeticResult::allow_stub()`-style fallback value is
+returned from a stub, the code path just doesn't run. Functionally similar
+in effect to "falls back to stub" (no real external call happens either
+way), but architecturally distinct, and worth being precise about since the
+next person to touch this should know the DI trait pattern is vestigial,
+not the real wiring.
+
+### Deployment status (verified live on Contabo, 2026-08-28)
+
+All four are configured, running, and reachable — **nothing is silently
+missing from the box**:
+
+| Bridge | `ares-omokoda.service` env var | Port listening | Real process | Actually invoked from the core kernel loop? |
+|---|---|---|---|---|
+| Ọ̀ṣun (Julia, memory) | `OSUN_URL=http://localhost:7778` | ✅ | `julia` (`ares-omokoda-memory.service`) | ✅ **Yes** — `interpreter.rs` calls both `reconstruct_soma` (before the LLM call) and `store_memcell` (after), each gated by its own `env::var("OSUN_URL")` check. Live-tested `POST /soma/reconstruct`: real, correct response |
+| Ọbàtálá (Clojure, via Babashka) | `OBATALA_URL=http://localhost:4002` | ✅ | `bb obatala.clj` (`ares-omokoda-obatala.service`) | 🔴 **No** — `evaluate_hermetic` (the trait's only method) is never called anywhere in `interpreter.rs`, `gates/`, or `steward/`. Real Hermetic-style gating in the live kernel is done by separate native Rust gate code (confirmed: `taboo_from_halt()` in `waggle/mod.rs`, wired to `steward/gatekeeper.rs`'s own `GatekeeperResult`), entirely independent of this bridge |
+| Ọya (Go, "Ops Service") | `OYA_URL=http://localhost:8080` | ✅ | `ops` (`ares-omokoda-oya.service`) | 🟡 Only via SkillForge-specific tool calls (`tools/skillforge_bus.rs`) — never in a universal act/cooldown loop, despite the trait doc comment ("rhythm enforcement... called during act"). Real cooldown enforcement in the live kernel is native Rust (`src/rhythm.rs`, `src/gates/rhythm.rs`) |
+| Yemọja (Elixir) | `YEMOJA_URL=http://localhost:4000` | ✅ | `beam.smp` (`ares-omokoda-swarm.service`) | 🟡 Only via a specific `agent_orchestration` tool (`tools/mod.rs`) and SkillForge — not a universal spawn path |
+
+**Read this precisely**: the gap isn't connectivity — every service is
+genuinely up, and Ọ̀ṣun's integration is fully real end-to-end. The gap is
+that Ọbàtálá's and Ọya's *general-purpose gating role*, as described in
+their own trait doc comments, was superseded by native Rust gate code built
+separately (and, per the earlier §6 findings in this same audit, more
+maturely — see `taboo_from_halt`/`MarkThrottle`). The HTTP bridges are real,
+running services, just reachable only through narrower tool-specific paths
+(Ọya, Yemọja) or not reachable in practice at all (Ọbàtálá).
+
+### Live bug found: Ọbàtálá client/server API drift
+
+Tested `HttpObatalaClient`'s exact call shape against the real deployed
+service:
+
+- Client posts to `{OBATALA_URL}/hermetic/evaluate` with
+  `{intent, action, emotion_tension}`.
+- Real server (`omokoda-clojure/obatala.clj`) has **no such route** — its
+  real routes are `/evaluate`, `/principles`, `/rules`, `/consent/check`,
+  `/skillforge/analyze`, `/health`, `/mcp`, `/mcp/invoke`, `/openapi.json`.
+- Even the *correctly-named* `/evaluate` route expects an entirely different
+  request shape: `{consent_mode, data_category, requester}`, not
+  `{intent, action, emotion_tension}`.
+
+If `evaluate_hermetic` were ever called, it would fail on every single call
+(`{"error":"unknown path: /hermetic/evaluate"}`) and silently resolve to
+`HermeticResult::allow_stub()` via the client's own fail-open error handling
+— an always-allow result, never surfaced as an error to anything upstream.
+**Zero current runtime impact** since the method is never called from the
+live kernel — but this is real, live drift between the two sides of a
+contract that both currently exist and both currently run, and it should be
+fixed (or the dead client code removed) before anyone tries to revive this
+integration path, not discovered again the hard way later.
+
+### Obatala's transport: half the original design intent was kept
+
+The original design called for Ọbàtálá/Lisp to be a **raw socket server**
+(Rust sends S-expressions, gets JSON back) — deliberately different
+transport from the other three HTTP bridges. The real implementation:
+
+- **Language: kept.** The deployed service genuinely is Lisp-family —
+  Babashka (`bb`), a real Clojure scripting runtime, running an actual
+  `obatala.clj` script (not a stand-in or a different language wearing the
+  name).
+- **Transport: not kept.** `HttpObatalaClient` is plain HTTP+JSON
+  (`reqwest`, `POST` with a JSON body), same as `HttpOsunClient`/
+  `HttpOyaClient`/`HttpYemojaClient`. No raw socket, no S-expression wire
+  format anywhere in `bus/http_clients.rs` or `omokoda-clojure/obatala.clj`
+  (confirmed: the Clojure side speaks JSON over HTTP too — a standard Ring/
+  HTTP handler `condp`-dispatching on `(:request-method req)`/`(:uri req)`,
+  not a socket listener parsing S-expressions).
+
+**Verdict: language intent honored, transport intent was simplified away**
+— presumably converged toward the other three bridges' pattern for
+implementation ease, at the cost of the specific socket-based S-expression
+design the doc called for.

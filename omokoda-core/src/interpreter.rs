@@ -3458,6 +3458,21 @@ impl Steward {
         };
         think_ctx.extend(observe_ctx);
 
+        // Zàngbétò security notice: if a canary mousetrap tripped on this host,
+        // inject a system-level notice so the agent becomes aware it may be
+        // compromised or under attack before it reasons further. Pull-based and
+        // fail-open (no ZANGBETO_URL, or a down enforcer → no notice); once-only
+        // per trip via a last-seen cursor in the client. This is context
+        // injection only — it never gates or blocks the think(), and it never
+        // carries the canary token secret (only token_type/src_ip/memo/time).
+        if let Some(trips) = crate::bus::zangbeto::pending_incidents().await {
+            for trip in trips {
+                if let Some(notice) = crate::bus::zangbeto::render_incident_notice(&trip) {
+                    think_ctx.push(ConversationMessage::new_system(notice, private));
+                }
+            }
+        }
+
         // Per-agent BYOK: if this agent brought its own key at birth, its thoughts
         // route through that key alone — never the shared kernel default, and
         // never another agent's key. Private thoughts still require a local

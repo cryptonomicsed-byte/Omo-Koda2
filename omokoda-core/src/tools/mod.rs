@@ -9,9 +9,11 @@ use crate::sandbox::WasmSandbox;
 
 pub mod config_tool;
 pub mod file_ops;
+pub mod if_script_tool;
 pub mod mesh_tools;
 pub mod nostr_identity_tool;
 pub mod onchain_tools;
+pub mod python_bridge;
 pub mod repl;
 pub mod retry;
 pub mod skillforge;
@@ -160,6 +162,21 @@ impl ToolRegistry {
         registry.register(Box::new(AgentOrchestrationTool));
         registry.register(Box::new(NoteTakingTool));
 
+        // Ògún (Python) tool-execution bridge -- real service, was written
+        // but never registered (see docs/audit/inspiration-followthrough-
+        // connectionmap-256.md). Only registered when OGUN_URL is
+        // configured, matching the OSUN_URL-gated pattern used elsewhere in
+        // this codebase: an absent bridge means these tools simply aren't
+        // offered, not a broken/erroring tool. `py_web_search` is
+        // distinctly named to avoid colliding with the existing native
+        // `WebSearchTool` above -- both stay available, callers choose.
+        if std::env::var("PYTHON_TOOL_URL").is_ok() || std::env::var("OGUN_URL").is_ok() {
+            registry.register(Box::new(python_bridge::web_search_py()));
+            registry.register(Box::new(python_bridge::code_runner()));
+            registry.register(Box::new(python_bridge::data_analysis()));
+            registry.register(Box::new(python_bridge::cosmos()));
+        }
+
         // Register Sovereign tools
         registry.register(Box::new(sovereign::ApplyPatchTool));
         registry.register(Box::new(sovereign::ExecTool));
@@ -209,6 +226,7 @@ impl ToolRegistry {
         registry.register(Box::new(wallet_tools::WalletSignTool));
         registry.register(Box::new(wallet_tools::WalletAlchemyApproveTool));
         registry.register(Box::new(nostr_identity_tool::NostrIdentityTool));
+        registry.register(Box::new(if_script_tool::IfScriptTool));
 
         // Real on-chain settlement via OSOVM's elegbara_router (Sui testnet).
         // Env-gated: OMOKODA_ELEGBARA_PACKAGE / OMOKODA_ELEGBARA_ROUTER_ID must

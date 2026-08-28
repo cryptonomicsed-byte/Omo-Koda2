@@ -533,3 +533,29 @@ transport from the other three HTTP bridges. The real implementation:
 — presumably converged toward the other three bridges' pattern for
 implementation ease, at the cost of the specific socket-based S-expression
 design the doc called for.
+
+---
+
+## Deployment confirmation 2026-08-28 — all of the above is now live, not just committed
+
+Built a real release binary on Contabo (isolated clone at
+`/opt/ares/omokoda-deploy-clean`, kept separate from the actively-edited
+production checkout to avoid disturbing another pane's in-progress work),
+deployed it to `ares-omokoda.service`, verified:
+
+- Clean restart, correct owner identity resumed, HTTP server up on `:7777`,
+  `/v1/health` returns `{"ok":true}`.
+- `strings` on the deployed binary confirms the real
+  `omokoda_core::bus::clients::HttpObatalaClient::check_consent` symbol is
+  compiled in and linked (the fix genuinely reached production, not just
+  the source tree).
+- The running process's real environment (`/proc/<pid>/environ`) has all
+  four bridge URLs set: `OBATALA_URL`, `OYA_URL`, `OGUN_URL`,
+  `PYTHON_TOOL_URL`.
+- Ọ̀gún's backing service (`ares-omokoda-ogun.service`, :7779) independently
+  live-tested end-to-end with a real DuckDuckGo search through
+  `POST /tools/execute`.
+
+Old binary backed up at
+`/opt/ares/Omo-Koda2/target/release/omokoda.backup-1787890931` before the
+swap, in case a rollback is ever needed.

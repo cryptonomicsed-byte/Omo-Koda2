@@ -103,7 +103,63 @@ The 3 repos above (Claw-code, Claude-2, Swibe) had real verdicts. The other 43 l
 
 ---
 
-## Re-verification (2026-08-27): Bino-Elgua "Inspiration Pattern Repos" — 5 repos
+## 6. Re-verification against Bino-Elgua (2026-08-27)
+
+> The `omokoda` GitHub org was suspended; the "Inspiration Pattern Repos" now live under `github.com/Bino-Elgua`. READ-ONLY access only — **never push/commit to Bino-Elgua**. This section re-verifies six repos against their correct Bino-Elgua URLs (fresh clones, grep against `omokoda-core/src` + `omokoda-on-chain/sources`).
+
+### 6.1 Claw-code (`Bino-Elgua/Claw-code`) — verdict CONFIRMED: incorporated
+Real Rust agent runtime (session persistence, permission modes, bash sandbox, hook system). Fresh clone matches the source the §1 verdict was written against. Grep evidence already cited in §1 (`tools/`, `permissions.rs`, `providers.rs`, `execution/`). No change.
+
+### 6.2 Swibe (`Bino-Elgua/Swibe`) — verdict CONFIRMED: incorporated
+Agent-native scripting language (neural router, 3-tier memory, hermetic ethics). Fresh clone confirms it is the same language reference §3 was written against. Real evidence: `plugins/` (hook system), `receipt/` (receipt chain), `providers/` (provider fallback), `omokoda-hermetic/` (7-principle ethics engine). No change.
+
+### 6.3 Claude-2 (`Bino-Elgua/Claude-2`) — verdict CONFIRMED: incorporated
+TypeScript Claude Code harness (async generator loop, context compression, safety stack). Fresh clone matches §2. Real evidence: `providers/` (provider abstraction + `/private` routing), `execution/` (sandbox + hooks), `tools/` (per-capability tool files). No change.
+
+### 6.4 Claude-mirror (`Bino-Elgua/Claude-mirror`) — verdict CONFIRMED: rejected
+Mirror of the `@anthropic-ai/claude-code` npm package. Fresh clone confirms it is a literal mirror, not a separate code source. The "patterns only, write fresh Rust" rule (§4) still holds. No change.
+
+### 6.5 ase-vault (`Bino-Elgua/ase-vault`) — verdict CHANGED: not-applicable → **deferred (reference)**
+
+The earlier audit used a wrong/absent source and marked this "not-applicable". Against the real Bino-Elgua URL, **ase-vault is genuinely relevant to the receipt-chain / opcode work** and deserves the second look the owner requested.
+
+What it actually is: `ÀṣẹVault_COMPLETE.py` — a "dictionary is the source of truth" definition of the **155-opcode ÀṢẹ/OSOVM VM** (25 runtime-enforced core + 130 expansion, plus 777 veil opcodes), with BIP-39/Ed25519 key handling and Sabbath guards baked in. `OPCODE_REFERENCE.md` is the full opcode semantic map, including:
+
+- `IMPACT` (0x11) / `VEIL` (0x12) — mint-from-work / VeilSim
+- `TITHE` (0x27) — the 3.69% AIO split
+- `RECEIPT` (0x1f) — immutable proof
+- `BIPON_SEED` (0x26) — HD wallet derivation (1440)
+- `NONREENTRANT` / `GENESIS_FLAW_TOKEN` (0x28 / 0x2b) — reentrancy + block-0 mint guards
+- **1440 inheritance-wallet governance opcodes** (0x30–0x34): `CANDIDATE_APPLY → COUNCIL_APPROVE → FINAL_SIGN → DISTRIBUTE_OFFERING → CLAIM_REWARDS`
+
+Grep against `omokoda-core/src` + `omokoda-on-chain/sources`: **RECEIPT** (`receipt/act_receipt.rs`) and **TITHE** (3.69% in `onchain.rs`) are real and live, but there is **no opcode table, no 1440 inheritance-wallet flow, no GENESIS_FLAW_TOKEN, no IMPACT/VEIL** anywhere in the Rust core or the Move contracts. Those opcodes live in OSOVM (Julia) — and the earlier OsoVM audit flagged IMPACT/VEIL/RECEIPT there as *stubbed*.
+
+**Concrete unbuilt patterns worth pulling in (as design references, not code — it's Python, this repo is Rust):**
+1. The **1440 inheritance-wallet governance opcode sequence** (apply → council-approve → final-sign → distribute → claim) — absent from `omokoda-on-chain`.
+2. The **GENESIS_FLAW_TOKEN** block-0 mint guard — absent (the genesis-flaw / Èṣù's-Twist guard is a real, still-missing settlement invariant).
+3. The **opcode → semantic naming convention** (`@impact`, `@veil`, `@tithe`, `@receipt`, `@biponSeed`) as the vocabulary that `onchain.rs`'s settlement calls should align to.
+
+### 6.6 Npc-forge (`Bino-Elgua/Npc-forge`) — verdict CHANGED: not-applicable → **deferred (reference)** for the Move dNFT pattern only
+
+The earlier "not-applicable" verdict over-weighted the 3D-avatar frontend and missed the real extractable. The correct Bino-Elgua clone shows the repo's substance is `move/sources/npc.move` — a **real Sui Move dNFT minting contract**:
+
+- `Personality` struct (friendly/chatty/genius 0–100)
+- `NPC` object with `secrets_hash` (Seal-encrypted), `avatar_blob_id` (Walrus blob), `wallet`, `interaction_count`
+- `NPCRegistry` (shared, `total_minted` counter)
+- `NPCMinted` / `NPCInteracted` **events**
+
+Grep against `omokoda-on-chain/sources`: `soul.move` (SoulRecord) and `agent.move` (AgentState) exist and cover the identity half — but they **emit no events**, have **no personality-traits struct**, and carry **no Seal `secrets_hash` or Walrus `avatar_blob_id`** field (only `hermetic_seed_hash` and `dna_fingerprint`).
+
+**Concrete unbuilt pattern worth pulling in:** the **mint-event emission** — `soul.move::forge` and `agent.move::create` currently transfer the object silently; emitting a `SoulForged`/`AgentCreated` event (Npc-forge's `NPCMinted` shape) would make on-chain birth queryable/discoverable. The 3D-avatar + Ready-Player-Me + Groq frontend remains correctly **not-applicable**.
+
+**Status update (2026-08-27, later same night):** this gap is now closed for the mint-event half — `soul.move::forge` emits `SoulForged` and `agent.move::create` emits `AgentCreated` (plus a bonus `TierChanged` event on `update_reputation`), matching the `NPCMinted`/`NPCInteracted` shape. `sui move build` passes clean; compatible upgrade, no function signatures changed. Personality-traits struct and Seal/Walrus fields remain open (item 2 above, ase-vault settlement patterns, is the next piece of this same gap).
+
+### Re-verification summary
+- **Confirmed unchanged** (4): Claw-code (incorporated), Swibe (incorporated), Claude-2 (incorporated), Claude-mirror (rejected).
+- **Changed** (2): ase-vault (not-applicable → deferred/reference, receipt-chain opcode vocabulary), Npc-forge (not-applicable → deferred/reference, Move dNFT mint-event pattern; mint-event half now built, see status update above).
+- Both changes move items from the "not-applicable" bucket into "deferred" — i.e. real, scoped, not-yet-built patterns the owner explicitly wanted a second look at.
+
+## 7. Re-verification (2026-08-27): Bino-Elgua "Inspiration Pattern Repos" — 5 repos
 
 Read-only shallow clones of `github.com/Bino-Elgua/{Droidclaw, Oso-Aether, Kimi-bino, OsO, NarratorIDE}`. Confirms/updates the §2 verdicts with fresh evidence from the real Bino-Elgua repos.
 

@@ -52,6 +52,16 @@ pub struct ProviderMetadata {
     pub endpoint: String,
 }
 
+/// IRIS-derived sampling overrides for a single `generate` call. Optional --
+/// a provider that doesn't override `generate_with_params` (the default
+/// impl below) just ignores it and falls back to its own hardcoded values,
+/// so adding this never breaks an existing implementor.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GenerationParams {
+    pub temperature: f32,
+    pub max_tokens: u32,
+}
+
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
     fn metadata(&self) -> &ProviderMetadata;
@@ -60,6 +70,19 @@ pub trait LlmProvider: Send + Sync {
         prompt: &str,
         history: &[ConversationMessage],
     ) -> Result<(String, TokenUsage), String>;
+
+    /// Same as `generate`, but honoring IRIS-routed temperature/max_tokens
+    /// when the caller has them. Default impl ignores `_params` and defers
+    /// to `generate` -- override only in providers where honoring real
+    /// sampling params is worth the added surface (see OpenAIProvider).
+    async fn generate_with_params(
+        &self,
+        prompt: &str,
+        history: &[ConversationMessage],
+        _params: Option<&GenerationParams>,
+    ) -> Result<(String, TokenUsage), String> {
+        self.generate(prompt, history).await
+    }
 
     fn supports_tools(&self) -> bool {
         false
@@ -546,18 +569,16 @@ impl OpenAIProvider {
             model,
         }
     }
-}
 
-#[async_trait]
-impl LlmProvider for OpenAIProvider {
-    fn metadata(&self) -> &ProviderMetadata {
-        &self.metadata
-    }
-
-    async fn generate(
+    /// Shared chat-completions call, parameterized by temperature/max_tokens
+    /// so both `generate` (hardcoded defaults) and `generate_with_params`
+    /// (IRIS-routed values) share one implementation.
+    async fn generate_impl(
         &self,
         prompt: &str,
         history: &[ConversationMessage],
+        temperature: f32,
+        max_tokens: u32,
     ) -> Result<(String, TokenUsage), String> {
         let url = if self.metadata.endpoint.contains("/v1/") {
             self.metadata.endpoint.clone()
@@ -595,11 +616,11 @@ impl LlmProvider for OpenAIProvider {
         let body = serde_json::json!({
             "model": self.model,
             "messages": messages,
-            "temperature": 0.7,
+            "temperature": temperature,
             // Reasoning models (e.g. deepseek-v4-flash) spend tokens on hidden
             // reasoning before emitting the answer; too small a budget returns
             // empty content with finish_reason=length. Give real headroom.
-            "max_tokens": 2000,
+            "max_tokens": max_tokens,
             // Must be explicit: OmniRoute (and some OpenAI-compatible gateways)
             // stream by default, returning text/event-stream chunks that would
             // break the single-object JSON parse below.
@@ -642,6 +663,36 @@ impl LlmProvider for OpenAIProvider {
         };
 
         Ok((response, usage))
+    }
+}
+
+#[async_trait]
+impl LlmProvider for OpenAIProvider {
+    fn metadata(&self) -> &ProviderMetadata {
+        &self.metadata
+    }
+
+    async fn generate(
+        &self,
+        prompt: &str,
+        history: &[ConversationMessage],
+    ) -> Result<(String, TokenUsage), String> {
+        // Defaults match the pre-IRIS hardcoded values exactly, so behavior
+        // is unchanged for any caller still using plain `generate`.
+        self.generate_impl(prompt, history, 0.7, 2000).await
+    }
+
+    async fn generate_with_params(
+        &self,
+        prompt: &str,
+        history: &[ConversationMessage],
+        params: Option<&GenerationParams>,
+    ) -> Result<(String, TokenUsage), String> {
+        let (temperature, max_tokens) = params
+            .map(|p| (p.temperature, p.max_tokens))
+            .unwrap_or((0.7, 2000));
+        self.generate_impl(prompt, history, temperature, max_tokens)
+            .await
     }
 
     fn supports_tools(&self) -> bool {

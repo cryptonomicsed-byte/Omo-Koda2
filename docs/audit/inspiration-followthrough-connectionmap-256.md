@@ -81,28 +81,54 @@ workspace, already self-archived ("folded into Bondhive" per its own
 is real and running — treat future references to "building the watch/recall/
 bounded/evidence_tier/sniff_explain layer" as **already done**, not a task.
 
-### §1 ỌṢỌVM + folded Techgnosis — 🟡 PARTIAL
+### §1 ỌṢỌVM + folded Techgnosis — ✅ MOSTLY DONE (8/10), 2 confirmed not started
 
-`OSOVM/src/waggle_bridge.jl` and `veilsim_engine.jl` exist — a real bridge
-file, not just a doc reference. Did not verify item-by-item (Wasm ABI export,
-bytecode-cache-keyed-to-signal-URI, build-time Mandelbrot perturbation gate,
-`recall`-backed regression detection) — these need a Julia-side deep read
-this pass didn't have budget for. **Flag for follow-up**, don't assume done
-just because the bridge file exists — a bridge file existing is necessary,
-not sufficient, evidence for the 10 items §1 lists.
+**Follow-up verification done 2026-08-28** — read `OSOVM/src/waggle_bridge.jl`
+in full (276 lines). It's a real, faithful implementation, with inline
+comments citing the exact doc section numbers:
 
-### §2 Axiom — 🟡 PARTIAL, real adapter surface exists
+| Item | Status | Evidence |
+|---|---|---|
+| §1.1 `osovm-bridge` implements Axiom's `GraphEngine` (`node_spawned`/`node_updated`/`node_died`) | 🔴 NOT STARTED | grepped all of `OSOVM/src` (excl. vendored `julia-1.10.5/`) for `node_spawned`/`node_updated`/`node_died`/`GraphEngine`/`Axiom` — only one passing prose mention in a comment, no implementation |
+| §1.2 watch-registered auto-deposit on Zangbeto-verified execution | ✅ DONE | `zangbeto_promote!()` — deposits `gold` at `evidence_tier: "zangbeto-verified"`, plus a companion `bounded` deposit when robustness is known |
+| §1.3 four-function Wasm ABI export (plugs in like `rust-wasm-leaf`) | 🔴 NOT STARTED | zero `wasm`/`extern "C"`/`WASM_EXPORT` matches anywhere in `OSOVM/src` |
+| §1.4 `sniff` before spawning new computation, cache hit short-circuits recompute | ✅ DONE | `cache_get()` sniffs `osovm://bytecode/<key>` for gold before recompute; `compile_with_signals()` calls it first |
+| §1.5 stage-transition signaling (parsing→type-checking→codegen→emitted) | ✅ DONE | `stage!()`, called at each transition in `compile_with_signals()` |
+| §1.6 dead-end auto-deposit on compile failure, tagged with stage | ✅ DONE | `compile_failed!()` — tags the failing stage, intensity 4 |
+| §1.7 bytecode cache keyed to signal URI | ✅ DONE | `cache_key()` (sha256 of source), `cache_put!()`/`cache_get()` — genuinely content-addressed, stored in Waggle's own `/v1/memory` namespace |
+| §1.8 build-time Mandelbrot perturbation gate on bytecode stability | ✅ DONE | `perturb_and_verdict!()` — runs `f` over N jittered input copies, computes bounded-fraction stability, deposits on the `bounded` channel with verdict text (`"robust island"`/`"fragile boundary"`/`"escape zone"`) — this is a faithful, complete implementation of exactly what the doc describes |
+| §1.9 Zangbeto verification promotes `evidence_tier` directly | ✅ DONE | same `zangbeto_promote!()` as §1.2 — one function covers both |
+| §1.10 `recall`-backed regression detection before shipping | ✅ DONE | `regression_check()` — compares current `bounded` verdict against `recall` N hours ago, computes a decay-normalized regression-severity index, flags `regressed = rsi > 0.5` |
 
-`Axiom/src/engine/OmokodaGraphEngine.ts`, `MockGraphEngine.ts`,
-`nodeTypes/registerOmokoda.ts`, `ui/NodeInspector.ts` all real. This
-strongly suggests items 1 (`waggle-hotspot` node type) and 4 (`GraphEngine`
-adapters) have at least a skeleton. **Not verified:** SSE subscription (item
-2), gradient-driven camera auto-zoom (item 3), taboo visual treatment (item
-5), Mandelbrot shader blending live `bounded` density (item 6),
-`sniff_explain` panel in NodeInspector (item 7), cross-inhibition dome
-visualization (item 8) — `NodeInspector.ts` existing is necessary-not-
-sufficient for item 7 specifically; needs a real read to confirm the panel
-content, not just the file's existence.
+**Revised verdict: §1 is 8/10 done**, essentially the same story as §0/§5 —
+undersold by the doc's own framing. The **only real gaps are §1.1 (Axiom
+GraphEngine bridge) and §1.3 (Wasm ABI export)** — both genuinely absent, not
+just unverified. Note §1.1's gap is one half of a two-sided contract: Axiom's
+side (§2.4, `GraphEngine` adapters) needs checking too before assuming which
+side is actually missing — see §2 below.
+
+### §2 Axiom — 🟡 PARTIAL, verified item-by-item
+
+**Follow-up verification done 2026-08-28**:
+
+| Item | Status | Evidence |
+|---|---|---|
+| 1. `waggle-hotspot` node type | 🟡 LIKELY (not re-confirmed) | `nodeTypes/registerOmokoda.ts` exists; not re-opened this pass |
+| 2. SSE subscription from Waggle's event stream | ✅ DONE | `EventSource`/SSE usage confirmed in `src/engine/OmokodaGraphEngine.ts` |
+| 3. Gradient-driven camera auto-zoom (`GET /v1/gradient?depth=N`) | 🔴 NOT STARTED | zero matches for `gradient`+`zoom`/`autoZoom`/camera-gradient anywhere in `src/` |
+| 4. `osovm-bridge`/`loom-bridge`/`vantage-bridge` as `GraphEngine` adapters | 🟡 PARTIAL | `OmokodaGraphEngine.ts` + `MockGraphEngine.ts` are real, but per §1.1 above, OSOVM's *own* side of that bridge (the code that would call into Axiom's GraphEngine) doesn't exist yet — so this is a client interface with an unconnected server side, at least for the OSOVM leg specifically |
+| 5. Taboo-channel visual treatment (slow-pulsing red-black glow) | 🔴 NOT STARTED | zero matches for `taboo` anywhere in `Axiom/src` |
+| 6. Mandelbrot shader blended with live `bounded` signal density | 🔴 NOT STARTED | `src/scene/postfx.ts` has a real escape-time Mandelbrot GLSL shader (confirmed: `bool bounded = dot(z,z) <= 4.0` at the shader level) — but it's a **self-contained local computation**, not fed by field data. Zero `fetch`/`EventSource`/`/v1/sniff`/`/v1/explain` calls anywhere in `postfx.ts`. The doc's ask (extend the existing shader to blend in real field `bounded` density) has not been done — the shader exists, the extension doesn't |
+| 7. `sniff_explain` panel in NodeInspector | 🔴 NOT STARTED | zero matches for `explain` in `NodeInspector.ts` |
+| 8. Cross-inhibition dome visualization | 🔴 NOT STARTED | zero matches for `cross_inhibit`/`dome` anywhere in `Axiom/src` |
+
+**Revised verdict: §2 is roughly 2/8 done, 1 partial, 1 assumed-but-not-
+re-confirmed, 4 confirmed not started.** This is the opposite pattern from
+§0/§1/§5 — Axiom's adapter *scaffolding* (the TS interface types, the mock
+engine) is real, but almost none of the *specific visual features* the doc
+asks for are built on top of it yet. This is the most honestly-unfinished
+section verified so far, closer to what the doc's overall framing implies
+than §0/§1/§5 turned out to be.
 
 ### §3 IfáScript — 🔴 NOT STARTED
 
@@ -295,12 +321,20 @@ other open items):
    this pass (wrong-language repos, out of scope for a fast grep) — **next
    step is a dedicated pass reading those three repos directly**, not
    assuming absence.
-5. **ỌṢỌVM §1 item-by-item verification.** A real bridge file exists but
-   the 10 listed items weren't individually confirmed — needs a Julia-side
-   read.
-6. **Axiom §2 item-by-item verification**, especially the `sniff_explain`
-   NodeInspector panel (item 7) and Mandelbrot-shader/`bounded`-density blend
-   (item 6) — real adapter scaffolding exists, specific features unconfirmed.
+5. ~~ỌṢỌVM §1 item-by-item verification~~ **DONE 2026-08-28**: 8/10 built.
+   Real remaining gaps: **§1.1 Axiom GraphEngine bridge (OSOVM's side)** and
+   **§1.3 Wasm ABI export** — both confirmed absent, small enough to be
+   picked up directly.
+6. **Axiom §2 — 6 of 8 items confirmed not started** (verified 2026-08-28):
+   gradient-driven camera auto-zoom (item 3), taboo visual treatment (item
+   5), Mandelbrot-shader/`bounded`-density blend (item 6) — the shader
+   exists but is a self-contained local computation, not fed by field data,
+   `sniff_explain` NodeInspector panel (item 7), cross-inhibition dome (item
+   8). Only SSE subscription (item 2) is confirmed done. This is the most
+   genuinely-unfinished section of `CONNECTION_MAP_V2.md` verified so far —
+   good next pickup if visual/Axiom work is prioritized, since the adapter
+   scaffolding (`OmokodaGraphEngine.ts`, `MockGraphEngine.ts`) it all builds
+   on already exists.
 7. **Day→Òrìṣà table ratification** (CORRECTIONS.md-tracked, not this doc's
    job to resolve, but blocks item 8).
 8. **DNA-overlay-as-symbolic-resonance-class** (256---65536.md's one concrete
@@ -315,9 +349,17 @@ other open items):
 
 For anyone picking up either doc without reading this audit first: §0
 (Agentic/waggled: channels, watch, recall, bounded channel, evidence_tier,
-sniff_explain, batched sniff, full `wag` CLI, Python SDK) and §5 (LOOM: all
-six trade/oracle/reputation integrations) are **done**. Re-implementing them
-would be pure duplication. §8's fractal-oracle standalone service is also
-done. The Hermetic-principle-as-gate idea from `256---65536.md` is superseded
-by real, more mature gate code already in `omokoda-core/src/gates/` and
-`steward/`.
+sniff_explain, batched sniff, full `wag` CLI, Python SDK), §1 (ỌṢỌVM +
+Techgnosis pipeline: 8 of 10 items — stage signaling, dead-end tagging,
+content-addressed bytecode cache, the full Mandelbrot perturbation build
+gate, Zangbeto evidence-tier promotion, recall-backed regression detection),
+and §5 (LOOM: all six trade/oracle/reputation integrations) are **done**.
+Re-implementing any of these would be pure duplication. §8's fractal-oracle
+standalone service is also done. The Hermetic-principle-as-gate idea from
+`256---65536.md` is superseded by real, more mature gate code already in
+`omokoda-core/src/gates/` and `steward/`.
+
+**By contrast, §2 (Axiom) is genuinely mostly unbuilt** — 6 of its 8 items
+confirmed not started as of 2026-08-28. Don't extend the "already done"
+assumption to Axiom just because §0/§1/§5 turned out that way — verify
+per-section, this repo set does not have one uniform completion level.

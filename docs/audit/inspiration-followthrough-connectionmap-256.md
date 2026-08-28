@@ -488,6 +488,29 @@ contract that both currently exist and both currently run, and it should be
 fixed (or the dead client code removed) before anyone tries to revive this
 integration path, not discovered again the hard way later.
 
+**FIXED 2026-08-28, with a second, bigger finding along the way.** While
+fixing this, discovered the `HttpObatalaClient` above lived in
+`bus/http_clients.rs` — a file with **no `pub mod http_clients;` declaration
+anywhere in the crate**, meaning it was never compiled into the binary at
+all. The real, live client file is `bus/clients.rs`, which had
+`HttpOsunClient`/`HttpOyaClient`/`HttpYemojaClient` but **no
+`HttpObatalaClient` whatsoever**. An initial fix landed in the dead file
+first (commit `2915869`) and had zero effect on the running kernel; the real
+fix (commit `842838c`) added a genuine `HttpObatalaClient` directly to
+`clients.rs`, targeting the real `/evaluate` schema
+(`consent_mode`/`data_category`/`requester`/`hermetic_state`), re-exported
+from `bus/mod.rs`. Also wired `Oya.is_in_cooldown`/`record_primitive` and
+`Obatala.check_consent` into the universal loop (`execute_tool_call_for_agentic`
+and the outward-sharing point after a think turn, respectively) — previously
+both were only reachable via SkillForge-specific tool calls, never the
+general act/think path their own trait doc comments describe. Obatala's
+wiring is deliberately advisory-only (logs, doesn't block), not a full
+pre-send gate — see the commit message for the reasoning. Yemọja intentionally
+left unwired at the universal-loop level (its methods are swarm/mesh-specific
+actions with no natural "every act" use case); separately, another pane is
+already building `omokoda-swarm/lib/omokoda_swarm/territory_supervisor.ex`
+for the real Yemọja gap this audit identified in §6.
+
 ### Obatala's transport: half the original design intent was kept
 
 The original design called for Ọbàtálá/Lisp to be a **raw socket server**

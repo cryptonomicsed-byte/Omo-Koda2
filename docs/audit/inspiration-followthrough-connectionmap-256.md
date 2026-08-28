@@ -190,17 +190,33 @@ undersells reality. The one real gap is **Yemọja's territory-aware
 supervision topology** — real supervisor infrastructure exists, the
 Hilbert-boundary-mirroring specifically does not.
 
-### §7 Ṣàngó / Move contracts — 🟡 PARTIAL
+### §7 Ṣàngó / Move contracts — 🔴 0/4 items done; real adjacent infrastructure exists, but none of it is wired the way the doc asks
 
-Real Move contracts exist and are substantial:
+**Follow-up verification done 2026-08-28** — read `agent.move`,
+`consensus_ledger.move` in full, and traced every off-chain caller of
+`update_reputation`. Corrects the earlier "PARTIAL" framing: on a strict
+per-item basis this section is closer to fully unstarted than partial,
+despite real supporting code existing nearby.
+
+| Item | Status | Evidence |
+|---|---|---|
+| 1. On-chain finalization triggers `watch`-derived `gold` at max `evidence_tier` | 🔴 NOT STARTED | `omokoda-core/src/bus/sango.rs` is real — a fire-and-forget HTTP client that reports every completed `act` to a "Ṣàngó relay" for eventual on-chain anchoring. But it's a pure receipt-recording pipe: zero Waggle deposit, zero `evidence_tier`, zero `gold` anywhere in the file. On-chain finalization does not currently feed back into the scent field at all |
+| 2. Trust-weighted reputation deltas from corroboration history | 🔴 NOT STARTED | `agent.move`'s `update_reputation(state, new_reputation)` is a pure setter — it takes an already-computed value and just range-checks/stores it; no corroboration-weighting logic exists on-chain (Move can't easily read the Waggle field anyway — this would have to be computed off-chain and passed in, and nothing does that computation). Separately, `omokoda-core/src/interpreter.rs` has its **own, entirely different, local (off-chain, in-session) reputation system** (`self.snapshot.reputation`, a `reputation_ledger`) with a hardcoded, explicitly-commented **"simplistic decay"** formula (`rep -= 0.008 + (rep * 0.001)`) — real code, but neither corroboration-weighted from the field nor connected to the on-chain `agent.move` reputation field. Two parallel reputation concepts exist (local session + on-chain dNFT), neither matches what this item asks for |
+| 3. `bounded`-channel anchoring for high-stakes verdicts (NEW) | 🔴 NOT STARTED | zero matches for `bounded` anywhere in `sources/*.move` |
+| 4. Reputation decay reuses Waggle's own decay-kernel math (NEW) | 🔴 NOT STARTED | the one real reputation-decay formula found (`interpreter.rs`, above) is a standalone hardcoded formula, explicitly self-described as "simplistic" — it does not call into or share code with Waggle's kernel selection in any way |
+
+Real Move contracts do exist and are substantial:
 `omokoda-on-chain/sources/{zbt_core,hive,soul,consensus_ledger,synapse,
-epistemic_nft,zbt_guard}.move`. But the two specific **NEW** items this doc
-calls for — `bounded`-channel on-chain anchoring for high-stakes robustness
-verdicts (item 3), and reputation-decay reusing Waggle's own decay-kernel
-math instead of a separate formula (item 4) — have **zero matches** for
-`bounded`/`decay kernel`/`reputation decay` anywhere in `sources/*.move`.
-The on-chain foundation (receipts, reputation ledger) is real; these two
-specific integrations are not started.
+epistemic_nft,zbt_guard,agent}.move` (803 lines total) — `agent.move`'s
+`AgentState` dNFT (tier/reputation/synapse balance/act count) and
+`consensus_ledger.move`'s multi-model wisdom-ensemble disagreement records
+are real, working infrastructure. **None of it is currently wired to
+Waggle** in either direction — no field signal promotes to on-chain gold,
+no on-chain event demotes/promotes a field signal's evidence tier, and the
+one real reputation-decay implementation in the whole ecosystem is
+disconnected from both the chain and the field. This is a clean,
+well-scoped integration gap: the two things needing connecting already
+exist independently, they just don't talk to each other yet.
 
 ### §8 Mandelbrot cross-cutting layer — ✅ DONE (the service), 🟡 PARTIAL (the integration)
 
@@ -317,10 +333,22 @@ other open items):
    §4, 4 items, also late-dependency and independently startable — but
    correctly sequenced last per the doc's own ordering (needs richer local
    fields first), so lower urgency than IfáScript.
-3. **Ṣàngó/Move: `bounded`-channel anchoring + decay-kernel-reuse for
-   reputation.** The on-chain foundation is real; these two specific
-   integrations (§7 items 3–4) are not. Small, scoped, buildable now that
-   §0's `bounded` channel and decay math are done.
+3. **Ṣàngó/Move: all 4 items confirmed not started (verified 2026-08-28),
+   not just the 2 NEW ones.** No direction of Waggle↔chain wiring exists at
+   all: `bus/sango.rs` reports completed acts to the chain relay but never
+   deposits to the field; `agent.move`'s `update_reputation` is a pure
+   setter with no corroboration-weighting; the `bounded` channel has no
+   on-chain anchor; and the one real reputation-decay formula that exists
+   (`interpreter.rs`, explicitly commented **"simplistic decay"**) is a
+   separate, disconnected, *local session* reputation system — not the
+   on-chain `agent.move` reputation, and not reusing Waggle's kernel math.
+   **Real, useful side-finding: there are two parallel reputation concepts
+   in the ecosystem today** (local/session vs. on-chain dNFT) that don't
+   talk to each other — worth flagging to the owner as its own open
+   question before building §7's asks on top of either one. Still
+   well-scoped to build now that both sides (Waggle's `bounded` channel/
+   decay kernel, and the on-chain `agent.move`/`consensus_ledger.move`
+   infrastructure) exist independently and just need connecting.
 4. ~~Ọ̀ṣun/Yemọja/Ọya-specific NEW items (§6)~~ **DONE 2026-08-28**: 2 of 3
    built. Ọ̀ṣun's resonance consolidation (`omokoda-julia/src/
    resonance_consolidation.jl`) and Ọya's per-territory tunable heartbeat

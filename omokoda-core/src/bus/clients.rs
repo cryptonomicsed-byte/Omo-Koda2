@@ -575,6 +575,136 @@ impl OsunClient for HttpOsunClient {
     }
 }
 
+// ─── HttpObatalaClient ── Ọbàtálá Clojure/Babashka consent service at OBATALA_URL ──
+
+// Real request/response shapes of obatala.clj's actual /evaluate endpoint
+// (verified live against the deployed service 2026-08-28 -- see
+// docs/audit/inspiration-followthrough-connectionmap-256.md).
+#[derive(Serialize)]
+struct ObatalaHermeticStateReq {
+    mentalism: f64,
+    correspondence: f64,
+    vibration: f64,
+    polarity: f64,
+    rhythm: f64,
+    cause_effect: f64,
+    gender: f64,
+}
+
+#[derive(Serialize)]
+struct ObatalaConsentReq<'a> {
+    consent_mode: &'a str,
+    data_category: &'a str,
+    requester: &'a str,
+    hermetic_state: ObatalaHermeticStateReq,
+}
+
+#[derive(Deserialize)]
+struct ObatalaConsentResp {
+    allowed: bool,
+    #[serde(default)]
+    violations: Vec<String>,
+    #[serde(default)]
+    sabbath: bool,
+}
+
+/// HTTP implementation of ObatalaClient.
+/// Base URL read from `OBATALA_URL` env var (e.g. `http://localhost:4002`).
+/// Fails open (allow) on network errors so an absent/unreachable Ọbàtálá
+/// never itself becomes a denial.
+pub struct HttpObatalaClient {
+    base_url: String,
+}
+
+impl HttpObatalaClient {
+    pub fn new(base_url: impl Into<String>) -> Self {
+        Self {
+            base_url: base_url.into(),
+        }
+    }
+}
+
+#[async_trait]
+impl ObatalaClient for HttpObatalaClient {
+    async fn evaluate_hermetic(
+        &self,
+        _intent: &str,
+        action_description: &str,
+        emotion: &EmotionState,
+    ) -> HermeticResult {
+        // obatala.clj has no generic intent/action evaluation endpoint --
+        // its only real capability is the consent gate below. Map onto a
+        // conservative default framing so a call here exercises the real
+        // rule engine instead of failing, while callers who need the real
+        // capability should call check_consent directly.
+        let _ = emotion;
+        let decision = self
+            .check_consent(
+                "private",
+                "general_action",
+                "self",
+                &[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+            )
+            .await;
+        let overall = if decision.allowed { 0.85 } else { 0.3 };
+        HermeticResult {
+            overall,
+            scores: [overall; 7],
+            decision: if decision.allowed {
+                "Allow".to_string()
+            } else {
+                format!(
+                    "Block: {} (re: {})",
+                    decision.violations.join("; "),
+                    action_description
+                )
+            },
+        }
+    }
+
+    async fn check_consent(
+        &self,
+        consent_mode: &str,
+        data_category: &str,
+        requester: &str,
+        hermetic: &[f64; 7],
+    ) -> ConsentDecision {
+        let req = ObatalaConsentReq {
+            consent_mode,
+            data_category,
+            requester,
+            hermetic_state: ObatalaHermeticStateReq {
+                mentalism: hermetic[0],
+                correspondence: hermetic[1],
+                vibration: hermetic[2],
+                polarity: hermetic[3],
+                rhythm: hermetic[4],
+                cause_effect: hermetic[5],
+                gender: hermetic[6],
+            },
+        };
+        let url = format!("{}/evaluate", self.base_url);
+        match http_client()
+            .post(&url)
+            .json(&req)
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<ObatalaConsentResp>()
+                .await
+                .map(|r| ConsentDecision {
+                    allowed: r.allowed,
+                    violations: r.violations,
+                    sabbath: r.sabbath,
+                })
+                .unwrap_or_else(|_| ConsentDecision::allow_stub()),
+            _ => ConsentDecision::allow_stub(), // fail open (service unavailable != block)
+        }
+    }
+}
+
 // ─── HttpOyaClient ── Ọya Go rhythm service at OYA_URL ───────────────────────
 
 /// HTTP implementation of OyaClient.

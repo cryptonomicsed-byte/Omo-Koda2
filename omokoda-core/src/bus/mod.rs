@@ -7,9 +7,9 @@ pub mod events {
 
 pub use self::events::SovereignEvent;
 pub use clients::{
-    AgentPresence, AgentStatus, HermeticResult, HttpOsunClient, HttpOyaClient, HttpYemojaClient,
-    LocalObatalaStub, LocalOsunStub, LocalOyaStub, LocalSangoStub, LocalYemojaStub, ObatalaClient,
-    OsunClient, OyaClient, SangoClient, YemojaClient,
+    AgentPresence, AgentStatus, ConsentDecision, HermeticResult, HttpObatalaClient, HttpOsunClient,
+    HttpOyaClient, HttpYemojaClient, LocalObatalaStub, LocalOsunStub, LocalOyaStub, LocalSangoStub,
+    LocalYemojaStub, ObatalaClient, OsunClient, OyaClient, SangoClient, YemojaClient,
 };
 use tokio::sync::broadcast;
 

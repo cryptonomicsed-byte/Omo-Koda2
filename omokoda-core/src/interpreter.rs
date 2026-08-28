@@ -1795,6 +1795,49 @@ impl Steward {
                                 .await;
                         });
                     }
+
+                    // Ọbàtálá (Clojure) consent gate -- real service, was
+                    // previously unreachable from any live code path (see
+                    // docs/audit/inspiration-followthrough-connectionmap-256.md).
+                    // Advisory only, not blocking: this is a public response
+                    // already committed to the conversation by this point,
+                    // so a consent violation here logs for review rather than
+                    // retroactively suppressing an already-sent reply. A
+                    // pre-send blocking gate is a larger, separate design
+                    // change (would need to run before add_message above),
+                    // deliberately not attempted in this pass given the
+                    // production risk of gating the live response path on a
+                    // network call for the first time.
+                    if let Ok(obatala_url) = std::env::var("OBATALA_URL") {
+                        use crate::bus::clients::{HttpObatalaClient, ObatalaClient};
+                        let hs = agent_mut.hermetic_state();
+                        let hermetic = [
+                            hs.mentalism(),
+                            hs.correspondence(),
+                            hs.vibration(),
+                            hs.polarity(),
+                            hs.rhythm(),
+                            hs.cause_effect(),
+                            hs.gender(),
+                        ];
+                        tokio::spawn(async move {
+                            let client = HttpObatalaClient::new(obatala_url);
+                            let decision = client
+                                .check_consent(
+                                    "public",
+                                    "interaction_summary",
+                                    "public_hive",
+                                    &hermetic,
+                                )
+                                .await;
+                            if !decision.allowed {
+                                eprintln!(
+                                    "[obatala] advisory: outward think response flagged: {}",
+                                    decision.violations.join("; ")
+                                );
+                            }
+                        });
+                    }
                 }
 
                 agent_mut.update_reputation(new_rep, ReputationChangeReason::Think);
@@ -4446,6 +4489,26 @@ impl Steward {
             ));
         }
 
+        // Ọya (Go) rhythm gate -- real service, was previously only
+        // reachable via SkillForge-specific tool calls, never the
+        // universal act path (see docs/audit/inspiration-followthrough-
+        // connectionmap-256.md). Only checked when OYA_URL is configured;
+        // fails open (is_in_cooldown returns false) on any network/service
+        // issue, so an absent/unreachable Ọya never blocks execution --
+        // this is additive to, not a replacement for, the native Rust
+        // rhythm gates (src/rhythm.rs, gates/rhythm.rs) that already
+        // enforce cooldowns today.
+        if let Ok(oya_url) = std::env::var("OYA_URL") {
+            use crate::bus::clients::{HttpOyaClient, OyaClient};
+            let client = HttpOyaClient::new(oya_url);
+            if client.is_in_cooldown(&agent_id).await {
+                return Err(format!(
+                    "Ọya rhythm gate: agent is in cooldown, '{}' deferred",
+                    tool_name
+                ));
+            }
+        }
+
         // Permission check
         let auth = self.permission_policy.authorize(tool_name, params, None);
         if let crate::permissions::PermissionOutcome::Deny { reason } = auth {
@@ -4462,10 +4525,26 @@ impl Steward {
             sandbox_mode: default_sandbox,
         };
 
+        let agent_id_for_oya = context.agent_id.clone();
         let (output, tool_usage) = self
             .tools
             .execute(tool_name, params, context, &self.permission_policy, None)
             .await?;
+
+        // Ọya (Go) rhythm tracking: record this completed primitive.
+        // Fire-and-forget, matching HttpOsunClient::store_memcell's pattern
+        // elsewhere in this file -- a recording failure must never fail an
+        // otherwise-successful act.
+        if let Ok(oya_url) = std::env::var("OYA_URL") {
+            use crate::bus::clients::{HttpOyaClient, OyaClient};
+            let tool_name_owned = tool_name.to_string();
+            tokio::spawn(async move {
+                let client = HttpOyaClient::new(oya_url);
+                client
+                    .record_primitive(&agent_id_for_oya, &tool_name_owned)
+                    .await;
+            });
+        }
 
         // Burn synapse for tool cost
         let cost = crate::usage::estimate_tool_cost(tool_name);

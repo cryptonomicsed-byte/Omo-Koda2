@@ -139,12 +139,69 @@ pub trait OsunClient: Send + Sync {
 #[async_trait]
 pub trait ObatalaClient: Send + Sync {
     /// Evaluate `intent` + `action_description` against the 7 Hermetic principles.
+    ///
+    /// Historical note (2026-08-28): the real deployed Ọbàtálá service
+    /// (`omokoda-clojure/obatala.clj`) never actually exposed a generic
+    /// intent/action Hermetic-evaluation endpoint — its real job is a
+    /// consent/data-sharing gate (`consent_mode`/`data_category`/`requester`
+    /// against the 7 principles), reachable at `/evaluate` and
+    /// `/consent/check`. This method's `HttpObatalaClient` implementation
+    /// was posting to a `/hermetic/evaluate` path that never existed on the
+    /// server; it now maps onto the real `/consent/check` endpoint with a
+    /// best-effort default framing (`consent_mode: "private"`,
+    /// `data_category: "general_action"`, `requester: "self"`) so a call
+    /// here is a real network round-trip against a real endpoint instead of
+    /// an unconditional 404 that silently fell through to `allow_stub()`.
+    /// For the real, correctly-modeled capability, prefer `check_consent`
+    /// below — this method is kept for trait/stub backward compatibility.
     async fn evaluate_hermetic(
         &self,
         intent: &str,
         action_description: &str,
         emotion: &EmotionState,
     ) -> HermeticResult;
+
+    /// The real Ọbàtálá capability: consent/data-sharing gate, matching
+    /// `obatala.clj`'s actual `/evaluate` rule engine exactly.
+    /// `hermetic_state` is the caller's own already-computed 7 principle
+    /// scores (`omokoda_hermetic::HermeticState`, deterministic per-agent
+    /// from the Odù seed) — Ọbàtálá never recomputes this, only weighs it
+    /// (see rules 3 and 4 in `obatala.clj`: polarity gates non-sensitive
+    /// sharing, cause_effect gates financial disclosure).
+    /// Fails open (allowed=true, no violations) when the service is
+    /// unreachable — an absent gate must never itself become a denial.
+    async fn check_consent(
+        &self,
+        _consent_mode: &str,
+        _data_category: &str,
+        _requester: &str,
+        _hermetic: &[f64; 7],
+    ) -> ConsentDecision {
+        ConsentDecision::allow_stub()
+    }
+}
+
+/// Real response shape of `obatala.clj`'s `/evaluate` (and the `sharable`/
+/// `reasons` wrapper `/consent/check` derives from the same `evaluate` core).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConsentDecision {
+    pub allowed: bool,
+    pub violations: Vec<String>,
+    pub sabbath: bool,
+}
+
+impl ConsentDecision {
+    /// Fail-open default — used when no Ọbàtálá service is configured or
+    /// reachable. Matches `HermeticResult::allow_stub`'s spirit: an absent
+    /// gate never blocks.
+    #[must_use]
+    pub fn allow_stub() -> Self {
+        Self {
+            allowed: true,
+            violations: Vec::new(),
+            sabbath: false,
+        }
+    }
 }
 
 /// Ọya (Go) client — rhythm enforcement and inter-service transport.

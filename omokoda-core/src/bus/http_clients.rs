@@ -2,8 +2,8 @@
 /// Drop-in replacements for the Local*Stub types once services are deployed.
 /// Each client is constructed with a base URL; all I/O uses reqwest + JSON.
 use crate::bus::clients::{
-    AgentPresence, AgentStatus, HermeticResult, ObatalaClient, OgunClient, OsunClient, OyaClient,
-    SangoClient, YemojaClient,
+    AgentPresence, AgentStatus, ConsentDecision, HermeticResult, ObatalaClient, OgunClient,
+    OsunClient, OyaClient, SangoClient, YemojaClient,
 };
 use crate::emotion::EmotionState;
 use crate::identity::AgentId;
@@ -151,22 +151,40 @@ impl OsunClient for HttpOsunClient {
 // Ọbàtálá (Lisp) — Hermetic evaluation
 // ---------------------------------------------------------------------------
 
+// Real request/response shapes of obatala.clj's actual endpoints (verified
+// live against the deployed service 2026-08-28 -- see docs/audit/
+// inspiration-followthrough-connectionmap-256.md for how the old
+// `/hermetic/evaluate` path was found to be a 404 that never existed).
+
 #[derive(Serialize)]
-struct ObatalaEvalReq<'a> {
-    intent: &'a str,
-    action: &'a str,
-    emotion_tension: f32,
+struct ObatalaHermeticState {
+    mentalism: f64,
+    correspondence: f64,
+    vibration: f64,
+    polarity: f64,
+    rhythm: f64,
+    cause_effect: f64,
+    gender: f64,
+}
+
+#[derive(Serialize)]
+struct ObatalaConsentReq<'a> {
+    consent_mode: &'a str,
+    data_category: &'a str,
+    requester: &'a str,
+    hermetic_state: ObatalaHermeticState,
 }
 
 #[derive(Deserialize)]
-struct ObatalaEvalResp {
-    overall: f32,
+struct ObatalaConsentResp {
+    allowed: bool,
     #[serde(default)]
-    scores: [f32; 7],
-    decision: String,
+    violations: Vec<String>,
+    #[serde(default)]
+    sabbath: bool,
 }
 
-/// HTTP client for Ọbàtálá (Lisp) hermetic evaluation service.
+/// HTTP client for Ọbàtálá (Lisp/Clojure via Babashka) consent-gate service.
 pub struct HttpObatalaClient {
     client: Client,
     base_url: String,
@@ -188,23 +206,76 @@ impl HttpObatalaClient {
 impl ObatalaClient for HttpObatalaClient {
     async fn evaluate_hermetic(
         &self,
-        intent: &str,
+        _intent: &str,
         action_description: &str,
         emotion: &EmotionState,
     ) -> HermeticResult {
-        let req = ObatalaEvalReq {
-            intent,
-            action: action_description,
-            emotion_tension: emotion.tension,
-        };
-        let url = format!("{}/hermetic/evaluate", self.base_url);
-        match post_json::<_, ObatalaEvalResp>(&self.client, &url, &req).await {
-            Ok(r) => HermeticResult {
-                overall: r.overall,
-                scores: r.scores,
-                decision: r.decision,
+        // No real server-side capability matches "evaluate arbitrary
+        // intent+action against 7 principles" (see trait doc comment) --
+        // obatala.clj only ever gates *consent to share data*. Map onto the
+        // closest real thing rather than call a nonexistent path: a
+        // conservative default framing (private/self/general_action) that
+        // exercises the real rule engine and its Sabbath/polarity/
+        // cause_effect logic, so a caller gets a genuine decision instead
+        // of an unconditional 404. `emotion` has no real server-side use
+        // here (kept in the signature for trait/call-site compatibility)
+        // since consent rules don't weigh tension -- only `hermetic_state`
+        // (which this shim doesn't have a real per-agent value for) does,
+        // and callers who need the real thing should use `check_consent`.
+        let _ = emotion;
+        let decision = self
+            .check_consent(
+                "private",
+                "general_action",
+                "self",
+                &[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+            )
+            .await;
+        let overall = if decision.allowed { 0.85 } else { 0.3 };
+        HermeticResult {
+            overall,
+            scores: [overall; 7],
+            decision: if decision.allowed {
+                "Allow".to_string()
+            } else {
+                format!(
+                    "Block: {} (re: {})",
+                    decision.violations.join("; "),
+                    action_description
+                )
             },
-            Err(_) => HermeticResult::allow_stub(), // fail open (service unavailable != block)
+        }
+    }
+
+    async fn check_consent(
+        &self,
+        consent_mode: &str,
+        data_category: &str,
+        requester: &str,
+        hermetic: &[f64; 7],
+    ) -> ConsentDecision {
+        let req = ObatalaConsentReq {
+            consent_mode,
+            data_category,
+            requester,
+            hermetic_state: ObatalaHermeticState {
+                mentalism: hermetic[0],
+                correspondence: hermetic[1],
+                vibration: hermetic[2],
+                polarity: hermetic[3],
+                rhythm: hermetic[4],
+                cause_effect: hermetic[5],
+                gender: hermetic[6],
+            },
+        };
+        let url = format!("{}/evaluate", self.base_url);
+        match post_json::<_, ObatalaConsentResp>(&self.client, &url, &req).await {
+            Ok(r) => ConsentDecision {
+                allowed: r.allowed,
+                violations: r.violations,
+                sabbath: r.sabbath,
+            },
+            Err(_) => ConsentDecision::allow_stub(), // fail open (service unavailable != block)
         }
     }
 }

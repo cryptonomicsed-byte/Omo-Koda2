@@ -3498,23 +3498,11 @@ impl Steward {
                     Err(_) => return Err("Provider error (byok): timed out".to_string()),
                 }
             }
-            _ => {
-                // IRIS: route real sampling params (temperature/max_tokens) from
-                // the prompt + current emotional baseline, instead of leaving
-                // every provider on its own hardcoded defaults. Providers that
-                // don't override generate_with_params just ignore this (see
-                // providers.rs's default impl), so this is safe everywhere.
-                let emotion = crate::emotion::EmotionState::birth();
-                let iris = crate::steward::iris::IrisEngine::params(prompt, &emotion);
-                let gen_params = crate::providers::GenerationParams {
-                    temperature: iris.temperature,
-                    max_tokens: iris.max_tokens,
-                };
-                self.providers
-                    .think_with_params(provider, prompt, &think_ctx, private, Some(&gen_params))
-                    .await
-                    .map_err(|e| format!("Provider error: {}", e))?
-            }
+            _ => self
+                .providers
+                .think(provider, prompt, &think_ctx, private)
+                .await
+                .map_err(|e| format!("Provider error: {}", e))?,
         };
         bb.charge(crate::justice::busy_beaver::steps_from_tokens(
             usage.total_tokens(),

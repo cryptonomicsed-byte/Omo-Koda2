@@ -401,6 +401,86 @@ impl ProviderRegistry {
             Err("Reasoning failed: no provider responded".to_string())
         }
     }
+
+    /// Same as `think`, but threads IRIS-derived `GenerationParams` through
+    /// to the chosen provider's `generate_with_params`.
+    pub async fn think_with_params(
+        &self,
+        provider: &str,
+        prompt: &str,
+        history: &[ConversationMessage],
+        private_mode: bool,
+        params: Option<&GenerationParams>,
+    ) -> Result<(String, TokenUsage), String> {
+        let provider_name = provider.trim();
+        if provider_name.is_empty() || provider_name.eq_ignore_ascii_case("default") {
+            return self
+                .route_think_with_params(prompt, history, private_mode, params)
+                .await;
+        }
+
+        let provider = self
+            .get_provider(provider_name)
+            .ok_or_else(|| format!("provider '{}' not found", provider_name))?;
+
+        let metadata = provider.metadata();
+        if private_mode && !self.is_allowed_in_private(metadata) {
+            return Err("No local provider available in /private mode (HARD FAIL)".to_string());
+        }
+
+        match tokio::time::timeout(
+            Duration::from_secs(30),
+            provider.generate_with_params(prompt, history, params),
+        )
+        .await
+        {
+            Ok(Ok(response)) => Ok(response),
+            Ok(Err(e)) => Err(format!("provider '{}' error: {}", provider_name, e)),
+            Err(_) => Err(format!("provider '{}' timed out", provider_name)),
+        }
+    }
+
+    /// `route_think`, but threading IRIS `GenerationParams` through each
+    /// candidate provider's `generate_with_params`.
+    pub async fn route_think_with_params(
+        &self,
+        prompt: &str,
+        history: &[ConversationMessage],
+        private_mode: bool,
+        params: Option<&GenerationParams>,
+    ) -> Result<(String, TokenUsage), String> {
+        let order = Self::provider_order(private_mode);
+        for provider_class in order {
+            for provider in self
+                .providers
+                .iter()
+                .filter(|p| p.metadata().class == *provider_class)
+            {
+                let metadata = provider.metadata();
+
+                if private_mode && !self.is_allowed_in_private(metadata) {
+                    continue;
+                }
+
+                match tokio::time::timeout(
+                    Duration::from_secs(30),
+                    provider.generate_with_params(prompt, history, params),
+                )
+                .await
+                {
+                    Ok(Ok(response)) => return Ok(response),
+                    Ok(Err(_e)) => {}
+                    Err(_) => {}
+                }
+            }
+        }
+
+        if private_mode {
+            Err("No local provider available in /private mode (HARD FAIL)".to_string())
+        } else {
+            Err("Reasoning failed: no provider responded".to_string())
+        }
+    }
 }
 
 impl std::fmt::Debug for ProviderRegistry {

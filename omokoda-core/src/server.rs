@@ -288,6 +288,61 @@ async fn birth_handler(
     }
 }
 
+/// One-shot mnemonic + wallet-address reveal for onboarding seed backup.
+/// See `AgentCore::reveal_seed`'s doc comment for why this is the single
+/// deliberate exception to "the mnemonic never leaves the process," and
+/// why it's a hard one-time latch rather than an ordinary read endpoint.
+/// Auth mirrors `dispatch_for_request`: no `X-Agent-Id` header routes to
+/// the owner's steward (unauthenticated, matching every other owner call);
+/// a guest agent requires its own `X-Agent-Key` header, same as think/act.
+async fn reveal_seed_handler(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    use axum::http::StatusCode;
+
+    let requested_id = headers
+        .get("x-agent-id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    let result = match requested_id {
+        None => {
+            let mut steward = state.steward.lock().await;
+            steward.reveal_seed()
+        }
+        Some(id) => {
+            let mut guests = state.guests.lock().await;
+            let Some(steward) = guests.get_mut(&id) else {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({"error": "unknown agent_id"})),
+                )
+                    .into_response();
+            };
+            let expected_key = steward
+                .agent_core()
+                .and_then(|a| a.vantage_key())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| id.clone());
+            let presented = headers.get("x-agent-key").and_then(|v| v.to_str().ok());
+            if presented != Some(expected_key.as_str()) {
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    Json(serde_json::json!({"error": "invalid or missing X-Agent-Key"})),
+                )
+                    .into_response();
+            }
+            steward.reveal_seed()
+        }
+    };
+
+    match result {
+        Ok(revealed) => Json(revealed).into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e}))).into_response(),
+    }
+}
+
 #[derive(Deserialize)]
 struct ResumeRequest {
     agent_id: String,
@@ -1069,6 +1124,7 @@ async fn post_glyph_merge(
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/v1/birth", post(birth_handler))
+        .route("/v1/reveal-seed", post(reveal_seed_handler))
         .route("/v1/resume", post(resume_handler))
         .route("/v1/think", post(think_handler))
         .route("/v1/cognition", post(cognition_handler))

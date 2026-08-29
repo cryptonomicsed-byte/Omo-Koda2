@@ -270,6 +270,17 @@ pub struct AgentSnapshot {
     /// a fake "owner" or risking another owner-file collision.
     #[serde(default)]
     pub test_tier_override: Option<u8>,
+    /// Set the first (and only) time `/v1/reveal-seed` succeeds for this
+    /// agent. The mnemonic/private keys are otherwise never sent over the
+    /// network by design (self-sealed vault; see the 2026-07-25 mnemonic-
+    /// leak fix in server.rs's SSE serializer and the regression test
+    /// guarding it). This flag makes the one legitimate exception -- a
+    /// single post-birth reveal for onboarding seed-phrase backup --
+    /// permanently one-shot and persisted, so it survives a restart between
+    /// birth and reveal and can never be replayed to re-exfiltrate the
+    /// mnemonic later in the agent's life.
+    #[serde(default)]
+    pub revealed_seed: bool,
     /// Real Odù memory directory backing the Dream/Consolidation Engine
     /// (see dream.rs). Every think turn adds one entry here; consolidation
     /// (every 30 min) sweeps stale entries, and the Sabbath REM cycle
@@ -300,6 +311,21 @@ pub struct AgentSnapshot {
     /// Was previously built but never referenced by any live agent.
     #[serde(default)]
     pub reflection: crate::memory::reflection::ReflectionLedger,
+}
+
+/// Response payload for `AgentCore::reveal_seed` / `/v1/reveal-seed`.
+/// Mnemonic + public addresses only -- see `reveal_seed` doc comment for
+/// why private key hex is deliberately excluded.
+#[derive(Debug, Clone, Serialize)]
+pub struct RevealedSeed {
+    pub mnemonic: String,
+    pub sui_address: String,
+    pub eth_address: Option<String>,
+    pub btc_address: Option<String>,
+    pub sol_address: Option<String>,
+    pub cosmos_address: Option<String>,
+    pub aptos_address: Option<String>,
+    pub nostr_address: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -467,6 +493,46 @@ impl AgentCore {
 
     pub fn set_vantage_key(&mut self, key: String) {
         self.snapshot.vantage_key = Some(key);
+    }
+
+    /// One-shot mnemonic + wallet-address disclosure for onboarding seed
+    /// backup. Every other code path in this codebase refuses to let the
+    /// mnemonic/private keys leave the process (self-sealed vault; see the
+    /// mnemonic-leak fix in server.rs's SSE serializer + its regression
+    /// test). This is the single deliberate exception, and it is
+    /// deliberately narrow:
+    ///  - fires exactly once per agent (`snapshot.revealed_seed` latches
+    ///    permanently on success; a repeat call is a hard error, not a
+    ///    re-reveal)
+    ///  - returns the mnemonic (needed for the user to actually write it
+    ///    down) plus only public addresses, never the per-chain private
+    ///    key hex sitting alongside it in `PrivateSessionData` -- those stay
+    ///    server-side and are always re-derivable from the mnemonic anyway
+    ///  - the caller (server.rs) is responsible for persisting the flag via
+    ///    the same auto_save() path birth already uses, and for real auth
+    ///    (X-Agent-Key) before ever calling this
+    pub fn reveal_seed(&mut self) -> Result<RevealedSeed, String> {
+        if self.snapshot.revealed_seed {
+            return Err(
+                "seed already revealed for this agent -- it can only be shown once".to_string(),
+            );
+        }
+        let private_data = self
+            .private_data
+            .as_ref()
+            .ok_or_else(|| "no private data available to reveal (agent may be locked)".to_string())?;
+        let revealed = RevealedSeed {
+            mnemonic: private_data.odu_identity.mnemonic.clone(),
+            sui_address: self.sui_address(),
+            eth_address: private_data.eth_address.clone(),
+            btc_address: private_data.btc_address.clone(),
+            sol_address: private_data.sol_address.clone(),
+            cosmos_address: private_data.cosmos_address.clone(),
+            aptos_address: private_data.aptos_address.clone(),
+            nostr_address: private_data.nostr_address.clone(),
+        };
+        self.snapshot.revealed_seed = true;
+        Ok(revealed)
     }
 
     pub fn onchain_nft_id(&self) -> Option<&str> {
@@ -1110,6 +1176,7 @@ impl Steward {
             llm_model,
             sovereign,
             test_tier_override,
+            revealed_seed: false,
             odu_dir: crate::memory::memdir::OduDirectory::new(),
             causal_dag: crate::memory::dag::CausalMemoryDag::new(),
             last_causal_node: None,
@@ -3204,6 +3271,20 @@ impl Steward {
 
     pub fn agent_core(&self) -> Option<&AgentCore> {
         self.agent.as_ref()
+    }
+
+    /// Steward-level wrapper around `AgentCore::reveal_seed` that also
+    /// persists the resulting one-shot latch immediately, so a crash or
+    /// restart between reveal and the next unrelated auto_save can't roll
+    /// `revealed_seed` back to false and allow a second reveal.
+    pub fn reveal_seed(&mut self) -> Result<RevealedSeed, String> {
+        let core = self
+            .agent
+            .as_mut()
+            .ok_or_else(|| "no agent resident on this steward".to_string())?;
+        let revealed = core.reveal_seed()?;
+        self.auto_save();
+        Ok(revealed)
     }
 
     /// Merge external secrets (e.g. a Vantage-issued API key) into this

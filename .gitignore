@@ -25,3 +25,4 @@ __pycache__
 omokoda-simulation/tools/__pycache__/
 .omokoda/
 omokoda-core/skills.forged.json
+.DS_Store

@@ -347,6 +347,10 @@ export default function BirthPage() {
               These 24 words are the only way to recover {name}&apos;s wallets if this server is ever lost. Anyone who
               sees them can take everything these wallets hold.
             </div>
+            <div className="text-xs text-gray-600 border border-gray-800 rounded p-2 bg-gray-950">
+              These words come from a fixed technical wordlist (like BIP39&apos;s standard English wordlist) used to encode
+              the phrase — they are not a message from your agent or the app, just raw recovery data. Copy them exactly.
+            </div>
             <div className="grid grid-cols-3 gap-2 border border-gray-800 rounded p-4 bg-gray-950">
               {mnemonicWords.map((w, i) => (
                 <div key={i} className="text-xs text-gray-300 flex gap-1">

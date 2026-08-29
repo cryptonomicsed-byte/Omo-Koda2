@@ -535,8 +535,16 @@ impl LlmProvider for OllamaProvider {
         _history: &[ConversationMessage],
     ) -> Result<(String, TokenUsage), String> {
         let url = format!("{}/api/generate", self.metadata.endpoint);
+        // Was hardcoded to "llama3", a model tag that was never actually
+        // pulled on the live host -- every real call 404'd against a real,
+        // running Ollama instance (found live during onboarding smoke
+        // testing 2026-08-29). OLLAMA_MODEL lets each host point at
+        // whatever it actually has pulled (`ollama list`); the fallback is
+        // just the smallest model observed live on that host, not a claim
+        // that every deployment has it.
+        let model = std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "llama3.2:3b".to_string());
         let body = serde_json::json!({
-            "model": "llama3", // Default model
+            "model": model,
             "prompt": prompt,
             "stream": false
         });

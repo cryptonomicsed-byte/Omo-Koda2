@@ -234,6 +234,13 @@ pub struct AgentSnapshot {
     /// blocks a birth. See onchain.rs.
     #[serde(default)]
     pub onchain_nft_id: Option<String>,
+    /// Real Nostr event id of this agent's IP Root (kind 31900, ip-layer's
+    /// schema), published at birth if IP_LAYER_RELAY_URL/BUZZ_RELAY_URL is
+    /// reachable. None if publishing failed or was skipped -- fail-open,
+    /// same convention as onchain_nft_id above; a missing IP Root never
+    /// blocks a birth. See ip_layer.rs.
+    #[serde(default)]
+    pub ip_root_event_id: Option<String>,
     /// CloakSeed display-offset — derived from an optional birth passphrase.
     #[serde(default)]
     pub cloak_offset: Option<u8>,
@@ -541,6 +548,14 @@ impl AgentCore {
 
     pub fn set_onchain_nft_id(&mut self, id: String) {
         self.snapshot.onchain_nft_id = Some(id);
+    }
+
+    pub fn ip_root_event_id(&self) -> Option<&str> {
+        self.snapshot.ip_root_event_id.as_deref()
+    }
+
+    pub fn set_ip_root_event_id(&mut self, id: String) {
+        self.snapshot.ip_root_event_id = Some(id);
     }
 
     /// This agent's personal BYOK LLM provider, if one was supplied at birth.
@@ -1169,6 +1184,7 @@ impl Steward {
             mesh: None,
             vantage_key: None,
             onchain_nft_id: None,
+            ip_root_event_id: None,
             cloak_offset,
             duress_phrase_hash,
             llm_api_key,
@@ -1509,6 +1525,7 @@ impl Steward {
                 // is unset). Extract owned identity first so no borrow of `self`
                 // or `agent` is held across the await.
                 let reg_agent_id = agent.id().as_str().to_string();
+                let birth_mnemonic = agent.odu_identity().mnemonic.clone();
                 let reg_name = agent.name().to_string();
                 let reg_pubkey = hex::encode(agent.public_key());
                 let reg_dna = agent.dna_fingerprint().to_string();
@@ -1588,6 +1605,17 @@ impl Steward {
                 if let Some(nft_id) = crate::onchain::mint_onchain_agent(&reg_name).await {
                     if let Ok(core) = self.ensure_born_mut() {
                         core.set_onchain_nft_id(nft_id);
+                    }
+                    self.auto_save();
+                }
+
+                // ip-layer birth-flow hook (build-order step 3): publish this
+                // agent's IP Root (kind 31900) to the same real Nostr relay the
+                // kernel already uses for Buzz -- fail-open by design, same
+                // convention as the on-chain mint above. See ip_layer.rs.
+                if let Some(event_id) = crate::ip_layer::publish_ip_root(&birth_mnemonic, &reg_name).await {
+                    if let Ok(core) = self.ensure_born_mut() {
+                        core.set_ip_root_event_id(event_id);
                     }
                     self.auto_save();
                 }

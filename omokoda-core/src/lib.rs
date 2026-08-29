@@ -17,6 +17,7 @@ pub mod intent;
 pub mod interpreter;
 pub mod justice;
 pub mod lsp;
+pub mod ip_layer;
 pub mod main_loop;
 pub mod memory;
 pub mod memory_vault;

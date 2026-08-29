@@ -157,6 +157,10 @@ pub struct StatusResponse {
     /// unminted -- OMOKODA_SUI_REGISTRY unset, born before this existed,
     /// or the chain call failed at the time.
     pub onchain_nft_id: Option<String>,
+    /// Real Nostr event id of this agent's ip-layer IP Root (kind 31900),
+    /// if publishing succeeded at birth (see ip_layer.rs). None if unset --
+    /// no relay reachable, born before this existed, or publish failed.
+    pub ip_root_event_id: Option<String>,
     /// This agent's real Sui address (blake2b256(0x00 || pubkey), SIP-6) --
     /// where funds/payments for this agent's work actually go, distinct from
     /// the on-chain NFT object id above and from the raw pubkey hex used
@@ -553,6 +557,7 @@ async fn status_handler(
                 tier: agent.map(|a| a.tier()),
                 synapse: agent.map(|a| a.synapse()),
                 onchain_nft_id: agent.and_then(|a| a.onchain_nft_id().map(|s| s.to_string())),
+                ip_root_event_id: agent.and_then(|a| a.ip_root_event_id().map(|s| s.to_string())),
                 sui_address: agent.map(|a| a.sui_address()),
             }
         }
@@ -567,6 +572,7 @@ async fn status_handler(
                 tier: agent.map(|a| a.tier()),
                 synapse: agent.map(|a| a.synapse()),
                 onchain_nft_id: agent.and_then(|a| a.onchain_nft_id().map(|s| s.to_string())),
+                ip_root_event_id: agent.and_then(|a| a.ip_root_event_id().map(|s| s.to_string())),
                 sui_address: agent.map(|a| a.sui_address()),
             }
         }

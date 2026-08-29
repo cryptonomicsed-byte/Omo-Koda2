@@ -66,7 +66,14 @@ const EDUCATION_STAGES = [
 export default function BirthPage() {
   const [step, setStep] = useState<Step>('name');
   const [name, setName] = useState('');
-  const [provider, setProvider] = useState<'webllm' | 'ollama'>('webllm');
+  // WebLLM only ever ran client-side in the old WASM-stub flow. Now that
+  // birth/think/act go through the real kernel over HTTP, an agent's
+  // thinking happens server-side (see ProviderRegistry::new in
+  // providers.rs) -- WebLLM is never registered there, so offering it here
+  // would silently 400 on birth. "default" (a free, no-key gateway) and
+  // "ollama" (this server's local Ollama, if configured) are the two real,
+  // working choices.
+  const [provider, setProvider] = useState<'default' | 'ollama'>('default');
   const [educationIdx, setEducationIdx] = useState(0);
 
   // Consent / capability setup
@@ -214,8 +221,8 @@ export default function BirthPage() {
             <div className="text-sm text-gray-400">Choose your cognitive substrate:</div>
             <div className="space-y-2">
               {([
-                { id: 'webllm', label: 'WebLLM', desc: 'sovereign · browser-local · offline · free', recommended: true },
-                { id: 'ollama', label: 'Ollama', desc: 'sovereign · your machine · faster · larger models', recommended: false },
+                { id: 'default', label: 'Default', desc: 'free gateway · no key required · good for getting started', recommended: true },
+                { id: 'ollama', label: 'Ollama', desc: 'this server’s local Ollama, if configured · faster · larger models', recommended: false },
               ] as const).map(p => (
                 <button
                   key={p.id}

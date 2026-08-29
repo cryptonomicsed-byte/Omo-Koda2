@@ -26,6 +26,7 @@ pub mod structured_output;
 pub mod todo;
 pub mod tool_definitions;
 pub mod tor_tool;
+pub mod twin_binding_tool;
 pub mod validation;
 pub mod walrus_tool;
 pub mod wallet_tools;
@@ -226,6 +227,7 @@ impl ToolRegistry {
         registry.register(Box::new(wallet_tools::WalletSignTool));
         registry.register(Box::new(wallet_tools::WalletAlchemyApproveTool));
         registry.register(Box::new(nostr_identity_tool::NostrIdentityTool));
+        registry.register(Box::new(twin_binding_tool::TwinBindingTool));
         registry.register(Box::new(if_script_tool::IfScriptTool));
 
         // Real on-chain settlement via OSOVM's elegbara_router (Sui testnet).

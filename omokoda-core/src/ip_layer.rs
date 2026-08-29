@@ -29,6 +29,49 @@ use crate::identity::nip06::derive_nip06_identity;
 /// the number within this kernel.
 const IP_ROOT_KIND: u16 = 31900;
 
+/// Nostr kind 1903 — Twin Binding, per cryptonomicsed-byte/ip-layer's
+/// schemas/twin_binding.md. A plain regular (non-addressable) event: a
+/// re-binding to a different sim_id is a new event, the old one stands as
+/// history, per that schema's own design note.
+const TWIN_BINDING_KIND: u16 = 1903;
+
+/// Resolve the relay to publish to: IP_LAYER_RELAY_URL, falling back to
+/// BUZZ_RELAY_URL (the kernel's existing Buzz relay, already configured in
+/// production), falling back to a local dev default.
+fn relay_url() -> String {
+    std::env::var("IP_LAYER_RELAY_URL")
+        .or_else(|_| std::env::var("BUZZ_RELAY_URL"))
+        .unwrap_or_else(|_| "ws://localhost:3000".to_string())
+}
+
+/// Sign and publish a single event, returning the real event id only if at
+/// least one relay genuinely accepted it. Shared by publish_ip_root and
+/// publish_twin_binding.
+///
+/// Real bug found and fixed here (confirmed live via a direct probe against
+/// an unreachable relay): send_event()'s outer Result is Ok(..) even when
+/// EVERY relay in Output.failed rejected the event -- the event only
+/// genuinely landed somewhere if Output.success is non-empty. Checking only
+/// the outer Result (as this kernel's other existing nostr-sdk callers
+/// currently do, e.g. identity/buzz_relay.rs's self_join/
+/// join_and_chat_mentioning) would silently report success for an event
+/// nobody ever received.
+async fn sign_and_publish(keys: Keys, builder: EventBuilder) -> Option<String> {
+    let event = builder.sign(&keys).await.ok()?;
+
+    let client = Client::new(keys);
+    client.add_relay(&relay_url()).await.ok()?;
+    client.connect().await;
+
+    let output = client.send_event(&event).await.ok();
+    client.disconnect().await;
+
+    match output {
+        Some(o) if !o.success.is_empty() => Some(o.id().to_hex()),
+        _ => None,
+    }
+}
+
 /// Publish this agent's IP Root at birth. Returns the real event id on
 /// success, None on any failure (no relay configured, signing failed,
 /// relay unreachable, etc.) -- never propagates an error, matching
@@ -39,10 +82,6 @@ const IP_ROOT_KIND: u16 = 31900;
 /// derive the same NIP-06 identity nostr_identity_tool.rs exposes.
 /// `agent_name`: for the event's free-form content field (display_name).
 pub async fn publish_ip_root(mnemonic: &str, agent_name: &str) -> Option<String> {
-    let relay_url = std::env::var("IP_LAYER_RELAY_URL")
-        .or_else(|_| std::env::var("BUZZ_RELAY_URL"))
-        .unwrap_or_else(|_| "ws://localhost:3000".to_string());
-
     let identity = derive_nip06_identity(mnemonic, 0).ok()?;
     let secret_key = SecretKey::from_hex(&identity.secret_key_hex).ok()?;
     let keys = Keys::new(secret_key);
@@ -57,31 +96,81 @@ pub async fn publish_ip_root(mnemonic: &str, agent_name: &str) -> Option<String>
     // note for Omo-Koda2-born agents -- one IP Root per agent identity,
     // addressable/updatable in place (kind 31900 is a NIP-33 parameterized
     // replaceable range) rather than re-minting on every birth call.
-    let event = EventBuilder::new(Kind::Custom(IP_ROOT_KIND), content)
-        .tag(Tag::identifier(identity.public_key_hex.clone()))
-        .sign(&keys)
-        .await
-        .ok()?;
+    let builder = EventBuilder::new(Kind::Custom(IP_ROOT_KIND), content)
+        .tag(Tag::identifier(identity.public_key_hex.clone()));
 
-    let client = Client::new(keys);
-    client.add_relay(&relay_url).await.ok()?;
-    client.connect().await;
+    sign_and_publish(keys, builder).await
+}
 
-    // Real bug found and fixed here (confirmed live via a direct probe
-    // against an unreachable relay): send_event()'s outer Result is Ok(..)
-    // even when EVERY relay in Output.failed rejected the event -- the
-    // event only genuinely landed somewhere if Output.success is
-    // non-empty. Checking only the outer Result (as this kernel's other
-    // existing nostr-sdk callers currently do, e.g.
-    // identity/buzz_relay.rs's self_join/join_and_chat_mentioning) would
-    // silently report success for an event nobody ever received.
-    let output = client.send_event(&event).await.ok();
-    client.disconnect().await;
-
-    match output {
-        Some(o) if !o.success.is_empty() => Some(o.id().to_hex()),
-        _ => None,
+/// Publish a Twin Binding (kind 1903, per ip-layer's schemas/twin_binding.md)
+/// -- a one-time claim that a real VeilSim `sim_id` IS the digital twin of
+/// this agent's IP Root. Unlike the IP Root (published automatically at
+/// birth), there is no sim_id to bind until an agent actually has a real
+/// VeilSim/OSOVM twin running -- this is deliberately NOT wired into the
+/// birth flow; callers (e.g. a kernel tool, once this agent's VeilSim twin
+/// genuinely exists) invoke this on demand with a real sim_id.
+///
+/// Fail-open, same convention as publish_ip_root: returns the real event id
+/// on success, None on any failure (no relay, signing failed, sim_id empty,
+/// etc.) -- never blocks whatever triggered the binding.
+///
+/// `mnemonic`: the agent's own birth mnemonic (same NIP-06 identity as its
+/// IP Root, so the binding's pubkey matches the `ip_root` it claims).
+/// `sim_id`: the real VeilSim sim id (matches ZangbetoReceipt.sim_id in
+/// OSOVM's zangbeto_receipts.jl) -- required, this function does not
+/// fabricate one.
+/// `twin_kind`: per the schema, e.g. "veilsim-1to1"; extensible for future
+/// twin types.
+/// `fidelity`: optional, self-declared free-text sync-fidelity claim.
+/// `osovm_veil_receipt_id`: optional, the first veil execution's receipt id
+/// (becomes the `osovm_op` tag's third element, per the schema).
+pub async fn publish_twin_binding(
+    mnemonic: &str,
+    sim_id: &str,
+    twin_kind: &str,
+    fidelity: Option<&str>,
+    osovm_veil_receipt_id: Option<&str>,
+) -> Option<String> {
+    if sim_id.trim().is_empty() || twin_kind.trim().is_empty() {
+        return None;
     }
+
+    let identity = derive_nip06_identity(mnemonic, 0).ok()?;
+    let secret_key = SecretKey::from_hex(&identity.secret_key_hex).ok()?;
+    let keys = Keys::new(secret_key);
+
+    let content = json!({ "notes": "" }).to_string();
+
+    // ip_root tag: this agent's own hex pubkey, matching the `d` tag its
+    // own IP Root was published under (see publish_ip_root above).
+    let mut builder = EventBuilder::new(Kind::Custom(TWIN_BINDING_KIND), content)
+        .tag(Tag::custom(
+            TagKind::custom("ip_root"),
+            vec![identity.public_key_hex.clone()],
+        ))
+        .tag(Tag::custom(
+            TagKind::custom("sim_id"),
+            vec![sim_id.to_string()],
+        ))
+        .tag(Tag::custom(
+            TagKind::custom("twin_kind"),
+            vec![twin_kind.to_string()],
+        ));
+
+    if let Some(f) = fidelity.filter(|f| !f.trim().is_empty()) {
+        builder = builder.tag(Tag::custom(
+            TagKind::custom("fidelity"),
+            vec![f.to_string()],
+        ));
+    }
+    if let Some(receipt_id) = osovm_veil_receipt_id.filter(|r| !r.trim().is_empty()) {
+        builder = builder.tag(Tag::custom(
+            TagKind::custom("osovm_op"),
+            vec!["VEIL".to_string(), receipt_id.to_string()],
+        ));
+    }
+
+    sign_and_publish(keys, builder).await
 }
 
 #[cfg(test)]
@@ -109,6 +198,49 @@ mod tests {
             .expect("test entropy should produce a valid mnemonic")
             .join(" ");
         let result = publish_ip_root(&mnemonic, "test-agent").await;
+        unsafe {
+            std::env::remove_var("IP_LAYER_RELAY_URL");
+        }
+        assert!(result.is_none(), "expected None when no relay accepts the event, got {result:?}");
+    }
+
+    #[tokio::test]
+    async fn publish_twin_binding_rejects_empty_sim_id_without_touching_the_network() {
+        let mnemonic = bipon39::entropy_to_mnemonic(&[9u8; 32])
+            .expect("test entropy should produce a valid mnemonic")
+            .join(" ");
+        let result = publish_twin_binding(&mnemonic, "", "veilsim-1to1", None, None).await;
+        assert!(result.is_none(), "expected None for empty sim_id, got {result:?}");
+    }
+
+    #[tokio::test]
+    async fn publish_twin_binding_rejects_empty_twin_kind_without_touching_the_network() {
+        let mnemonic = bipon39::entropy_to_mnemonic(&[9u8; 32])
+            .expect("test entropy should produce a valid mnemonic")
+            .join(" ");
+        let result = publish_twin_binding(&mnemonic, "sim-42", "  ", None, None).await;
+        assert!(result.is_none(), "expected None for blank twin_kind, got {result:?}");
+    }
+
+    /// Same regression coverage as the IP Root test above, for the Twin
+    /// Binding path -- confirms the shared sign_and_publish() helper's
+    /// Output.success check applies here too, not just to publish_ip_root.
+    #[tokio::test]
+    async fn publish_twin_binding_fails_open_when_no_relay_accepts_the_event() {
+        unsafe {
+            std::env::set_var("IP_LAYER_RELAY_URL", "ws://127.0.0.1:19999");
+        }
+        let mnemonic = bipon39::entropy_to_mnemonic(&[10u8; 32])
+            .expect("test entropy should produce a valid mnemonic")
+            .join(" ");
+        let result = publish_twin_binding(
+            &mnemonic,
+            "sim-42",
+            "veilsim-1to1",
+            Some("0.97"),
+            Some("veil-receipt-abc123"),
+        )
+        .await;
         unsafe {
             std::env::remove_var("IP_LAYER_RELAY_URL");
         }

@@ -5,6 +5,7 @@ pub mod bootstrap;
 pub mod bus;
 pub mod compact;
 pub mod config;
+pub mod coordination;
 pub mod divination;
 pub mod dream;
 pub mod economics;

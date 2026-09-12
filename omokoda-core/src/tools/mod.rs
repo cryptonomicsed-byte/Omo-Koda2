@@ -26,6 +26,8 @@ pub mod structured_output;
 pub mod todo;
 pub mod tool_definitions;
 pub mod tor_tool;
+pub mod osovm_tool;
+pub mod sovereign_node;
 pub mod twin_binding_tool;
 pub mod validation;
 pub mod walrus_tool;
@@ -235,6 +237,22 @@ impl ToolRegistry {
         // be set to verified live ids or execute() fails closed with an
         // explicit error — see tools/onchain_tools.rs.
         registry.register(Box::new(onchain_tools::SettleTransactionTaxTool));
+
+        // Sovereign-node MCP bridge — physical capture + DIP messaging.
+        // Activated when SOVEREIGN_NODE_URL is set (e.g. "http://localhost:8080").
+        if std::env::var("SOVEREIGN_NODE_URL").is_ok() {
+            for tool in sovereign_node::sovereign_node_tools() {
+                registry.register(tool);
+            }
+        }
+
+        // OSOVM simulation engine bridge.
+        // Activated when OSOVM_URL is set (e.g. "http://localhost:7780").
+        if std::env::var("OSOVM_URL").is_ok() {
+            for tool in osovm_tool::osovm_tools() {
+                registry.register(tool);
+            }
+        }
 
         // Config-driven external service skills (ships with Vantage).
         for entry in skills::default_manifest().skills {

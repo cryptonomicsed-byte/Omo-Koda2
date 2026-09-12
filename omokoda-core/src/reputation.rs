@@ -155,15 +155,18 @@ pub fn reputation_gain(base: f64, reputation: f64, multiplier: f64) -> f64 {
 }
 
 pub fn tier_for(reputation: f64) -> u8 {
+    // Boundaries match Tier::from_reputation() in justice/tier.rs:
+    // [0,20) → T0, [20,40) → T1, [40,60) → T2, [60,80) → T3,
+    // [80,100) → T4, [100,∞) → T5.
     if reputation >= 100.0 {
         5
-    } else if reputation > 80.0 {
+    } else if reputation >= 80.0 {
         4
-    } else if reputation > 60.0 {
+    } else if reputation >= 60.0 {
         3
-    } else if reputation > 40.0 {
+    } else if reputation >= 40.0 {
         2
-    } else if reputation > 20.0 {
+    } else if reputation >= 20.0 {
         1
     } else {
         0

@@ -461,18 +461,22 @@ act "read_file" "test_multi.txt""#;
     }
 
     #[test]
-    fn reputation_tier_boundaries_match_frozen_spec() {
+    fn reputation_tier_boundaries() {
+        // Closed-lower bounds: [0,20)→T0, [20,40)→T1, [40,60)→T2,
+        // [60,80)→T3, [80,100)→T4, [100,∞)→T5.
+        // Matches Tier::from_reputation() in justice/tier.rs.
         assert_eq!(tier_for(0.000), 0);
-        assert_eq!(tier_for(20.000), 0);
+        assert_eq!(tier_for(19.999), 0);
+        assert_eq!(tier_for(20.000), 1);  // boundary inclusive-lower
         assert_eq!(tier_for(20.001), 1);
         assert_eq!(tier_for(39.999), 1);
-        assert_eq!(tier_for(40.000), 1);
+        assert_eq!(tier_for(40.000), 2);  // boundary inclusive-lower
         assert_eq!(tier_for(40.001), 2);
         assert_eq!(tier_for(59.999), 2);
-        assert_eq!(tier_for(60.000), 2);
+        assert_eq!(tier_for(60.000), 3);  // boundary inclusive-lower
         assert_eq!(tier_for(60.001), 3);
         assert_eq!(tier_for(79.999), 3);
-        assert_eq!(tier_for(80.000), 3);
+        assert_eq!(tier_for(80.000), 4);  // boundary inclusive-lower
         assert_eq!(tier_for(80.001), 4);
         assert_eq!(tier_for(99.999), 4);
         assert_eq!(tier_for(100.000), 5);

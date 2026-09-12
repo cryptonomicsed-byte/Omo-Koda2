@@ -117,4 +117,21 @@ impl WorkspaceClient {
         }
         Ok(val)
     }
+
+    /// POST /me/heartbeat — refreshes agents.last_seen_at so the agent never
+    /// appears stale or offline in Vantage's mesh view.  Fire-and-forget: a
+    /// network hiccup should not crash the cognitive loop.
+    pub async fn heartbeat(&self) -> Result<(), String> {
+        let url = format!("{}/api/me/heartbeat", self.base_url);
+        let resp = http()
+            .post(&url)
+            .header("X-Agent-Key", &self.api_key)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("heartbeat -> {}", resp.status()));
+        }
+        Ok(())
+    }
 }

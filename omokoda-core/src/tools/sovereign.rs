@@ -489,9 +489,10 @@ impl Tool for AgentsListTool {
     }
 }
 
-/// Returns the canonical list of 18 OpenClaw capabilities that unlock at Sovereign (Tier 5).
+/// Returns the capabilities available to a Tier 5 (Sovereign) agent.
 ///
-/// These map to the synthesis spec "OpenClaw 18 capabilities → Sovereign tier unlock".
+/// Reaching T5 requires Proof-of-Evolution across all 5 domains — not
+/// mere possession of these capabilities.  See CANONICAL_PILLAR_CONTRACT.md.
 pub fn sovereign_tool_list() -> Vec<&'static str> {
     vec![
         "apply_patch",         // 1  — multi-file edit
@@ -511,7 +512,7 @@ pub fn sovereign_tool_list() -> Vec<&'static str> {
         "image_generation",    // 15 — generate images
         "video_generation",    // 16 — generate video
         "sensor_access",       // 17 — read device sensors
-        "physical_control",    // 18 — Unitree G1 embodiment (stub v1)
+        "physical_control",    // 18 — Unitree G1 autonomous embodiment
     ]
 }
 
@@ -524,7 +525,7 @@ mod tests {
         assert_eq!(
             sovereign_tool_list().len(),
             18,
-            "OpenClaw sovereign tier must expose exactly 18 capabilities"
+            "Sovereign tier must expose exactly 18 capabilities"
         );
     }
 }

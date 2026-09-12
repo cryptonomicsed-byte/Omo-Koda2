@@ -1220,6 +1220,15 @@ fn spawn_heartbeat(steward: Arc<Mutex<Steward>>) {
                 Some(a) => a.id().as_str().to_string(),
                 None => continue, // no one born yet — nothing to wake
             };
+            let agent_name = guard.agent_core().map(|a| a.name().to_string());
+
+            // Mark thinking in Vantage presence before locking the cognitive cycle.
+            if let (Some(client), Some(ref name)) = (
+                crate::vantage::WorkspaceClient::from_env(),
+                &agent_name,
+            ) {
+                let _ = client.update_presence(name, crate::vantage::PresenceState::Thinking).await;
+            }
 
             // 1. PERCEIVE — pull her real situation from the Vantage mesh
             //    (neighbors + trust + available resources), any skills newly
@@ -1299,6 +1308,21 @@ fn spawn_heartbeat(steward: Arc<Mutex<Steward>>) {
             {
                 Ok(_) => println!("[heartbeat] pulse emitted to mesh"),
                 Err(e) => println!("[heartbeat] pulse deferred: {e}"),
+            }
+
+            // 4. VANTAGE LIVENESS — drop the Steward lock, then:
+            //    a) restore presence to Available
+            //    b) POST /me/heartbeat to refresh agents.last_seen_at
+            //    Both are fire-and-forget; a hiccup must not crash the loop.
+            drop(guard);
+            if let Some(client) = crate::vantage::WorkspaceClient::from_env() {
+                if let Some(ref name) = agent_name {
+                    let _ = client.update_presence(name, crate::vantage::PresenceState::Available).await;
+                }
+                match client.heartbeat().await {
+                    Ok(_)  => println!("[heartbeat] vantage last_seen_at refreshed"),
+                    Err(e) => println!("[heartbeat] vantage ping failed (non-fatal): {e}"),
+                }
             }
         }
     });

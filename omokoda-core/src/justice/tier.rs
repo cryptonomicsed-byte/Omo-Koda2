@@ -16,10 +16,8 @@ impl Tier {
     /// [0, 20) → T0, [20, 40) → T1, [40, 60) → T2, [60, 80) → T3,
     /// [80, 100) → T4, [100, ∞) → T5
     ///
-    /// NOTE: This differs intentionally from the existing `tier_for()` in reputation.rs,
-    /// which uses exclusive-upper-bound (`>`) thresholds. Both functions coexist.
-    /// Use `tier_for()` for backward-compatible tier lookups (tested by interpreter_tests).
-    /// Use `Tier::from_reputation()` when you need the typed Tier enum.
+    /// Matches `tier_for()` in reputation.rs: closed-lower-bound ranges.
+    /// Both functions agree on all boundaries, including the T3/T4 split at 80.
     pub fn from_reputation(rep: f64) -> Self {
         if rep < 20.0 {
             Tier::T0

@@ -46,6 +46,8 @@ pub struct AppState {
     pub guests: Arc<Mutex<std::collections::HashMap<String, Steward>>>,
     /// Base directory for per-agent memory vault files (default: `.omokoda`)
     pub vault_base: PathBuf,
+    /// Canonical per-agent OS kernel: heartbeat chain + daemon registry.
+    pub runtime: Arc<Mutex<crate::lifecycle::AgentRuntime>>,
 }
 
 impl AppState {
@@ -75,10 +77,29 @@ impl AppState {
                 );
             }
         }
+        // Build AgentRuntime with the owner's actual id+tier (or a sentinel until birth).
+        let (owner_id, owner_tier) = {
+            if let Some(agent) = steward.agent_core() {
+                (agent.id().as_str().to_string(), agent.tier().to_string())
+            } else {
+                ("agent:unborn".to_string(), "resident".to_string())
+            }
+        };
+        let runtime = crate::lifecycle::AgentRuntime::new(owner_id, owner_tier);
+        // Register the five canonical daemons.
+        {
+            let mut rt = runtime.blocking_lock();
+            rt.daemons.register("heartbeat");
+            rt.daemons.register("presence");
+            rt.daemons.register("learning");
+            rt.daemons.register("job");
+            rt.daemons.register("skill");
+        }
         Self {
             steward: Arc::new(Mutex::new(steward)),
             guests: Arc::new(Mutex::new(std::collections::HashMap::new())),
             vault_base,
+            runtime,
         }
     }
 }
@@ -1173,7 +1194,7 @@ pub fn create_router(state: AppState) -> Router {
 /// require a local provider and would hard-fail here. The shared Steward mutex
 /// naturally serialises the heartbeat with inbound /v1/think requests, so she
 /// never thinks two things at once.
-fn spawn_heartbeat(steward: Arc<Mutex<Steward>>) {
+fn spawn_heartbeat(steward: Arc<Mutex<Steward>>, runtime: Arc<tokio::sync::Mutex<crate::lifecycle::AgentRuntime>>) {
     let secs: u64 = std::env::var("HEARTBEAT_SECS")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -1315,6 +1336,15 @@ fn spawn_heartbeat(steward: Arc<Mutex<Steward>>) {
             //    b) POST /me/heartbeat to refresh agents.last_seen_at
             //    Both are fire-and-forget; a hiccup must not crash the loop.
             drop(guard);
+
+            // 5. Advance the tamper-evident heartbeat chain.
+            {
+                use crate::lifecycle::HeartbeatState as HbState;
+                let mut rt = runtime.lock().await;
+                rt.daemons.mark_ticked("heartbeat");
+                let _beat = rt.advance_chain(HbState::Alive, intent.as_deref().map(str::to_string));
+                // Future: publish _beat to Zàngbétò for receipt chain.
+            }
             if let Some(client) = crate::vantage::WorkspaceClient::from_env() {
                 if let Some(ref name) = agent_name {
                     let _ = client.update_presence(name, crate::vantage::PresenceState::Available).await;
@@ -1323,6 +1353,10 @@ fn spawn_heartbeat(steward: Arc<Mutex<Steward>>) {
                     Ok(_)  => println!("[heartbeat] vantage last_seen_at refreshed"),
                     Err(e) => println!("[heartbeat] vantage ping failed (non-fatal): {e}"),
                 }
+                match client.mesh_heartbeat().await {
+                    Ok(_)  => println!("[heartbeat] mesh last_seen_at refreshed"),
+                    Err(e) => println!("[heartbeat] mesh heartbeat deferred (non-fatal): {e}"),
+                }
             }
         }
     });
@@ -1330,7 +1364,23 @@ fn spawn_heartbeat(steward: Arc<Mutex<Steward>>) {
 
 pub async fn start_server(port: u16) -> Result<(), std::io::Error> {
     let state = AppState::new();
-    spawn_heartbeat(state.steward.clone());
+    spawn_heartbeat(state.steward.clone(), state.runtime.clone());
+    crate::lifecycle::spawn_scheduler(
+        state.steward.clone(),
+        crate::lifecycle::SchedulerConfig::from_env(),
+    );
+    crate::lifecycle::spawn_job_daemon(
+        state.steward.clone(),
+        state.runtime.clone(),
+        std::env::var("JOB_DAEMON_POLL_SECS")
+            .ok().and_then(|v| v.parse().ok()).unwrap_or(60),
+    );
+    crate::lifecycle::spawn_skill_daemon(
+        state.steward.clone(),
+        state.runtime.clone(),
+        std::env::var("SKILL_DAEMON_SCAN_SECS")
+            .ok().and_then(|v| v.parse().ok()).unwrap_or(300),
+    );
     let router = create_router(state);
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;

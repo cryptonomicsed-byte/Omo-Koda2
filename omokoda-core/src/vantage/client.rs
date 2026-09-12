@@ -8,23 +8,32 @@ fn http() -> &'static Client {
 }
 
 pub struct WorkspaceClient {
-    pub base_url: String,
-    pub api_key: String,
+    pub base_url:   String,
+    pub api_key:    String,
     pub guild_slug: String,
+    /// VANTAGE_AGENT_ID — numeric agent id for mesh heartbeat endpoint.
+    pub agent_id:   Option<String>,
+    /// VANTAGE_BLOCK_ID — mesh block the agent is currently in.
+    pub block_id:   Option<String>,
 }
 
 impl WorkspaceClient {
-    /// Load from environment variables: VANTAGE_URL, VANTAGE_KEY, VANTAGE_GUILD_SLUG
+    /// Load from environment variables: VANTAGE_URL, VANTAGE_KEY, VANTAGE_GUILD_SLUG,
+    /// VANTAGE_AGENT_ID, VANTAGE_BLOCK_ID.
     /// Returns None if VANTAGE_URL is not set.
     pub fn from_env() -> Option<Self> {
         let base = std::env::var("VANTAGE_URL").ok()?;
         if base.trim().is_empty() { return None; }
-        let api_key = std::env::var("VANTAGE_KEY").unwrap_or_default();
+        let api_key    = std::env::var("VANTAGE_KEY").unwrap_or_default();
         let guild_slug = std::env::var("VANTAGE_GUILD_SLUG").unwrap_or_default();
+        let agent_id   = std::env::var("VANTAGE_AGENT_ID").ok().filter(|s| !s.is_empty());
+        let block_id   = std::env::var("VANTAGE_BLOCK_ID").ok().filter(|s| !s.is_empty());
         Some(Self {
             base_url: base.trim_end_matches('/').to_string(),
             api_key,
             guild_slug,
+            agent_id,
+            block_id,
         })
     }
 
@@ -102,6 +111,40 @@ impl WorkspaceClient {
         Ok(val)
     }
 
+    /// PUT with a JSON body.
+    pub async fn put(&self, url: &str, body: &serde_json::Value) -> Result<Value, String> {
+        let resp = http()
+            .put(url)
+            .header("X-Agent-Key", &self.api_key)
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        let status = resp.status();
+        let val: Value = resp.json().await.unwrap_or(Value::Null);
+        if !status.is_success() {
+            return Err(format!("PUT {url} -> {status}: {val}"));
+        }
+        Ok(val)
+    }
+
+    /// PATCH with a JSON body.
+    pub async fn patch(&self, url: &str, body: &serde_json::Value) -> Result<Value, String> {
+        let resp = http()
+            .patch(url)
+            .header("X-Agent-Key", &self.api_key)
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        let status = resp.status();
+        let val: Value = resp.json().await.unwrap_or(Value::Null);
+        if !status.is_success() {
+            return Err(format!("PATCH {url} -> {status}: {val}"));
+        }
+        Ok(val)
+    }
+
     pub async fn put_form(&self, url: &str, form: &[(&str, &str)]) -> Result<Value, String> {
         let resp = http()
             .put(url)
@@ -131,6 +174,32 @@ impl WorkspaceClient {
             .map_err(|e| e.to_string())?;
         if !resp.status().is_success() {
             return Err(format!("heartbeat -> {}", resp.status()));
+        }
+        Ok(())
+    }
+
+    /// POST /api/mesh/agents/{agent_id}/heartbeat — refreshes mesh_agents.last_seen_at
+    /// so the agent stays active in the mesh block view.  Requires VANTAGE_AGENT_ID
+    /// and VANTAGE_BLOCK_ID env vars; skips silently if either is absent.
+    pub async fn mesh_heartbeat(&self) -> Result<(), String> {
+        let agent_id = match &self.agent_id {
+            Some(id) => id.clone(),
+            None => return Ok(()),
+        };
+        let block_id = match &self.block_id {
+            Some(id) => id.clone(),
+            None => return Ok(()),
+        };
+        let url = format!("{}/api/mesh/agents/{}/heartbeat", self.base_url, agent_id);
+        let resp = http()
+            .post(&url)
+            .header("X-Agent-Key", &self.api_key)
+            .json(&serde_json::json!({ "block_id": block_id }))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("mesh_heartbeat -> {}", resp.status()));
         }
         Ok(())
     }

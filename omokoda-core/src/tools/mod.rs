@@ -33,6 +33,7 @@ pub mod validation;
 pub mod walrus_tool;
 pub mod wallet_tools;
 pub mod zero_tool;
+pub mod ucx_tool;
 
 #[derive(Debug, Clone)]
 pub struct ExecutionContext {
@@ -250,6 +251,21 @@ impl ToolRegistry {
         // Activated when OSOVM_URL is set (e.g. "http://localhost:7780").
         if std::env::var("OSOVM_URL").is_ok() {
             for tool in osovm_tool::osovm_tools() {
+                registry.register(tool);
+            }
+        }
+
+        // UCX compute tools — activated when UCX_BROKER_URL is set.
+        // Also available for provider registration when VANTAGE_URL is set.
+        if std::env::var("UCX_BROKER_URL").is_ok() || std::env::var("VANTAGE_URL").is_ok() {
+            for tool in ucx_tool::ucx_tools() {
+                registry.register(tool);
+            }
+        }
+
+        // VCP device inhabitation tools — activated when VCP_BROKER_URL or VANTAGE_URL is set.
+        if std::env::var("VCP_BROKER_URL").is_ok() || std::env::var("VANTAGE_URL").is_ok() {
+            for tool in ucx_tool::vcp_tools() {
                 registry.register(tool);
             }
         }

@@ -1,3 +1,4 @@
+pub mod kernel;
 pub mod agents;
 pub mod background;
 pub mod behavioral;
@@ -17,6 +18,7 @@ pub mod identity;
 pub mod intent;
 pub mod interpreter;
 pub mod justice;
+pub mod lifecycle;
 pub mod lsp;
 pub mod ip_layer;
 pub mod main_loop;

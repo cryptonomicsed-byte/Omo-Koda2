@@ -1,0 +1,5 @@
+primitive ethics {
+    harm_none?: boolean
+    accuracy?: "max" | "high" | "medium"
+    restrictions?: string[]
+}

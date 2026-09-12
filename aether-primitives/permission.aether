@@ -1,0 +1,5 @@
+primitive permission {
+    spend?: "auto" | "ask" | "deny"
+    external?: "auto" | "ask" | "deny"
+    hire?: "auto" | "ask" | "deny"
+}

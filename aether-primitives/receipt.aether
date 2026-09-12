@@ -1,0 +1,5 @@
+primitive receipt {
+    type: string
+    proof: boolean
+    metadata?: object
+}

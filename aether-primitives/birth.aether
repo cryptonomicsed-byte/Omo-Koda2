@@ -1,0 +1,6 @@
+primitive birth {
+    name: string
+    tier: "calm" | "moderate" | "aggressive"
+    budget?: number
+    passphrase?: string
+}

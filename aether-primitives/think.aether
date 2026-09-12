@@ -1,0 +1,4 @@
+primitive think {
+    prompt: string
+    model?: string
+}

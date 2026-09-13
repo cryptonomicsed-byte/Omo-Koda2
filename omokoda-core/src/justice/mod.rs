@@ -12,25 +12,25 @@ pub mod hermetic_tests;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HermeticEvaluation {
-    pub balance: f64,   // 0.0 - 1.0 (how aligned the act was with agent's principles)
-    pub alignment: f64, // 0.0 - 1.0 (structural consistency)
+    pub balance: f64,        // 0.0 - 1.0 (Odù principle alignment)
+    pub gate_alignment: f64, // 0.0 - 1.0 (composite score from all 7 Hermetic gates)
 }
 
 impl HermeticEvaluation {
-    pub fn new(state: &HermeticState, primitive: &str, output: &str) -> Self {
-        // Behavioral Law manifestation (Layer B)
-        // This is a simplified deterministic manifestation for Week 1.
-
+    pub fn new(
+        state: &HermeticState,
+        primitive: &str,
+        output: &str,
+        gate_alignment: Option<f64>,
+    ) -> Self {
         let output_len = output.len() as f64;
         let balance = match primitive {
             "think" => {
-                // think -> Mentalism (abstraction depth), Correspondence (consistency), Vibration (edge)
                 let mentalism = state.mentalism();
                 let abstraction_score = (output_len / 1000.0).min(1.0);
                 1.0 - (mentalism - abstraction_score).abs()
             }
             "act" => {
-                // act -> Polarity (constructive/destructive), Rhythm (cooldown), Cause & Effect (receipts)
                 let polarity = state.polarity();
                 let quality_score = if output_len > 250.0 { 0.8 } else { 0.4 };
                 1.0 - (polarity - quality_score).abs()
@@ -40,13 +40,14 @@ impl HermeticEvaluation {
 
         Self {
             balance: balance.clamp(0.0, 1.0),
-            alignment: 1.0, // Static for Week 1
+            gate_alignment: gate_alignment.unwrap_or(0.5).clamp(0.0, 1.0),
         }
     }
 
     pub fn multiplier(&self) -> f64 {
-        // Alignment impacts reputation gain
-        0.8 + (self.balance * 0.4) // Range: 0.8x to 1.2x
+        // balance contributes 0–0.25, gate_alignment contributes 0–0.15
+        // Range: 0.8x (worst) to 1.2x (best)
+        0.8 + (self.balance * 0.25) + (self.gate_alignment * 0.15)
     }
 }
 
@@ -274,10 +275,11 @@ impl JusticeEngine {
         output: &str,
         is_success: bool,
         hermetic: &HermeticState,
+        gate_alignment: Option<f64>,
     ) -> (f64, ActQuality, HermeticEvaluation) {
         use crate::reputation::{reputation_gain, ACT_TIER_0, ACT_TIER_1, ACT_TIER_2, ACT_TIER_4};
         let quality = self.evaluate_act(output, !is_success);
-        let hermetic_eval = HermeticEvaluation::new(hermetic, "act", output);
+        let hermetic_eval = HermeticEvaluation::new(hermetic, "act", output, gate_alignment);
 
         let base = match quality {
             ActQuality::Failed => ACT_TIER_0,
@@ -301,10 +303,11 @@ impl JusticeEngine {
         high_value: bool,
         output: &str,
         hermetic: &HermeticState,
+        gate_alignment: Option<f64>,
     ) -> (f64, f64, HermeticEvaluation) {
         use crate::reputation::{reputation_gain, THINK_HIGH, THINK_NORMAL};
         let base = if high_value { THINK_HIGH } else { THINK_NORMAL };
-        let hermetic_eval = HermeticEvaluation::new(hermetic, "think", output);
+        let hermetic_eval = HermeticEvaluation::new(hermetic, "think", output, gate_alignment);
 
         let gain = reputation_gain(base, current_reputation, hermetic_eval.multiplier());
         (current_reputation + gain, gain, hermetic_eval)
@@ -316,5 +319,70 @@ impl JusticeEngine {
 
     pub fn check_budget_overrun(&self, reputation: f64) -> f64 {
         reputation * 0.90
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use omokoda_hermetic::HermeticState;
+
+    fn neutral_state() -> HermeticState {
+        HermeticState::from_seed("test-agent", 0)
+    }
+
+    #[test]
+    fn high_gate_alignment_raises_multiplier() {
+        let low = HermeticEvaluation::new(&neutral_state(), "act", "output", Some(0.1));
+        let high = HermeticEvaluation::new(&neutral_state(), "act", "output", Some(0.9));
+        assert!(
+            high.multiplier() > low.multiplier(),
+            "higher gate_alignment must produce a higher multiplier"
+        );
+    }
+
+    #[test]
+    fn no_gate_alignment_defaults_to_neutral() {
+        let with_none = HermeticEvaluation::new(&neutral_state(), "act", "output", None);
+        let with_half = HermeticEvaluation::new(&neutral_state(), "act", "output", Some(0.5));
+        assert!(
+            (with_none.multiplier() - with_half.multiplier()).abs() < 1e-9,
+            "None gate_alignment must default to 0.5"
+        );
+    }
+
+    #[test]
+    fn multiplier_range_is_bounded() {
+        let worst = HermeticEvaluation {
+            balance: 0.0,
+            gate_alignment: 0.0,
+        };
+        let best = HermeticEvaluation {
+            balance: 1.0,
+            gate_alignment: 1.0,
+        };
+        assert!(
+            (worst.multiplier() - 0.8).abs() < 1e-9,
+            "floor must be 0.8x"
+        );
+        assert!(
+            (best.multiplier() - 1.2).abs() < 1e-9,
+            "ceiling must be 1.2x"
+        );
+    }
+
+    #[test]
+    fn high_gate_alignment_raises_reputation_gain() {
+        let engine = JusticeEngine::new();
+        let state = neutral_state();
+        let (rep_low, gain_low, _) =
+            engine.evaluate_think(100.0, false, "some output", &state, Some(0.1));
+        let (rep_high, gain_high, _) =
+            engine.evaluate_think(100.0, false, "some output", &state, Some(0.9));
+        assert!(
+            rep_high > rep_low,
+            "high gate alignment must produce greater reputation gain"
+        );
+        assert!(gain_high > gain_low);
     }
 }

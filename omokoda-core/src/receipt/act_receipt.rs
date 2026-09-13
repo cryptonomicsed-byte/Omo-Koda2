@@ -63,6 +63,9 @@ pub struct ActReceipt {
     /// `plane::verify_plane` call returned `Verified`, never to assert a
     /// plane the action wasn't actually checked against.
     pub plane: Plane,
+    /// Composite alignment score from all 7 Hermetic gates (0.0–1.0).
+    /// None if the operation was not evaluated through EsuGatekeeper.
+    pub gate_alignment: Option<f64>,
 }
 
 impl ActReceipt {
@@ -86,6 +89,7 @@ impl ActReceipt {
             epistemic_severity: None,
             previous_hash: None,
             plane: Plane::Physical,
+            gate_alignment: None,
         }
     }
 
@@ -96,6 +100,11 @@ impl ActReceipt {
 
     pub fn with_previous_hash(mut self, prev: String) -> Self {
         self.previous_hash = Some(prev);
+        self
+    }
+
+    pub fn with_gate_alignment(mut self, score: f64) -> Self {
+        self.gate_alignment = Some(score.clamp(0.0, 1.0));
         self
     }
 

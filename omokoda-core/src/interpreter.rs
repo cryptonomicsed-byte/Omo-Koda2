@@ -1842,6 +1842,7 @@ impl Steward {
                     high_value,
                     &response,
                     &hermetic_state,
+                    Some(hermetic_score),
                 );
 
                 let agent_mut = self.ensure_born_mut()?;
@@ -2428,6 +2429,7 @@ impl Steward {
                     &output,
                     true,
                     &hermetic_state,
+                    Some(hermetic_score),
                 );
 
                 // Justice HookRunner: Post-act
@@ -3836,6 +3838,7 @@ impl Steward {
             &output,
             true,
             &hermetic_state,
+            Some(hermetic_score),
         );
 
         let post_hook_ctx = crate::justice::HookContext {

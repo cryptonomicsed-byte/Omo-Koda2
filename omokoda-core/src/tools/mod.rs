@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use crate::execution::permission_enforcer::{enforce_mode, validate_path_boundary};
 use crate::sandbox::WasmSandbox;
 
+pub mod execution_log;
 pub mod config_tool;
 pub mod file_ops;
 pub mod if_script_tool;

@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Generate a prefix-coded task ID.
 /// Think→t, Act→a, Dream→d, Delegate→g, Background→b, Agent→ag, Monitor→m
-fn prefixed_id(prefix: &str) -> String {
+pub fn prefixed_id(prefix: &str) -> String {
     use uuid::Uuid;
     let raw = Uuid::new_v4().to_string().replace('-', "");
     format!("{}{}", prefix, &raw[..8])
@@ -73,9 +73,7 @@ pub enum TaskKind {
         max_turns: u32,
     },
     /// Watch an MCP server or process and react to state changes
-    Monitor {
-        target: String,
-    },
+    Monitor { target: String },
     /// Explicit delegation to a remote agent node
     RemoteAgent {
         node_url: String,
@@ -114,15 +112,21 @@ impl TaskKind {
     pub fn is_write(&self) -> bool {
         matches!(
             self,
-            Self::Act { .. } | Self::Agent { .. } | Self::Delegate { .. } | Self::RemoteAgent { .. }
+            Self::Act { .. }
+                | Self::Agent { .. }
+                | Self::Delegate { .. }
+                | Self::RemoteAgent { .. }
         )
     }
 
     pub fn is_async(&self) -> bool {
         matches!(
             self,
-            Self::Dream { .. } | Self::Background { .. } | Self::Delegate { .. }
-                | Self::Monitor { .. } | Self::RemoteAgent { .. }
+            Self::Dream { .. }
+                | Self::Background { .. }
+                | Self::Delegate { .. }
+                | Self::Monitor { .. }
+                | Self::RemoteAgent { .. }
         )
     }
 }
@@ -313,7 +317,11 @@ impl TaskManager {
             .values()
             .filter(|t| t.kind.label() == kind_label)
             .collect();
-        tasks.sort_by(|a, b| b.priority.cmp(&a.priority).then(a.created_at.cmp(&b.created_at)));
+        tasks.sort_by(|a, b| {
+            b.priority
+                .cmp(&a.priority)
+                .then(a.created_at.cmp(&b.created_at))
+        });
         tasks
     }
 
@@ -344,4 +352,3 @@ fn now_secs() -> u64 {
         .unwrap_or_default()
         .as_secs()
 }
-

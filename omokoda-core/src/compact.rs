@@ -482,6 +482,27 @@ pub fn merge_compact_summaries(existing: Option<&str>, new_summary: &str) -> Str
     lines.join("\n")
 }
 
+/// Returns `true` when `used_tokens` exceeds 75% of `max_tokens`.
+/// Inspired by Claude-2 auto-compact at 75% context limit.
+#[must_use]
+pub fn should_compact_at_75pct(used_tokens: u64, max_tokens: u64) -> bool {
+    max_tokens > 0 && used_tokens * 4 >= max_tokens * 3
+}
+
+/// Returns a compact-trigger summary prompt when at 75%, otherwise `None`.
+#[must_use]
+pub fn compact_trigger_prompt(used_tokens: u64, max_tokens: u64) -> Option<&'static str> {
+    if should_compact_at_75pct(used_tokens, max_tokens) {
+        Some(
+            "Summarize the conversation so far into a concise context block \
+             (key decisions, file changes, open questions). \
+             This replaces the early message history to free context space.",
+        )
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod auto_compact_tests {
     use super::*;

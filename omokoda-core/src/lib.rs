@@ -1,5 +1,7 @@
 pub mod agent_catalog;
 pub mod bridge;
+pub mod inference;
+pub mod util;
 pub mod kernel;
 pub mod agents;
 pub mod background;

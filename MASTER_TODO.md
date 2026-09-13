@@ -238,9 +238,34 @@ Legend: ✅ done · 🔶 partial · ❌ missing · 🗄️ archived · 🪞 mirr
 
 ---
 
+## COMPLETED THIS SESSION (2026-09-12)
+- ✅ **A** heartbeat chain hash wired — boot_id/sequence/state/chain_hash stored + verified in Vantage
+- ✅ **B** Dopamine mint endpoint — POST /api/ucx/dopamine/mint, balance, ledger (Vantage)
+- ✅ **C** arp-broker crate created — port 7795, chain-verify route, zero warnings
+- ✅ **D** aether-economy/conversion.js MATCHES accounting.rs (10:1 ratio, 86B/86M pools, 1% decay)
+- ✅ **E** organism-core bridge audit done (see below)
+
+## organism-core BRIDGE AUDIT (2026-09-12)
+| File | Status | Gap |
+|------|--------|-----|
+| zangbeto-audit.ts | **LIVE** | — |
+| twelve-thrones-consensus.ts | **LIVE (2 stubs)** | KL divergence + Disagreement NFT minting |
+| agenttv-thrones-validator.ts | **LIVE** | — |
+| aio-jubilee-treasury.ts | **LIVE** | — |
+| paradigm-omokoda.ts | **LIVE** | — |
+| birth-ifa-swibe.ts | **LIVE** | — |
+| rlm-osovm.ts | **LIVE + sim fallback** | Calls Julia CLI; sim when Julia absent |
+| spiral-time-bridge.ts | **LIVE + fallback** | Lazy-loads ritual-codex; Gregorian fallback |
+| swibe-techgnosis-bridge.ts | **LIVE** | — |
+| ifa-veil-router.ts | **STUB** | Pure computation, no external I/O wiring |
+| nex-graph-bridge.ts | **STUB** | Pure computation, no external I/O wiring |
+| toc-evolve-hook.ts | **STUB** | 25 lines, no actual Sui/Move contract call |
+
 ## IMMEDIATE NEXT — pick one
-- **A** Wire heartbeat chain hash: lifecycle/heartbeat.rs → vantage/heartbeat.rs POST
-- **B** Dopamine mint: Vantage endpoint VerifiedGPUWork → ComputeScore → credit
-- **C** ARP broker crate in sovereign-stack
-- **D** Verify aether-economy/conversion.js Dopamine logic matches kernel/compute/accounting.rs
-- **E** organism-core audit: which bridge files are stubs vs live?
+- **F** Wire toc-evolve-hook.ts → actual Sui Move mint_toc call (AIO contract)
+- **G** Wire ifa-veil-router.ts → DIP/VCP endpoint (veil assignment via protocol layer)
+- **H** Wire nex-graph-bridge.ts → Nex runtime HTTP or process call
+- **I** twelve-thrones KL divergence: replace stub with real cross-entropy over throne outputs
+- **J** kernel/network.rs in Omo-Koda2 — Nostr/Freenet/Mesh protocol router
+- **K** kernel/security.rs in Omo-Koda2 — SecurityPolicy enforcement
+- **L** OSOVM ComputeProof opcode — VerifiedGPUWork → OSOVM proof → Dopamine auth

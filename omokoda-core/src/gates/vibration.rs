@@ -3,8 +3,14 @@
 // Enforces resonance thresholds and timing constraints.
 // IMPOSSIBLE to spam or force execution.
 // IMPOSSIBLE to flood the system with destructive high-frequency operations.
+//
+// FUSION: pass score = ctx.dna.vibration.
+// Low vibration DNA → agent is naturally slow-paced; high DNA → high-frequency agent.
+// Swarm load threshold tightens for high-vibration agents (they tend to overload the mesh).
 
-use crate::gates::{GateContext, GateResult, HermeticGate, Operation, OperationKind};
+use crate::gates::{
+    GateContext, GateResult, HermeticGate, HermeticPrinciple, Operation, OperationKind,
+};
 
 pub struct VibrationGate;
 
@@ -66,7 +72,7 @@ impl HermeticGate for VibrationGate {
             }
         }
 
-        GateResult::Pass(0.78)
+        GateResult::Pass(ctx.dna.for_principle(HermeticPrinciple::Vibration))
     }
 }
 

@@ -3,13 +3,16 @@
 // All operations must be traceable. No anonymous causation allowed.
 // Undeclared side effects are rejected. Responsibility evasion is rejected.
 // IMPOSSIBLE to act anonymously.
+//
+// FUSION: pass score = ctx.dna.cause_effect.
+// High cause_effect DNA → agent naturally produces rich causal trails → higher score.
 
-use crate::gates::{GateContext, GateResult, HermeticGate, Operation};
+use crate::gates::{GateContext, GateResult, HermeticGate, HermeticPrinciple, Operation};
 
 pub struct CauseEffectGate;
 
 impl HermeticGate for CauseEffectGate {
-    fn evaluate(&self, op: &Operation, _ctx: &GateContext) -> GateResult {
+    fn evaluate(&self, op: &Operation, ctx: &GateContext) -> GateResult {
         // Every operation must declare its intent — empty intent = anonymous cause.
         if op.intent.trim().is_empty() {
             return GateResult::Reject(
@@ -75,7 +78,7 @@ impl HermeticGate for CauseEffectGate {
             }
         }
 
-        GateResult::Pass(0.88)
+        GateResult::Pass(ctx.dna.for_principle(HermeticPrinciple::CauseAndEffect))
     }
 }
 

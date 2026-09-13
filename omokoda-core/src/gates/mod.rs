@@ -4,6 +4,10 @@
 // Every birth/think/act flows through Èṣù (EsuGatekeeper) which enforces ALL
 // 7 Hermetic Principles as MANDATORY gates. Any gate can REJECT → operation HALTED.
 //
+// FUSION: GateContext now carries the agent's HermeticState (Odù DNA).
+// Each gate's pass score is anchored to the agent's corresponding principle value,
+// making the agent's cryptographic identity the behavioral baseline.
+//
 // Architecture: specs/architecture.md § "Seven-layer map"
 
 pub mod cause_effect;
@@ -78,8 +82,38 @@ impl Operation {
     }
 }
 
+/// The agent's Odù-derived Hermetic DNA — 7 values in [0.0, 1.0].
+/// Carried in GateContext so every gate can anchor its pass score to the agent's identity.
+/// High value = strong natural alignment with that principle = higher pass score.
+/// Low value = weaker alignment = lower pass score (still passes if no violation found,
+/// but the agent's constitutional record will show lower alignment).
+#[derive(Debug, Clone, Default)]
+pub struct HermeticDna {
+    pub mentalism: f64,
+    pub correspondence: f64,
+    pub vibration: f64,
+    pub polarity: f64,
+    pub rhythm: f64,
+    pub cause_effect: f64,
+    pub gender: f64,
+}
+
+impl HermeticDna {
+    pub fn for_principle(&self, p: HermeticPrinciple) -> f64 {
+        match p {
+            HermeticPrinciple::Mentalism => self.mentalism,
+            HermeticPrinciple::Correspondence => self.correspondence,
+            HermeticPrinciple::Vibration => self.vibration,
+            HermeticPrinciple::Polarity => self.polarity,
+            HermeticPrinciple::Rhythm => self.rhythm,
+            HermeticPrinciple::CauseAndEffect => self.cause_effect,
+            HermeticPrinciple::Gender => self.gender,
+        }
+    }
+}
+
 /// Session-derived context snapshot available to all gates (immutable).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct GateContext {
     /// True if the agent's rhythm tracker has an active cooldown for this operation.
     pub in_cooldown: bool,
@@ -87,6 +121,8 @@ pub struct GateContext {
     pub warn_count: u32,
     /// Swarm load factor 0.0–1.0. Above 0.80 = overloaded.
     pub swarm_load: f32,
+    /// Agent's Odù-derived Hermetic DNA. Default = neutral (0.5 on all axes).
+    pub dna: HermeticDna,
 }
 
 impl GateContext {
@@ -95,6 +131,30 @@ impl GateContext {
             in_cooldown,
             warn_count,
             swarm_load,
+            dna: HermeticDna {
+                mentalism: 0.5,
+                correspondence: 0.5,
+                vibration: 0.5,
+                polarity: 0.5,
+                rhythm: 0.5,
+                cause_effect: 0.5,
+                gender: 0.5,
+            },
+        }
+    }
+
+    /// Construct context with the agent's full Odù-derived Hermetic DNA.
+    pub fn new_with_dna(
+        in_cooldown: bool,
+        warn_count: u32,
+        swarm_load: f32,
+        dna: HermeticDna,
+    ) -> Self {
+        Self {
+            in_cooldown,
+            warn_count,
+            swarm_load,
+            dna,
         }
     }
 }

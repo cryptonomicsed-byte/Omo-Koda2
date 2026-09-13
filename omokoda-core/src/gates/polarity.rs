@@ -3,13 +3,18 @@
 // Destructive operations require a creative/restorative complement.
 // Extreme unipolar operations without balance acknowledgment are rejected.
 // IMPOSSIBLE to act destructively without compensation.
+//
+// FUSION: pass score = ctx.dna.polarity.
+// High polarity DNA → agent naturally seeks balance → higher receipt score.
 
-use crate::gates::{GateContext, GateResult, HermeticGate, Operation, OperationKind};
+use crate::gates::{
+    GateContext, GateResult, HermeticGate, HermeticPrinciple, Operation, OperationKind,
+};
 
 pub struct PolarityGate;
 
 impl HermeticGate for PolarityGate {
-    fn evaluate(&self, op: &Operation, _ctx: &GateContext) -> GateResult {
+    fn evaluate(&self, op: &Operation, ctx: &GateContext) -> GateResult {
         let text = op.combined_text();
         let intent = op.intent.to_lowercase();
 
@@ -76,7 +81,7 @@ impl HermeticGate for PolarityGate {
             }
         }
 
-        GateResult::Pass(0.82)
+        GateResult::Pass(ctx.dna.for_principle(HermeticPrinciple::Polarity))
     }
 }
 

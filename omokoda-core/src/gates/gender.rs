@@ -3,13 +3,18 @@
 // Enforces creative/receptive balance. Generation without reception is rejected.
 // IMPOSSIBLE to override user agency without consent.
 // IMPOSSIBLE to act unilaterally without integrating the receptive principle.
+//
+// FUSION: pass score = ctx.dna.gender.
+// High gender DNA → agent naturally seeks consent and participatory action → higher score.
 
-use crate::gates::{GateContext, GateResult, HermeticGate, Operation, OperationKind};
+use crate::gates::{
+    GateContext, GateResult, HermeticGate, HermeticPrinciple, Operation, OperationKind,
+};
 
 pub struct GenderGate;
 
 impl HermeticGate for GenderGate {
-    fn evaluate(&self, op: &Operation, _ctx: &GateContext) -> GateResult {
+    fn evaluate(&self, op: &Operation, ctx: &GateContext) -> GateResult {
         let text = op.combined_text();
         let intent = op.intent.to_lowercase();
 
@@ -65,7 +70,7 @@ impl HermeticGate for GenderGate {
             }
         }
 
-        GateResult::Pass(0.83)
+        GateResult::Pass(ctx.dna.for_principle(HermeticPrinciple::Gender))
     }
 }
 

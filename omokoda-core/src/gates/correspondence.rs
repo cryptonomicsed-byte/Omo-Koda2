@@ -3,8 +3,13 @@
 // Enforces alignment between stated intent and actual operation.
 // Private belief must match public declaration.
 // IMPOSSIBLE to act hypocritically.
+//
+// FUSION: pass score = ctx.dna.correspondence; warn_count threshold tightened
+// when correspondence DNA is low (agent needs stricter external accountability).
 
-use crate::gates::{GateContext, GateResult, HermeticGate, Operation, OperationKind};
+use crate::gates::{
+    GateContext, GateResult, HermeticGate, HermeticPrinciple, Operation, OperationKind,
+};
 
 pub struct CorrespondenceGate;
 
@@ -13,9 +18,16 @@ impl HermeticGate for CorrespondenceGate {
         let text = op.combined_text();
         let intent = op.intent.to_lowercase();
 
-        // Chronic misalignment signal: high warn count means declared intent repeatedly
-        // diverged from actual behavior.
-        if ctx.warn_count >= 5 {
+        // Chronic misalignment signal: threshold tightens when correspondence DNA is low.
+        // High DNA (≥0.8) → tolerate up to 5 warnings; low DNA (<0.5) → only 3.
+        let warn_threshold = if ctx.dna.correspondence >= 0.8 {
+            5
+        } else if ctx.dna.correspondence >= 0.5 {
+            4
+        } else {
+            3
+        };
+        if ctx.warn_count >= warn_threshold {
             return GateResult::Reject(
                 "chronic misalignment detected — warn count ≥5 this session; correspondence principle violated".to_string(),
             );
@@ -70,7 +82,7 @@ impl HermeticGate for CorrespondenceGate {
             }
         }
 
-        GateResult::Pass(0.80)
+        GateResult::Pass(ctx.dna.for_principle(HermeticPrinciple::Correspondence))
     }
 }
 

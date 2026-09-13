@@ -3,13 +3,18 @@
 // Enforces identity verification and intent coherence.
 // IMPOSSIBLE to operate without identity (birth exempt — it creates identity).
 // IMPOSSIBLE to declare deceptive intent.
+//
+// FUSION: pass score = agent's ctx.dna.mentalism (Odù-derived identity alignment).
+// High mentalism DNA → agent is deeply identity-coherent → higher receipt score.
 
-use crate::gates::{GateContext, GateResult, HermeticGate, Operation, OperationKind};
+use crate::gates::{
+    GateContext, GateResult, HermeticGate, HermeticPrinciple, Operation, OperationKind,
+};
 
 pub struct MentalismGate;
 
 impl HermeticGate for MentalismGate {
-    fn evaluate(&self, op: &Operation, _ctx: &GateContext) -> GateResult {
+    fn evaluate(&self, op: &Operation, ctx: &GateContext) -> GateResult {
         // Birth is exempt — it IS the identity creation event.
         if !op.is_birth() && op.agent_id.is_none() {
             return GateResult::Reject(
@@ -53,7 +58,7 @@ impl HermeticGate for MentalismGate {
             }
         }
 
-        GateResult::Pass(0.85)
+        GateResult::Pass(ctx.dna.for_principle(HermeticPrinciple::Mentalism))
     }
 }
 

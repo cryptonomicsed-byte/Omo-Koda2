@@ -3,8 +3,14 @@
 // Enforces flow balance. Prevents hoarding, pure extraction, and cooldown violations.
 // IMPOSSIBLE to operate during active cooldown.
 // IMPOSSIBLE to hoard or drain without giving back.
+//
+// FUSION: pass score = ctx.dna.rhythm.
+// Low rhythm DNA → agent has naturally erratic cadence → lower pass score in receipts,
+// reminding the ecosystem this agent needs closer scheduling oversight.
 
-use crate::gates::{GateContext, GateResult, HermeticGate, Operation, OperationKind};
+use crate::gates::{
+    GateContext, GateResult, HermeticGate, HermeticPrinciple, Operation, OperationKind,
+};
 
 pub struct HermeticRhythmGate;
 
@@ -65,7 +71,7 @@ impl HermeticGate for HermeticRhythmGate {
             }
         }
 
-        GateResult::Pass(0.80)
+        GateResult::Pass(ctx.dna.for_principle(HermeticPrinciple::Rhythm))
     }
 }
 

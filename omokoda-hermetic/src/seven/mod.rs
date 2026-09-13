@@ -232,26 +232,225 @@ pub struct SevenProfileEntry {
     pub strength: f64,
 }
 
-/// Seven-day sacred calendar — each day governed by one function.
+// ─── Koodu Calendar Constants ────────────────────────────────────────────────
+// Mirrors Koodu/src/time/sacred_time.jl — these are the canonical parameters
+// for the entire sovereign ecosystem. Both repos must agree on these values.
+
+/// BTC block height marking the Ọ̀ṢỌ́VM epoch start (Koodu genesis).
+pub const KOODU_GENESIS_BLOCK: u64 = 780_000;
+
+/// Bitcoin blocks per canonical day (10 min/block × 144 = 1440 min).
+pub const KOODU_BLOCKS_PER_DAY: u64 = 144;
+
+/// Èṣù tithe rate — 3.69% of every settlement.
+pub const KOODU_TITHE_RATE: f64 = 0.0369;
+
+/// Àṣẹ minted per day (global clock).
+pub const KOODU_DAILY_MINT: u64 = 1_440;
+
+// ─── Spiral Alignment ────────────────────────────────────────────────────────
+
+/// The relationship between the Gregorian day and the BTC-canonical day.
 ///
-/// Encodes the cyclical expression of the Seven Functions through time.
-/// The Yorùbá mapping (Sun=Èṣù, Mon=Ṣàngó…) is the reference implementation;
-/// the universal calendar uses the same positional order.
+/// When both clocks land on the same function, that is a Resonance Day —
+/// sacred operations carry double weight. When they diverge, the spiral
+/// reveals the tension between two functions in dialogue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SpiralAlignment {
+    /// Both clocks on the same function — perfect resonance.
+    Resonance,
+    /// One day off — echo of the dominant function.
+    Echo,
+    /// Two days off — noticeable drift.
+    Drift,
+    /// Three days off — maximum tension, two functions in full opposition.
+    Opposition,
+    /// Four days off — return drift beginning.
+    ReturnDrift,
+    /// Five days off — return echo.
+    ReturnEcho,
+    /// Six days off — mirror (inverse polarity of Resonance).
+    Mirror,
+}
+
+impl SpiralAlignment {
+    pub fn from_offset(offset: u8) -> Self {
+        match offset % 7 {
+            0 => Self::Resonance,
+            1 => Self::Echo,
+            2 => Self::Drift,
+            3 => Self::Opposition,
+            4 => Self::ReturnDrift,
+            5 => Self::ReturnEcho,
+            _ => Self::Mirror,
+        }
+    }
+
+    /// True when both clocks are in perfect alignment.
+    pub fn is_resonance(self) -> bool {
+        self == Self::Resonance
+    }
+}
+
+// ─── Koodu Ritual Gates ──────────────────────────────────────────────────────
+
+/// Time-based protocol gates derived from Koodu's `RitualGate` enum.
+/// These affect economic behavior across all three ecosystem layers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum KooduRitualGate {
+    /// No special gate active — normal operation.
+    None,
+    /// Saturday / Ọbàtálá day — settle-only, no new state transitions.
+    Sabbath,
+    /// Every 49 BTC days (7×7) — minor jubilee reset.
+    JubileeMinor,
+    /// Veil position divisible by 12 — Èṣù² crossroads; tithe enforced.
+    EshuSquared,
+    /// Day 343 (7×7×7) in the cycle — pyramid capstone, seal and release.
+    Capstone,
+    /// Day 364 of the 13-moon year — void, pure ritual, minting paused.
+    Void,
+}
+
+impl KooduRitualGate {
+    /// Whether new contracts and state transitions are permitted.
+    pub fn allows_new_contracts(self) -> bool {
+        !matches!(self, Self::Sabbath | Self::Void)
+    }
+
+    /// The economic multiplier this gate applies to reputation gain.
+    pub fn multiplier(self) -> f64 {
+        match self {
+            Self::None => 1.0,
+            Self::Sabbath => 1.1,       // clarity bonus
+            Self::EshuSquared => 1.369, // tithe growth (3.69%)
+            Self::JubileeMinor => 2.0,
+            Self::Capstone => 1.5,
+            Self::Void => 0.0,
+        }
+    }
+
+    /// Whether the Èṣù tithe (3.69%) is enforced at this gate.
+    pub fn tithe_enforced(self) -> bool {
+        matches!(self, Self::EshuSquared)
+    }
+}
+
+// ─── SevenCalendar ───────────────────────────────────────────────────────────
+
+/// Seven-day sacred calendar tied to Koodu's BTC-anchored time system.
+///
+/// Koodu (`~/Koodu/src/time/sacred_time.jl`) is the canonical clock for the
+/// entire sovereign ecosystem — time is measured in Bitcoin blocks from
+/// `KOODU_GENESIS_BLOCK`, not wall-clock seconds. This makes every calendar
+/// reading globally verifiable and tamper-resistant.
+///
+/// Day mapping (Koodu ORISA_CYCLE order, SevenFunction framing):
+///   0 Sunday    Èṣù      → Spark      (initiation, new beginnings)
+///   1 Monday    Ṣàngó    → Fire       (authority and consequence)
+///   2 Tuesday   Ọ̀ṣun    → Emotion    (value and relationship)
+///   3 Wednesday Yemọja   → Womb       (creation and community)
+///   4 Thursday  Ọ̀yá     → Ascension  (change and transition)
+///   5 Friday    Ògún     → Foundation (work and execution)
+///   6 Saturday  Ọbàtálá  → Mind       (clarity, ethics, Sabbath)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SevenCalendar;
 
 impl SevenCalendar {
-    /// Which function governs a given weekday (0 = Sunday … 6 = Saturday).
+    /// Which function governs a given weekday index (0 = Sunday … 6 = Saturday).
+    /// Matches Koodu's `ORISA_CYCLE` order exactly.
     pub fn function_for_day(day: u8) -> SevenFunction {
         match day % 7 {
-            0 => SevenFunction::Spark,      // Sunday   — initiation, new beginnings
-            1 => SevenFunction::Fire,       // Monday   — authority and consequence
-            2 => SevenFunction::Emotion,    // Tuesday  — value and relationship
-            3 => SevenFunction::Womb,       // Wednesday — creation and community
-            4 => SevenFunction::Ascension,  // Thursday  — change and transition
-            5 => SevenFunction::Foundation, // Friday   — work and execution
-            _ => SevenFunction::Mind,       // Saturday — clarity and ethics
+            0 => SevenFunction::Spark,      // Èṣù      — Sunday
+            1 => SevenFunction::Fire,       // Ṣàngó    — Monday
+            2 => SevenFunction::Emotion,    // Ọ̀ṣun    — Tuesday
+            3 => SevenFunction::Womb,       // Yemọja   — Wednesday
+            4 => SevenFunction::Ascension,  // Ọ̀yá     — Thursday
+            5 => SevenFunction::Foundation, // Ògún     — Friday
+            _ => SevenFunction::Mind,       // Ọbàtálá  — Saturday (Sabbath)
         }
+    }
+
+    /// Canonical function from a BTC block height — Koodu's authoritative clock.
+    ///
+    /// Computes days elapsed since `KOODU_GENESIS_BLOCK`, takes mod 7.
+    /// Returns `None` if `height < KOODU_GENESIS_BLOCK` (pre-genesis).
+    pub fn from_btc_height(height: u64) -> Option<SevenFunction> {
+        if height < KOODU_GENESIS_BLOCK {
+            return None;
+        }
+        let days_elapsed = (height - KOODU_GENESIS_BLOCK) / KOODU_BLOCKS_PER_DAY;
+        Some(Self::function_for_day((days_elapsed % 7) as u8))
+    }
+
+    /// Current function from the Gregorian wall clock (UTC weekday).
+    /// Use `from_btc_height` when a BTC height is available — it is canonical.
+    pub fn today_gregorian() -> SevenFunction {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        // Unix epoch was a Thursday (day 4). Days since epoch, offset to Sunday=0.
+        let days_since_epoch = secs / 86_400;
+        let day_of_week = ((days_since_epoch + 4) % 7) as u8; // Thu=4 → Sun=0
+        Self::function_for_day(day_of_week)
+    }
+
+    /// The active ritual gate at a given BTC block height (mirrors Koodu's `check_gate`).
+    ///
+    /// Priority (highest to lowest): Void → Capstone → EshuSquared → JubileeMinor → Sabbath
+    pub fn ritual_gate(height: u64) -> KooduRitualGate {
+        if height < KOODU_GENESIS_BLOCK {
+            return KooduRitualGate::None;
+        }
+        let days = (height - KOODU_GENESIS_BLOCK) / KOODU_BLOCKS_PER_DAY;
+        let day_of_week = (days % 7) as u8;
+
+        // Void: day 363 of the 364-day year (last day of 13×28 moons)
+        if days % 364 == 363 {
+            return KooduRitualGate::Void;
+        }
+        // Capstone: day 342 of the 343-day (7×7×7) cycle
+        if days % 343 == 342 {
+            return KooduRitualGate::Capstone;
+        }
+        // Èṣù² node: veil position (day % 350) divisible by 12
+        let veil = (days % 350) + 1;
+        if veil % 12 == 0 {
+            return KooduRitualGate::EshuSquared;
+        }
+        // Minor jubilee: every 49 days (7×7)
+        if days % 49 == 48 {
+            return KooduRitualGate::JubileeMinor;
+        }
+        // Sabbath: Saturday = Ọbàtálá day
+        if day_of_week == 6 {
+            return KooduRitualGate::Sabbath;
+        }
+        KooduRitualGate::None
+    }
+
+    /// Spiral alignment between the Gregorian clock and the BTC-canonical clock.
+    ///
+    /// Resonance = both clocks on the same function (double weight).
+    /// Opposition = three days apart (maximum tension, two functions in dialogue).
+    pub fn spiral_alignment(gregorian_day: u8, btc_day: u8) -> SpiralAlignment {
+        let offset = (btc_day as i8 - gregorian_day as i8).unsigned_abs() % 7;
+        SpiralAlignment::from_offset(offset)
+    }
+
+    /// True if the Gregorian and BTC clocks are currently in Resonance.
+    /// Requires the current BTC height — pass `None` to get `false` gracefully.
+    pub fn is_resonance_day(btc_height: Option<u64>) -> bool {
+        let Some(height) = btc_height else {
+            return false;
+        };
+        let Some(btc_fn) = Self::from_btc_height(height) else {
+            return false;
+        };
+        let greg_fn = Self::today_gregorian();
+        btc_fn == greg_fn
     }
 }
 
@@ -323,5 +522,102 @@ mod tests {
         use std::collections::HashSet;
         let covered: HashSet<_> = (0u8..7).map(SevenCalendar::function_for_day).collect();
         assert_eq!(covered.len(), 7, "calendar must cover all 7 functions");
+    }
+
+    // ─── Koodu calendar tests ────────────────────────────────────────────────
+
+    #[test]
+    fn genesis_block_is_sunday_spark() {
+        // Day 0 from genesis = Sunday = Spark (Èṣù)
+        let f = SevenCalendar::from_btc_height(KOODU_GENESIS_BLOCK).unwrap();
+        assert_eq!(f, SevenFunction::Spark);
+    }
+
+    #[test]
+    fn one_day_after_genesis_is_monday_fire() {
+        let height = KOODU_GENESIS_BLOCK + KOODU_BLOCKS_PER_DAY;
+        let f = SevenCalendar::from_btc_height(height).unwrap();
+        assert_eq!(f, SevenFunction::Fire); // Monday = Ṣàngó = Fire
+    }
+
+    #[test]
+    fn saturday_is_mind_sabbath() {
+        // Day 6 from genesis = Saturday = Mind (Ọbàtálá)
+        let height = KOODU_GENESIS_BLOCK + 6 * KOODU_BLOCKS_PER_DAY;
+        let f = SevenCalendar::from_btc_height(height).unwrap();
+        assert_eq!(f, SevenFunction::Mind);
+    }
+
+    #[test]
+    fn btc_cycle_repeats_every_seven_days() {
+        let base = KOODU_GENESIS_BLOCK + 3 * KOODU_BLOCKS_PER_DAY;
+        let next = base + 7 * KOODU_BLOCKS_PER_DAY;
+        assert_eq!(
+            SevenCalendar::from_btc_height(base),
+            SevenCalendar::from_btc_height(next)
+        );
+    }
+
+    #[test]
+    fn pre_genesis_returns_none() {
+        assert!(SevenCalendar::from_btc_height(KOODU_GENESIS_BLOCK - 1).is_none());
+        assert!(SevenCalendar::from_btc_height(0).is_none());
+    }
+
+    #[test]
+    fn sabbath_gate_on_saturday() {
+        // Day 6 = Saturday = Sabbath
+        let height = KOODU_GENESIS_BLOCK + 6 * KOODU_BLOCKS_PER_DAY;
+        let gate = SevenCalendar::ritual_gate(height);
+        assert_eq!(gate, KooduRitualGate::Sabbath);
+        assert!(!gate.allows_new_contracts());
+        assert!((gate.multiplier() - 1.1).abs() < 1e-9);
+    }
+
+    #[test]
+    fn eshu_squared_on_veil_12() {
+        // Veil = (days % 350) + 1 = 12 when days % 350 == 11
+        // day 11 from genesis, if it's not Saturday/Void/Capstone
+        // day 11 % 7 = 4 (Thursday), so not Sabbath
+        let height = KOODU_GENESIS_BLOCK + 11 * KOODU_BLOCKS_PER_DAY;
+        let gate = SevenCalendar::ritual_gate(height);
+        assert_eq!(gate, KooduRitualGate::EshuSquared);
+        assert!(gate.tithe_enforced());
+        assert!((gate.multiplier() - 1.369).abs() < 1e-9);
+    }
+
+    #[test]
+    fn no_gate_on_normal_day() {
+        // Day 1 from genesis = Monday, no special gates
+        let height = KOODU_GENESIS_BLOCK + KOODU_BLOCKS_PER_DAY;
+        let gate = SevenCalendar::ritual_gate(height);
+        assert_eq!(gate, KooduRitualGate::None);
+        assert!(gate.allows_new_contracts());
+        assert_eq!(gate.multiplier(), 1.0);
+    }
+
+    #[test]
+    fn spiral_alignment_same_day_is_resonance() {
+        let alignment = SevenCalendar::spiral_alignment(3, 3);
+        assert_eq!(alignment, SpiralAlignment::Resonance);
+        assert!(alignment.is_resonance());
+    }
+
+    #[test]
+    fn spiral_alignment_three_days_is_opposition() {
+        let alignment = SevenCalendar::spiral_alignment(0, 3);
+        assert_eq!(alignment, SpiralAlignment::Opposition);
+        assert!(!alignment.is_resonance());
+    }
+
+    #[test]
+    fn koodu_tithe_rate_is_canonical() {
+        assert!((KOODU_TITHE_RATE - 0.0369).abs() < 1e-9);
+    }
+
+    #[test]
+    fn today_gregorian_returns_valid_function() {
+        let f = SevenCalendar::today_gregorian();
+        assert!(SevenFunction::ALL.contains(&f));
     }
 }

@@ -45,6 +45,7 @@ pub mod server;
 pub mod session;
 pub mod skill_patch;
 pub mod skills;
+pub mod seven;
 pub mod steward;
 pub mod tasks;
 pub mod tools;

@@ -1,0 +1,16 @@
+{
+  "tier": "observer",
+  "default_provider": "default",
+  "default_privacy": true,
+  "default_sandbox": true,
+  "feature_flags": {
+    "auto_compact": true,
+    "compact_threshold": 30,
+    "compact_keep_recent": 5,
+    "auto_memory": false,
+    "hooks_enabled": true,
+    "auto_receipts": true,
+    "max_agentic_turns": 5,
+    "auto_export": false
+  }
+}

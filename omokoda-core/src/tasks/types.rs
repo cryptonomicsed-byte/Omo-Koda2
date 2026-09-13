@@ -2,6 +2,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Generate a prefix-coded task ID.
+/// Think→t, Act→a, Dream→d, Delegate→g, Background→b, Agent→ag, Monitor→m
+fn prefixed_id(prefix: &str) -> String {
+    use uuid::Uuid;
+    let raw = Uuid::new_v4().to_string().replace('-', "");
+    format!("{}{}", prefix, &raw[..8])
+}
+
 /// Lifecycle state of a task
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TaskStatus {
@@ -64,6 +72,16 @@ pub enum TaskKind {
         prompt: String,
         max_turns: u32,
     },
+    /// Watch an MCP server or process and react to state changes
+    Monitor {
+        target: String,
+    },
+    /// Explicit delegation to a remote agent node
+    RemoteAgent {
+        node_url: String,
+        agent_id: String,
+        prompt: String,
+    },
 }
 
 impl TaskKind {
@@ -75,13 +93,28 @@ impl TaskKind {
             Self::Delegate { .. } => "delegate",
             Self::Background { .. } => "background",
             Self::Agent { .. } => "agent",
+            Self::Monitor { .. } => "monitor",
+            Self::RemoteAgent { .. } => "remote_agent",
+        }
+    }
+
+    pub fn id_prefix(&self) -> &'static str {
+        match self {
+            Self::Think { .. } => "t",
+            Self::Act { .. } => "a",
+            Self::Dream { .. } => "d",
+            Self::Delegate { .. } => "g",
+            Self::Background { .. } => "b",
+            Self::Agent { .. } => "ag",
+            Self::Monitor { .. } => "m",
+            Self::RemoteAgent { .. } => "ag",
         }
     }
 
     pub fn is_write(&self) -> bool {
         matches!(
             self,
-            Self::Act { .. } | Self::Agent { .. } | Self::Delegate { .. }
+            Self::Act { .. } | Self::Agent { .. } | Self::Delegate { .. } | Self::RemoteAgent { .. }
         )
     }
 
@@ -89,6 +122,7 @@ impl TaskKind {
         matches!(
             self,
             Self::Dream { .. } | Self::Background { .. } | Self::Delegate { .. }
+                | Self::Monitor { .. } | Self::RemoteAgent { .. }
         )
     }
 }
@@ -106,12 +140,15 @@ pub struct Task {
     pub parent_id: Option<String>,
     /// Priority — higher runs first (default: 0)
     pub priority: i32,
+    /// Whether completion was surfaced to the user
+    pub notified: bool,
 }
 
 impl Task {
     pub fn new(kind: TaskKind) -> Self {
+        let id = prefixed_id(kind.id_prefix());
         Self {
-            id: uuid_v4(),
+            id,
             kind,
             status: TaskStatus::Pending,
             created_at: now_secs(),
@@ -119,6 +156,7 @@ impl Task {
             finished_at: None,
             parent_id: None,
             priority: 0,
+            notified: false,
         }
     }
 
@@ -260,6 +298,25 @@ impl TaskManager {
             .count()
     }
 
+    /// Count of non-terminal tasks (pending + running).
+    pub fn active_count(&self) -> usize {
+        self.tasks
+            .values()
+            .filter(|t| !t.status.is_terminal())
+            .count()
+    }
+
+    /// All tasks of a given label (e.g. "think", "act").
+    pub fn by_kind(&self, kind_label: &str) -> Vec<&Task> {
+        let mut tasks: Vec<&Task> = self
+            .tasks
+            .values()
+            .filter(|t| t.kind.label() == kind_label)
+            .collect();
+        tasks.sort_by(|a, b| b.priority.cmp(&a.priority).then(a.created_at.cmp(&b.created_at)));
+        tasks
+    }
+
     pub fn summary(&self) -> String {
         let total = self.tasks.len();
         let pending = self.pending_count();
@@ -288,6 +345,3 @@ fn now_secs() -> u64 {
         .as_secs()
 }
 
-fn uuid_v4() -> String {
-    uuid::Uuid::new_v4().to_string()
-}

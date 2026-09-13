@@ -8,6 +8,15 @@ use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+/// Snapshot of emotional state captured at heartbeat time.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct SomaVector {
+    pub energy: f32,
+    pub tension: f32,
+    pub focus: f32,
+    pub gpu_util: f32,
+}
+
 /// One heartbeat record. Serialises to canonical JSON for hashing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentHeartbeat {
@@ -21,6 +30,10 @@ pub struct AgentHeartbeat {
     pub current_work:           Option<String>,
     pub previous_heartbeat_hash: Option<String>,
     pub signature:              Option<String>,  // ed25519, future
+    /// Emotion snapshot at beat time
+    pub soma_vector:            Option<SomaVector>,
+    /// Total messages processed since boot
+    pub message_count:          u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -46,6 +59,7 @@ impl AgentHeartbeat {
             "active_daemons":         self.active_daemons,
             "current_work":           self.current_work,
             "previous_heartbeat_hash": self.previous_heartbeat_hash,
+            "message_count":          self.message_count,
         });
         let bytes = canonical.to_string();
         let digest = Sha256::digest(bytes.as_bytes());
@@ -65,6 +79,8 @@ impl AgentHeartbeat {
             current_work: None,
             previous_heartbeat_hash: None,
             signature: None,
+            soma_vector: None,
+            message_count: 0,
         }
     }
 
@@ -86,7 +102,29 @@ impl AgentHeartbeat {
             current_work,
             previous_heartbeat_hash: Some(prev.hash()),
             signature: None,
+            soma_vector: None,
+            message_count: prev.message_count,
         }
+    }
+
+    /// Generate a shutdown receipt compatible with ARP on SIGTERM.
+    pub fn shutdown_receipt(
+        &self,
+        boot_timestamp: u64,
+        exit_reason: impl Into<String>,
+    ) -> serde_json::Value {
+        let uptime = self.timestamp.saturating_sub(boot_timestamp);
+        serde_json::json!({
+            "kind": "shutdown_receipt",
+            "agent_id": self.agent_id,
+            "boot_id": self.boot_id,
+            "final_sequence": self.sequence,
+            "final_hash": self.hash(),
+            "uptime_secs": uptime,
+            "message_count": self.message_count,
+            "exit_reason": exit_reason.into(),
+            "timestamp": now_secs(),
+        })
     }
 
     /// Verify the chain link: does `candidate.previous_heartbeat_hash == expected_prev.hash()`?

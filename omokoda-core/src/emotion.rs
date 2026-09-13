@@ -129,6 +129,40 @@ impl EmotionState {
         self.connection > 0.7
     }
 
+    /// Update state from hardware sensor readings.
+    /// Battery drives energy, temperature drives tension, hour shapes energy ceiling.
+    #[must_use]
+    pub fn update_from_sensors(&self, battery_pct: u8, temp_c: f32, hour: u8) -> Self {
+        // Battery below 15% → deplete energy
+        let energy = if battery_pct < 15 {
+            0.1_f32
+        } else {
+            let charging_bonus = if battery_pct > 80 { 0.05 } else { 0.0 };
+            clamp01(self.energy + charging_bonus)
+        };
+
+        // Night hours (22-05) → energy capped at 0.3
+        let energy = if hour >= 22 || hour <= 5 {
+            energy.min(0.3)
+        } else {
+            energy
+        };
+
+        // CPU temp > 40°C → raise tension
+        let tension = if temp_c > 40.0 {
+            clamp01(self.tension + 0.2)
+        } else {
+            self.tension
+        };
+
+        Self {
+            energy,
+            tension,
+            connection: self.connection,
+            focus: self.focus,
+        }
+    }
+
     /// Composite "vitality" score 0.0–1.0 for logging / receipts.
     #[must_use]
     pub fn vitality(&self) -> f32 {
@@ -212,6 +246,27 @@ mod tests {
     fn vitality_is_between_zero_and_one() {
         let v = EmotionState::birth().vitality();
         assert!((0.0..=1.0).contains(&v));
+    }
+
+    #[test]
+    fn low_battery_depletes_energy() {
+        let e = EmotionState::birth();
+        let updated = e.update_from_sensors(10, 25.0, 12);
+        assert!((updated.energy - 0.1).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn high_temp_raises_tension() {
+        let e = EmotionState::birth();
+        let updated = e.update_from_sensors(80, 45.0, 12);
+        assert!(updated.tension > e.tension);
+    }
+
+    #[test]
+    fn night_hours_cap_energy() {
+        let e = EmotionState::birth();
+        let updated = e.update_from_sensors(100, 25.0, 23);
+        assert!(updated.energy <= 0.3);
     }
 
     #[test]

@@ -1,0 +1,16 @@
+{
+  "tier": "sovereign",
+  "default_provider": "default",
+  "default_privacy": false,
+  "default_sandbox": false,
+  "feature_flags": {
+    "auto_compact": true,
+    "compact_threshold": 100,
+    "compact_keep_recent": 20,
+    "auto_memory": true,
+    "hooks_enabled": true,
+    "auto_receipts": true,
+    "max_agentic_turns": 50,
+    "auto_export": true
+  }
+}

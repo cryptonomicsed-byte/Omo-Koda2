@@ -200,6 +200,7 @@ mod tests {
             prompt.contains("SHARP")
                 || prompt.contains("BALANCED")
                 || prompt.contains("REFLEX")
+                || prompt.contains("FAST")
                 || prompt.contains("DEEP")
                 || prompt.contains("GENTLE")
         );

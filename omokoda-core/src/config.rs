@@ -1,6 +1,48 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// Agent access tier — controls what tools and capabilities are available.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentTier {
+    /// Read-only. Can observe state but cannot execute tools.
+    Observer = 1,
+    /// Standard tools allowed. No self-modification.
+    Resident = 2,
+    /// Full tool access including self-modify (skill_patch).
+    Sovereign = 3,
+}
+
+impl AgentTier {
+    pub fn can_execute_tools(&self) -> bool {
+        *self >= Self::Resident
+    }
+
+    pub fn can_self_modify(&self) -> bool {
+        *self >= Self::Sovereign
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Observer => "observer",
+            Self::Resident => "resident",
+            Self::Sovereign => "sovereign",
+        }
+    }
+}
+
+impl Default for AgentTier {
+    fn default() -> Self {
+        Self::Resident
+    }
+}
+
+impl std::fmt::Display for AgentTier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.label())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ConfigSource {
     User,

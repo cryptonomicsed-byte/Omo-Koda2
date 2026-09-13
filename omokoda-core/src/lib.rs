@@ -1,3 +1,5 @@
+pub mod agent_catalog;
+pub mod bridge;
 pub mod kernel;
 pub mod agents;
 pub mod background;
@@ -39,6 +41,7 @@ pub mod rhythm;
 pub mod sandbox;
 pub mod server;
 pub mod session;
+pub mod skill_patch;
 pub mod skills;
 pub mod steward;
 pub mod tasks;

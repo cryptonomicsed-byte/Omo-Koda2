@@ -44,7 +44,7 @@ function glyph_fold(digest::Vector{UInt8})
     end
     idx = Int(rem)
     for (start, count) in _FOLD_RANGES
-        idx < count && return string(Char(Int(start) + idx))
+        idx < count && return Char(Int(start) + idx)
         idx -= count
     end
     error("unreachable: fold index exceeds range total")

@@ -1,5 +1,6 @@
 //! Plugin registry — manages installed plugins lifecycle and state
 
+use crate::agent_catalog::{AgentCatalog, AgentRole};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -31,6 +32,8 @@ struct PluginIndex {
 pub struct PluginRegistry {
     registry_path: PathBuf,
     index: PluginIndex,
+    /// Role catalog — looked up by agent ID for role manifests
+    catalog: AgentCatalog,
 }
 
 impl PluginRegistry {
@@ -39,6 +42,7 @@ impl PluginRegistry {
         Self {
             registry_path,
             index,
+            catalog: AgentCatalog::new(),
         }
     }
 
@@ -160,5 +164,16 @@ impl PluginRegistry {
                     .map(move |h| (p.manifest.name.as_str(), h))
             })
             .collect()
+    }
+
+    /// Look up the role manifest for a registered agent by its plugin/agent ID.
+    /// Returns the AgentRole from the catalog if one exists.
+    pub fn role_for(&self, agent_id: &str) -> Option<&AgentRole> {
+        self.catalog.find_by_id(agent_id)
+    }
+
+    /// All roles in a given division (e.g. "engineering", "osovm", "sovereign").
+    pub fn roles_by_division(&self, division: &str) -> Vec<&AgentRole> {
+        self.catalog.find_by_division(division)
     }
 }

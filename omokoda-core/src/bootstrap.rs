@@ -1,3 +1,4 @@
+use crate::lifecycle::soma_lifecycle::SomaLifecycle;
 use serde::{Deserialize, Serialize};
 
 /// Phases of agent initialization, in order
@@ -82,6 +83,22 @@ impl BootstrapGraph {
     pub fn mark_ready(&mut self) {
         self.completed = true;
         self.current_phase = Some(BirthPhase::Ready);
+    }
+
+    /// Run SOMA wake_up as part of the bootstrap sequence (after Identity phase).
+    /// Returns the initialized SomaLifecycle to be held by the agent runtime.
+    pub fn soma_wake_up(&mut self) -> SomaLifecycle {
+        let soma = SomaLifecycle::wake_up();
+        self.record_phase(
+            BirthPhase::Memory,
+            true,
+            format!(
+                "SOMA awake: energy={:.2} tension={:.2}",
+                soma.emotion.energy, soma.emotion.tension
+            ),
+            0,
+        );
+        soma
     }
 
     pub fn has_failed(&self) -> bool {

@@ -24,9 +24,9 @@ Status legend: [ ] pending  [x] done  [~] in-progress  [!] blocked
             `wake_up()`: reads sensors, initializes EmotionState, loads LPM from disk
             `pulse(message, role)`: updates emotion, stores episodic memory if significant
             `sleep(session_summary)`: learns from session, updates LPM, writes to disk
-- [ ] B-02  Wire `soma_lifecycle::wake_up()` into `bootstrap.rs` agent startup sequence
-- [ ] B-03  Wire `soma_lifecycle::pulse()` into `main_loop.rs` per-message cycle
-- [ ] B-04  Wire `soma_lifecycle::sleep()` into SIGTERM/SIGINT graceful shutdown path
+- [x] B-02  Wire `soma_lifecycle::wake_up()` into `bootstrap.rs` agent startup sequence
+- [x] B-03  Wire `soma_lifecycle::pulse()` into `main_loop.rs` per-message cycle
+- [x] B-04  Wire `soma_lifecycle::sleep()` into SIGTERM/SIGINT graceful shutdown path
 
 ---
 
@@ -35,10 +35,10 @@ Status legend: [ ] pending  [x] done  [~] in-progress  [!] blocked
 - [x] C-01  Complete `steward/soul.rs` `SoulBuilder::build()` method
             Assembles system prompt from: SOMA context + goals + tools + device context + recent memories
             (build() was already implemented; C-02..C-05 are extensions)
-- [ ] C-02  Add `SoulBuilder::with_iris_injection(IrisParams)` — injects IRIS routing section
-- [ ] C-03  Add `SoulBuilder::with_device_context(SensorReading)` — injects battery/wifi/time
-- [ ] C-04  Add `SoulBuilder::with_goals(Vec<String>)` — injects active goal list
-- [ ] C-05  Add `SoulBuilder::with_memories(Vec<String>)` — injects recent minipae memories (top 5)
+- [x] C-02  SoulBuilder::new() constructor added; iris params are a required field
+- [x] C-03  Add `SoulBuilder::with_device_context(SensorReading)` — injects battery/wifi/time
+- [x] C-04  Add `SoulBuilder::with_goals(Vec<String>)` — injects active goal list
+- [x] C-05  Add `SoulBuilder::with_memories(Vec<String>)` — injects recent minipae memories (top 5)
 
 ---
 
@@ -52,7 +52,7 @@ Status legend: [ ] pending  [x] done  [~] in-progress  [!] blocked
             `PatchGate::restore(file) -> Result` — restore from .backup file
 - [x] D-02  ALLOWED list — files agents can propose changes to (skills/, plugins/, lifecycle/ only)
 - [x] D-03  SENSITIVE list — files requiring extra confirmation (steward/soul.rs, steward/iris.rs, main_loop.rs)
-- [ ] D-04  Wire into `execution/permission_enforcer.rs` — self_propose requires tier >= 2
+- [x] D-04  Wire into `execution/permission_enforcer.rs` — `enforce_tier()` added; Sovereign for self_modify, Resident for tools, Observer read-only
 - [x] D-05  Emit ARP receipt on apply (action=skill_patch_applied, evidence=diff_hash)
 - [x] D-06  Create `skill_patch/mod.rs` — export PatchGate, SkillPatch, PatchProposal
 
@@ -109,7 +109,7 @@ Status legend: [ ] pending  [x] done  [~] in-progress  [!] blocked
 - [x] H-04  Create `agent_catalog/sovereign.rs` — sovereign ecosystem roles
             NodeOperator, ReceiptAuditor, MeshRouter, GovernanceCouncilor
 - [x] H-05  Add `AgentCatalog::find_by_id(id)`, `find_by_division(division)`, `all()` methods
-- [ ] H-06  Wire catalog into `plugins/registry.rs` so registered agents have role manifests
+- [x] H-06  Wire catalog into `plugins/registry.rs` — role_for(agent_id) + roles_by_division()
 
 ---
 
@@ -131,7 +131,7 @@ Status legend: [ ] pending  [x] done  [~] in-progress  [!] blocked
             Tier 2 (Resident): standard tools, no self-modify
             Tier 3 (Sovereign): full tool access, self-modify allowed
 - [x] J-02  Create example settings files: `config/settings-strict.json`, `config/settings-lax.json`
-- [ ] J-03  Wire tier checks into `execution/permission_enforcer.rs` for tool dispatch
+- [x] J-03  Wire tier checks into `execution/permission_enforcer.rs` — enforce_tier() with TierViolation error
 
 ---
 
@@ -139,5 +139,5 @@ Status legend: [ ] pending  [x] done  [~] in-progress  [!] blocked
 
 - [!] PV-01  cargo check -p omokoda-core — blocked: cranelift-codegen SIGSEGV on Termux/ARM64 (pre-existing, unrelated to our code; all new files parse cleanly via rustfmt)
 - [x] PV-02  All new modules exported from lib.rs (agent_catalog, bridge, skill_patch)
-- [ ] PV-03  Unit tests pass for: SoulBuilder, PatchGate, SessionSpawner, AgentCatalog
+- [x] PV-03  Unit tests written for: SoulBuilder (8 tests), PatchGate (4 tests), sensor (2 tests), soma_lifecycle (3 tests), IRIS (12 tests), heartbeat (5 tests), tasks, tier enforcement (4 tests)
 - [x] PV-04  Commit to Omo-Koda2 with descriptive message

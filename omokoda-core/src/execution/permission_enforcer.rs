@@ -1,6 +1,7 @@
 //! Permission Enforcement Layer
-//! Enforces workspace boundaries and read-only mode constraints.
+//! Enforces workspace boundaries, read-only mode, and agent tier constraints.
 
+use crate::config::AgentTier;
 use crate::permissions::PermissionMode;
 use std::path::{Path, PathBuf};
 
@@ -12,6 +13,8 @@ pub enum EnforcementError {
     ReadOnlyViolation(String),
     #[error("Private Access Violation: Attempted to access {0}")]
     PrivateAccessViolation(PathBuf),
+    #[error("Tier Violation: {0} requires tier {1} but agent is {2}")]
+    TierViolation(String, String, String),
 }
 
 /// Validates that a path is within the workspace root and not within /private.
@@ -76,4 +79,56 @@ pub fn enforce_mode(
         return Err(EnforcementError::ReadOnlyViolation(action.to_string()));
     }
     Ok(())
+}
+
+/// Enforces tier-based capability constraints.
+/// - Tool execution requires Resident (tier >= 2) or higher.
+/// - Self-modification (skill_patch) requires Sovereign (tier 3).
+pub fn enforce_tier(
+    tier: AgentTier,
+    action: &str,
+    is_self_modify: bool,
+) -> Result<(), EnforcementError> {
+    if is_self_modify && !tier.can_self_modify() {
+        return Err(EnforcementError::TierViolation(
+            action.to_string(),
+            AgentTier::Sovereign.label().to_string(),
+            tier.label().to_string(),
+        ));
+    }
+    if !is_self_modify && !tier.can_execute_tools() {
+        return Err(EnforcementError::TierViolation(
+            action.to_string(),
+            AgentTier::Resident.label().to_string(),
+            tier.label().to_string(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tier_tests {
+    use super::*;
+
+    #[test]
+    fn observer_cannot_execute_tools() {
+        let err = enforce_tier(AgentTier::Observer, "bash", false);
+        assert!(matches!(err, Err(EnforcementError::TierViolation(..))));
+    }
+
+    #[test]
+    fn resident_can_execute_tools() {
+        assert!(enforce_tier(AgentTier::Resident, "bash", false).is_ok());
+    }
+
+    #[test]
+    fn resident_cannot_self_modify() {
+        let err = enforce_tier(AgentTier::Resident, "skill_patch", true);
+        assert!(matches!(err, Err(EnforcementError::TierViolation(..))));
+    }
+
+    #[test]
+    fn sovereign_can_self_modify() {
+        assert!(enforce_tier(AgentTier::Sovereign, "skill_patch", true).is_ok());
+    }
 }

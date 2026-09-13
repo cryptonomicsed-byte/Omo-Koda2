@@ -1,3 +1,4 @@
+use crate::lifecycle::soma_lifecycle::{SessionSummary, SomaLifecycle};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use tokio::sync::mpsc;
@@ -182,6 +183,8 @@ pub struct MainLoop {
     pub query_state: QueryState,
     pub active_provider: String,
     pub turn_history: Vec<(LoopEvent, TurnOutcome)>,
+    /// SOMA lifecycle — emotion + sensor state, updated each user message
+    pub soma: Option<SomaLifecycle>,
 }
 
 impl MainLoop {
@@ -200,7 +203,26 @@ impl MainLoop {
             query_engine,
             query_state,
             config,
+            soma: None,
         }
+    }
+
+    /// Attach a SOMA lifecycle to this loop (called from bootstrap after wake_up).
+    pub fn attach_soma(&mut self, soma: SomaLifecycle) {
+        self.soma = Some(soma);
+    }
+
+    /// Graceful shutdown: run SOMA sleep with a session summary, then stop.
+    pub fn shutdown_with_soma(&mut self, key_topics: Vec<String>) {
+        if let Some(soma) = &self.soma {
+            let summary = SessionSummary {
+                message_count: soma.message_count,
+                key_topics,
+                notable_events: vec![],
+            };
+            soma.sleep(&summary);
+        }
+        self.state = LoopState::Stopped;
     }
 
     pub fn with_defaults(provider: impl Into<String>, initial_synapse: f64) -> Self {
@@ -270,7 +292,7 @@ impl MainLoop {
 
         match &event {
             LoopEvent::UserInput {
-                prompt: _,
+                prompt,
                 private: _,
             } => {
                 if !self.state.can_accept_input() {
@@ -280,6 +302,10 @@ impl MainLoop {
                         output: Some("queued: loop is busy".to_string()),
                         usage: TokenUsage::default(),
                     };
+                }
+                // SOMA pulse — update emotion from message content
+                if let Some(soma) = &mut self.soma {
+                    soma.pulse(prompt, "user");
                 }
                 self.state = LoopState::Thinking;
                 let usage = TokenUsage::default();
@@ -357,6 +383,15 @@ impl MainLoop {
             }
 
             LoopEvent::Shutdown => {
+                // SOMA sleep — consolidate session on graceful shutdown
+                if let Some(soma) = &self.soma {
+                    let summary = SessionSummary {
+                        message_count: soma.message_count,
+                        key_topics: vec![],
+                        notable_events: vec!["shutdown".to_string()],
+                    };
+                    soma.sleep(&summary);
+                }
                 self.state = LoopState::Stopped;
                 TurnOutcome::Stopped
             }

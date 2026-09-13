@@ -1,4 +1,5 @@
 use crate::emotion::EmotionState;
+use crate::lifecycle::sensor::SensorReading;
 use crate::steward::iris::{IrisParams, IrisProfile};
 use serde::{Deserialize, Serialize};
 
@@ -90,9 +91,54 @@ pub struct SoulBuilder<'a> {
     pub emotion: &'a EmotionState,
     pub soma: &'a SomaContext,
     pub custom_instructions: Option<&'a str>,
+    /// Device context injected by with_device_context()
+    device_context: Option<SensorReading>,
+    /// Active goal list injected by with_goals()
+    goals: Vec<String>,
+    /// Recent minipae memories (top 5) injected by with_memories()
+    memories: Vec<String>,
 }
 
 impl<'a> SoulBuilder<'a> {
+    /// Create a new SoulBuilder with required fields.
+    pub fn new(
+        agent_name: &'a str,
+        agent_id: &'a str,
+        iris_params: &'a IrisParams,
+        emotion: &'a EmotionState,
+        soma: &'a SomaContext,
+    ) -> Self {
+        Self {
+            agent_name,
+            agent_id,
+            iris_params,
+            emotion,
+            soma,
+            custom_instructions: None,
+            device_context: None,
+            goals: vec![],
+            memories: vec![],
+        }
+    }
+
+    /// Inject device sensor context (battery, temp, time).
+    pub fn with_device_context(mut self, reading: SensorReading) -> Self {
+        self.device_context = Some(reading);
+        self
+    }
+
+    /// Inject active goals list.
+    pub fn with_goals(mut self, goals: Vec<String>) -> Self {
+        self.goals = goals;
+        self
+    }
+
+    /// Inject recent minipae memories (top 5 shown).
+    pub fn with_memories(mut self, memories: Vec<String>) -> Self {
+        self.memories = memories;
+        self
+    }
+
     /// Build the complete system prompt string for the `think` primitive.
     #[must_use]
     pub fn build(&self) -> String {
@@ -122,13 +168,44 @@ impl<'a> SoulBuilder<'a> {
             sections.push(emotion_note);
         }
 
-        // 4. SOMA context
+        // 4. Device context
+        if let Some(dev) = &self.device_context {
+            sections.push(format!(
+                "## Device\nbattery: {}%  temp: {:.0}°C  hour: {:02}:00",
+                dev.battery_pct, dev.temp_c, dev.hour
+            ));
+        }
+
+        // 5. Active goals
+        if !self.goals.is_empty() {
+            let goal_list = self
+                .goals
+                .iter()
+                .map(|g| format!("- {}", g))
+                .collect::<Vec<_>>()
+                .join("\n");
+            sections.push(format!("## Goals\n{}", goal_list));
+        }
+
+        // 6. Recent memories
+        if !self.memories.is_empty() {
+            let mem_list = self
+                .memories
+                .iter()
+                .take(5)
+                .map(|m| format!("- {}", m))
+                .collect::<Vec<_>>()
+                .join("\n");
+            sections.push(format!("## Memory\n{}", mem_list));
+        }
+
+        // 7. SOMA context
         let soma_section = self.soma.render_section();
         if !soma_section.is_empty() {
             sections.push(soma_section);
         }
 
-        // 5. Custom instructions
+        // 8. Custom instructions
         if let Some(custom) = self.custom_instructions {
             sections.push(format!("## Instructions\n{}", custom));
         }
@@ -186,14 +263,7 @@ mod tests {
         let emotion = fresh();
         let params = IrisEngine::params("fix this bug", &emotion);
         let soma = empty_soma();
-        let builder = SoulBuilder {
-            agent_name: "Luna",
-            agent_id: "agent-abc123",
-            iris_params: &params,
-            emotion: &emotion,
-            soma: &soma,
-            custom_instructions: None,
-        };
+        let builder = SoulBuilder::new("Luna", "agent-abc123", &params, &emotion, &soma);
         let prompt = builder.build();
         assert!(prompt.contains("Luna"));
         assert!(
@@ -216,14 +286,7 @@ mod tests {
         };
         let params = IrisEngine::params("help me", &tired);
         let soma = empty_soma();
-        let builder = SoulBuilder {
-            agent_name: "Luna",
-            agent_id: "x",
-            iris_params: &params,
-            emotion: &tired,
-            soma: &soma,
-            custom_instructions: None,
-        };
+        let builder = SoulBuilder::new("Luna", "x", &params, &tired, &soma);
         let prompt = builder.build();
         assert!(prompt.contains("Energy is low"));
     }
@@ -233,15 +296,49 @@ mod tests {
         let emotion = fresh();
         let params = IrisEngine::params("hello", &emotion);
         let soma = empty_soma();
-        let builder = SoulBuilder {
-            agent_name: "TestAgent",
-            agent_id: "t1",
-            iris_params: &params,
-            emotion: &emotion,
-            soma: &soma,
-            custom_instructions: Some("Always end with a question."),
-        };
+        let mut builder = SoulBuilder::new("TestAgent", "t1", &params, &emotion, &soma);
+        builder.custom_instructions = Some("Always end with a question.");
         let prompt = builder.build();
         assert!(prompt.contains("Always end with a question."));
+    }
+
+    #[test]
+    fn device_context_injected() {
+        use crate::lifecycle::sensor::SensorReading;
+        let emotion = fresh();
+        let params = IrisEngine::params("hello", &emotion);
+        let soma = empty_soma();
+        let reading = SensorReading { battery_pct: 42, temp_c: 38.5, hour: 14 };
+        let builder = SoulBuilder::new("A", "id", &params, &emotion, &soma)
+            .with_device_context(reading);
+        let prompt = builder.build();
+        assert!(prompt.contains("42%"));
+        assert!(prompt.contains("14:00"));
+    }
+
+    #[test]
+    fn goals_injected() {
+        let emotion = fresh();
+        let params = IrisEngine::params("hello", &emotion);
+        let soma = empty_soma();
+        let builder = SoulBuilder::new("A", "id", &params, &emotion, &soma)
+            .with_goals(vec!["finish the Rust module".to_string()]);
+        let prompt = builder.build();
+        assert!(prompt.contains("Goals"));
+        assert!(prompt.contains("finish the Rust module"));
+    }
+
+    #[test]
+    fn memories_injected_capped_at_5() {
+        let emotion = fresh();
+        let params = IrisEngine::params("hello", &emotion);
+        let soma = empty_soma();
+        let mems: Vec<String> = (0..8).map(|i| format!("memory {}", i)).collect();
+        let builder = SoulBuilder::new("A", "id", &params, &emotion, &soma)
+            .with_memories(mems);
+        let prompt = builder.build();
+        assert!(prompt.contains("Memory"));
+        assert!(prompt.contains("memory 4"));
+        assert!(!prompt.contains("memory 5"));
     }
 }

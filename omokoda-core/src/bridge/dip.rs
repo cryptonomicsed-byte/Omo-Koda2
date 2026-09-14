@@ -3,7 +3,101 @@
 //! Callers supply NetworkRepr entries; this module never hard-codes a transport.
 //! Fail-open: unreachable DIP server never blocks the calling operation.
 
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+
+/// Network-agnostic identity endpoint. Never hardcode `network = "nostr"`.
+/// The caller picks the transport; this struct carries it through.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkRepr {
+    /// "nostr" | "meshtastic" | "a2a" | "mcp" | "libp2p" | "freenet"
+    pub network: String,
+    /// Network-specific address / pubkey / node-id.
+    pub address: String,
+}
+
+/// Typed DIP envelope (mirrors the JSON shape accepted by DipBridge on port 7792).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DipEnvelope {
+    pub sender_id: String,
+    pub network: String,
+    pub address: String,
+    pub payload: Value,
+    pub timestamp: u64,
+}
+
+/// High-level client over the raw `post_outbound` helpers below.
+/// Construct with `DipBridge::new(router_url)` or let it use the default port.
+pub struct DipBridge {
+    pub dip_router_url: String,
+}
+
+impl DipBridge {
+    /// Create a bridge pointing at a specific DIP router URL.
+    pub fn new(dip_router_url: &str) -> Self {
+        Self { dip_router_url: dip_router_url.trim_end_matches('/').to_string() }
+    }
+
+    /// Build an identity DipEnvelope (does not send — call `send_via_router`).
+    pub fn agent_to_dip_identity(agent_id: &str, network: &NetworkRepr) -> DipEnvelope {
+        DipEnvelope {
+            sender_id: agent_id.to_string(),
+            network: network.network.clone(),
+            address: network.address.clone(),
+            payload: json!({
+                "kind": "identity",
+                "agent_id": agent_id,
+            }),
+            timestamp: now_secs(),
+        }
+    }
+
+    /// Wrap an arbitrary action into a DipEnvelope.
+    pub fn wrap_action(
+        &self,
+        agent_id: &str,
+        action_kind: &str,
+        payload: Value,
+        network: &NetworkRepr,
+    ) -> DipEnvelope {
+        DipEnvelope {
+            sender_id: agent_id.to_string(),
+            network: network.network.clone(),
+            address: network.address.clone(),
+            payload: json!({
+                "kind": "action",
+                "action_kind": action_kind,
+                "payload": payload,
+            }),
+            timestamp: now_secs(),
+        }
+    }
+
+    /// POST the envelope to the DIP router's /api/route endpoint.
+    /// Returns Ok(()) on 2xx; Err(String) on transport or HTTP error.
+    pub async fn send_via_router(&self, envelope: &DipEnvelope) -> Result<(), String> {
+        let client = reqwest::Client::new();
+        let resp = client
+            .post(format!("{}/api/route", self.dip_router_url))
+            .json(envelope)
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(format!("DIP router error: {}", resp.status()))
+        }
+    }
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
 
 const DIP_PORT_DEFAULT: u16 = 7792;
 

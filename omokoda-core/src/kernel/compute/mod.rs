@@ -4,8 +4,12 @@ pub mod gpu;
 pub mod lease;
 pub mod telemetry;
 pub mod verified_work;
+pub mod wallet;
 
 pub use accounting::{ComputeScore, DopamineAllocation};
+pub use wallet::{AgentComputeWallet, ComputeLedgerEntry, StakeLock,
+    AGENT_DOPAMINE_ENDOWMENT, AGENT_SYNAPSE_ENDOWMENT, LOW_WATER_MARK,
+    DOPAMINE_DAILY_DECAY, SYNAPSE_CONVERSION_RATIO, FORK_STAKE_FRACTION};
 pub use attestation::HardwareAttestation;
 pub use gpu::{GpuCapability, GpuDevice};
 pub use lease::{GpuLease, LeaseState};

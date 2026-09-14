@@ -25,6 +25,6 @@ pub use providers::{
 };
 pub use receipt::{
     AgentGenesisReceipt, BiponProof, DeviceBinding, GenesisRequest, KooduTimeProof, MemoryProof,
-    NetworkProof, SoulProof,
+    MemoryWriteStatus, NetworkProof, SoulProof, WalrusAnchor,
 };
 pub use soul::pub_cast_soul;

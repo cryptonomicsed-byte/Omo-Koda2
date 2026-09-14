@@ -69,6 +69,11 @@ pub struct AgentGenesisReceipt {
     // ── Witness ──────────────────────────────────────────────────────────
     pub witness_receipt: Option<String>, // Zàngbétò receipt hash
 
+    // ── Memory write status ──────────────────────────────────────────────
+    /// Status of the minipae NIP-AE memory write at birth (fail-open).
+    #[serde(default)]
+    pub memory_write_status: MemoryWriteStatus,
+
     // ── Self-proof ───────────────────────────────────────────────────────
     pub genesis_signature: String, // Ed25519 signature over genesis_hash
     pub receipt_version: u8,       // currently 2
@@ -110,6 +115,16 @@ pub struct WalrusAnchor {
     pub anchored_at: u64,
     /// Optional Walrus explorer URL for human-readable proof.
     pub explorer_url: Option<String>,
+}
+
+/// Status of the minipae memory write at birth.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub enum MemoryWriteStatus {
+    #[default]
+    Pending,
+    Written { glyph_id: String },
+    Failed { reason: String },
+    Unavailable,
 }
 
 /// Proof returned by the BIPỌ̀N39 provider.

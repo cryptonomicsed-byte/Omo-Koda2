@@ -279,6 +279,10 @@ pub struct MemoryVaultData {
     /// Structured Tier-2 private memory entries (thoughts, relations, etc.).
     #[serde(default)]
     pub entries: Vec<crate::memory::private_schema::PrivateMemoryEntry>,
+    /// Agent compute wallet — Dopamine + Synapse balances and ledger.
+    /// Populated at birth and updated on every GPU contribution + inference spend.
+    #[serde(default)]
+    pub compute_wallet: Option<crate::kernel::compute::wallet::AgentComputeWallet>,
 }
 
 impl Session {

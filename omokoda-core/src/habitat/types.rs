@@ -56,3 +56,61 @@ pub struct HabitatAddress {
     /// Unix seconds — when this address was last confirmed.
     pub confirmed_at: u64,
 }
+
+/// Top-level Habitat: the agent's complete physical-digital presence.
+///
+/// Holds all areas and resources the agent has registered, plus its canonical
+/// address and an optional OmoHome URL for the physical-world integration layer.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Habitat {
+    pub habitat_id:   String,
+    pub agent_id:     String,
+    pub areas:        Vec<Area>,
+    pub resources:    Vec<PhysicalResource>,
+    pub home_address: HabitatAddress,
+    /// URL of the agent's OmoHome (Home Assistant) instance, if any.
+    pub omohome_url:  Option<String>,
+}
+
+impl Habitat {
+    /// Create an empty habitat for the given agent.
+    /// Reads `OMOHOME_URL` env var automatically.
+    pub fn new(agent_id: &str) -> Self {
+        Self {
+            habitat_id:  format!("habitat:{agent_id}"),
+            agent_id:    agent_id.to_string(),
+            areas:       Vec::new(),
+            resources:   Vec::new(),
+            home_address: HabitatAddress {
+                agent_id:    agent_id.to_string(),
+                confirmed_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+                ..Default::default()
+            },
+            omohome_url: std::env::var("OMOHOME_URL").ok(),
+        }
+    }
+
+    /// Register a new area (no-op if area_id already present).
+    pub fn register_area(&mut self, area: Area) {
+        if !self.areas.iter().any(|a| a.area_id == area.area_id) {
+            self.areas.push(area);
+        }
+    }
+
+    /// Upsert a physical resource (replace if resource_id already present).
+    pub fn upsert_resource(&mut self, resource: PhysicalResource) {
+        if let Some(existing) = self.resources.iter_mut().find(|r| r.resource_id == resource.resource_id) {
+            *existing = resource;
+        } else {
+            self.resources.push(resource);
+        }
+    }
+
+    /// All resources within a given area.
+    pub fn resources_in(&self, area_id: &str) -> Vec<&PhysicalResource> {
+        self.resources.iter().filter(|r| r.area_id == area_id).collect()
+    }
+}

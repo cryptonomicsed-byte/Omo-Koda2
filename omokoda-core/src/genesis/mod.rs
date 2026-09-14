@@ -1,9 +1,13 @@
+pub mod capsule;
 pub mod koodu_time;
+pub mod manifest;
 pub mod orchestrator;
 pub mod providers;
 pub mod receipt;
 pub mod soul;
 
+pub use capsule::{AgentCapsule, NetworkBinding, TransportKind};
+pub use manifest::{AgentManifest, NetworkSection, SoulSection, TemporalSection};
 pub use orchestrator::{pub_glyph_fold, BirthOrchestrator};
 pub use providers::{
     BiponProvider, DeviceProvider, GenesisError, KooduProvider, MemoryProvider, NetworkProvider,

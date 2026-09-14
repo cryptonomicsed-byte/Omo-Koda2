@@ -323,6 +323,10 @@ pub struct AgentSnapshot {
     /// so callers can inspect the full birth provenance at any time.
     #[serde(default)]
     pub genesis_receipt: Option<crate::genesis::receipt::AgentGenesisReceipt>,
+    /// Universal Agent Manifest — the living public identity document derived from
+    /// genesis_receipt at birth. Updated as new network bindings are established.
+    #[serde(default)]
+    pub agent_manifest: Option<crate::genesis::manifest::AgentManifest>,
 }
 
 /// Response payload for `AgentCore::reveal_seed` / `/v1/reveal-seed`.
@@ -1273,6 +1277,9 @@ impl Steward {
             })
         };
 
+        let agent_manifest_v2 =
+            genesis_receipt_v2.as_ref().map(crate::genesis::manifest::AgentManifest::from_genesis);
+
         let snapshot = AgentSnapshot {
             version: AGENT_STATE_VERSION,
             id,
@@ -1310,6 +1317,7 @@ impl Steward {
             last_causal_node: None,
             reflection: crate::memory::reflection::ReflectionLedger::new(),
             genesis_receipt: genesis_receipt_v2,
+            agent_manifest: agent_manifest_v2,
         };
         let mut core = AgentCore::from_snapshot(snapshot, k_root);
         core.private_data = Some(private_data);

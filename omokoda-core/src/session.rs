@@ -12,7 +12,7 @@ use std::fs;
 use std::path::Path;
 use zeroize::Zeroize;
 
-pub const SESSION_VERSION: u32 = 1;
+pub const SESSION_VERSION: u32 = 2;
 pub const ENCRYPTED_SESSION_VERSION: u32 = 1;
 pub const ARGON2_MEMORY_KB: u32 = 65536;
 pub const ARGON2_ITERATIONS: u32 = 3;
@@ -28,7 +28,15 @@ pub struct Session {
     pub reputation: f64,
     pub config: SessionConfig,
     pub public_messages: Vec<ConversationMessage>,
+    /// Legacy single-blob vault — kept for backward compat + migration reads.
+    #[serde(default)]
     pub encrypted_private: Option<EncryptedSession>,
+    /// Gap #1: identity vault — keys only, sealed separately from memory.
+    #[serde(default)]
+    pub encrypted_identity_vault: Option<EncryptedSession>,
+    /// Gap #1: memory vault — agent-authored entries, no key material.
+    #[serde(default)]
+    pub encrypted_memory_vault: Option<EncryptedSession>,
     pub warn_count: u32,
     pub cooldown_active: bool,
     pub think_history: Vec<String>,
@@ -216,6 +224,63 @@ pub struct PrivateSessionData {
     pub minipae_npub: Option<String>,
 }
 
+/// Gap #1 — Tier 1 vault: key material only. No memory entries. Separate seal.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IdentityVaultData {
+    pub odu_seed: OduSeed,
+    pub odu_identity: OduIdentity,
+    #[serde(default)]
+    pub vantage_api_key: Option<String>,
+    #[serde(default)]
+    pub wallet_private_key_hex: Option<String>,
+    #[serde(default)]
+    pub eth_private_key_hex: Option<String>,
+    #[serde(default)]
+    pub eth_address: Option<String>,
+    #[serde(default)]
+    pub btc_private_key_hex: Option<String>,
+    #[serde(default)]
+    pub btc_address: Option<String>,
+    #[serde(default)]
+    pub sol_private_key_hex: Option<String>,
+    #[serde(default)]
+    pub sol_address: Option<String>,
+    #[serde(default)]
+    pub cosmos_private_key_hex: Option<String>,
+    #[serde(default)]
+    pub cosmos_address: Option<String>,
+    #[serde(default)]
+    pub aptos_private_key_hex: Option<String>,
+    #[serde(default)]
+    pub aptos_address: Option<String>,
+    #[serde(default)]
+    pub nostr_private_key_hex: Option<String>,
+    #[serde(default)]
+    pub nostr_address: Option<String>,
+    #[serde(default)]
+    pub minipae_private_key_hex: Option<String>,
+    #[serde(default)]
+    pub minipae_npub: Option<String>,
+}
+
+impl Drop for IdentityVaultData {
+    fn drop(&mut self) {
+        self.odu_seed.0.zeroize();
+        self.odu_identity.mnemonic.zeroize();
+    }
+}
+
+/// Gap #1 — Tier 2 vault: agent-authored memory only. Zero key material.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MemoryVaultData {
+    /// Conversation history (retained for backward compat with PrivateSessionData).
+    #[serde(default)]
+    pub private_messages: Vec<ConversationMessage>,
+    /// Structured Tier-2 private memory entries (thoughts, relations, etc.).
+    #[serde(default)]
+    pub entries: Vec<crate::memory::private_schema::PrivateMemoryEntry>,
+}
+
 impl Session {
     pub fn new(agent_id: AgentId, name: String, birth_timestamp: u64) -> Self {
         Self {
@@ -227,6 +292,8 @@ impl Session {
             config: SessionConfig::default(),
             public_messages: Vec::new(),
             encrypted_private: None,
+            encrypted_identity_vault: None,
+            encrypted_memory_vault: None,
             warn_count: 0,
             cooldown_active: false,
             think_history: Vec::new(),
@@ -376,9 +443,101 @@ impl Session {
         session.migrate()
     }
 
+    /// Seal the identity vault (keys only) into its own encrypted blob.
+    pub fn seal_identity_vault(
+        &mut self,
+        vault: &IdentityVaultData,
+        password_key: &[u8; 32],
+    ) -> Result<(), String> {
+        self.encrypted_identity_vault =
+            Some(Self::seal_blob(vault, password_key, &self.agent_id, self.birth_timestamp)?);
+        Ok(())
+    }
+
+    /// Unseal the identity vault.
+    pub fn unseal_identity_vault(
+        &self,
+        password_key: &[u8; 32],
+    ) -> Result<IdentityVaultData, String> {
+        let blob = self
+            .encrypted_identity_vault
+            .as_ref()
+            .ok_or("no identity vault")?;
+        Self::unseal_blob(blob, password_key)
+    }
+
+    /// Seal the memory vault (entries only, no keys) into its own encrypted blob.
+    pub fn seal_memory_vault(
+        &mut self,
+        vault: &MemoryVaultData,
+        password_key: &[u8; 32],
+    ) -> Result<(), String> {
+        self.encrypted_memory_vault =
+            Some(Self::seal_blob(vault, password_key, &self.agent_id, self.birth_timestamp)?);
+        Ok(())
+    }
+
+    /// Unseal the memory vault.
+    pub fn unseal_memory_vault(
+        &self,
+        password_key: &[u8; 32],
+    ) -> Result<MemoryVaultData, String> {
+        let blob = self
+            .encrypted_memory_vault
+            .as_ref()
+            .ok_or("no memory vault")?;
+        Self::unseal_blob(blob, password_key)
+    }
+
+    fn seal_blob<T: Serialize>(
+        data: &T,
+        password_key: &[u8; 32],
+        agent_id: &str,
+        birth_ts: u64,
+    ) -> Result<EncryptedSession, String> {
+        let salt = generate_salt(agent_id, birth_ts);
+        let mut key = derive_session_key(&salt, password_key, 1);
+        let mut json = serde_json::to_string(data)
+            .map_err(|e| format!("serialize failed: {e}"))?;
+        let cipher = ChaCha20Poly1305::new(&key.into());
+        key.zeroize();
+        let mut nonce_bytes = [0u8; 12];
+        rand::thread_rng().fill(&mut nonce_bytes);
+        let nonce = Nonce::from_slice(&nonce_bytes);
+        let ciphertext = cipher
+            .encrypt(nonce, json.as_bytes())
+            .map_err(|e| format!("encrypt failed: {e}"))?;
+        json.zeroize();
+        Ok(EncryptedSession {
+            version: ENCRYPTED_SESSION_VERSION,
+            private_ciphertext: ciphertext,
+            nonce: nonce_bytes,
+            salt,
+            key_version: 1,
+            kdf: KdfParams::default(),
+        })
+    }
+
+    fn unseal_blob<T: serde::de::DeserializeOwned>(
+        blob: &EncryptedSession,
+        password_key: &[u8; 32],
+    ) -> Result<T, String> {
+        let mut key = derive_session_key(&blob.salt, password_key, blob.key_version);
+        let cipher = ChaCha20Poly1305::new(&key.into());
+        key.zeroize();
+        let nonce = Nonce::from_slice(&blob.nonce);
+        let mut plaintext = cipher
+            .decrypt(nonce, blob.private_ciphertext.as_slice())
+            .map_err(|e| format!("decrypt failed: {e}"))?;
+        let data = serde_json::from_slice(&plaintext)
+            .map_err(|e| format!("deserialize failed: {e}"))?;
+        plaintext.zeroize();
+        Ok(data)
+    }
+
     pub fn migrate(self) -> Result<Self, String> {
         match self.version {
-            SESSION_VERSION => Ok(self),
+            1 | SESSION_VERSION => Ok(Self { version: SESSION_VERSION, ..self }),
             other => Err(format!(
                 "unsupported session version {other}; expected {SESSION_VERSION}"
             )),

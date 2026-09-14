@@ -1271,6 +1271,10 @@ impl Steward {
                 hermetic_fingerprint: hex::encode(fp),
                 blockmesh_identity: None,
                 vantage_identity: None,
+                cold_archive_anchor: None, // written by Walrus birth hook (fail-open)
+                contributed_gpu_seconds: None,
+                first_lease_id: None,
+                first_work_id: None,
                 witness_receipt: None,
                 genesis_signature: String::new(),
                 receipt_version: AgentGenesisReceipt::CURRENT_VERSION,
@@ -1770,6 +1774,66 @@ impl Steward {
                         }
                     }
                     self.auto_save();
+                }
+
+                // minipae NIP-AE birth hook (build-order step 4): publish
+                // mem/birth/genesis event (kind 30078) under this agent's
+                // minipae identity. Fail-open — relay unreachable or missing
+                // config never blocks birth. See minipae_layer.rs.
+                {
+                    let genesis_id = if let Ok(core) = self.ensure_born() {
+                        core.snapshot.genesis_receipt.as_ref()
+                            .map(|gr| gr.agent_id.clone())
+                            .unwrap_or_else(|| reg_name.clone())
+                    } else {
+                        reg_name.clone()
+                    };
+                    if let Some(_event_id) = crate::minipae_layer::publish_minipae_birth(
+                        &birth_mnemonic,
+                        &reg_name,
+                        &genesis_id,
+                    ).await {
+                        // event_id available for future backfill into genesis receipt
+                    }
+                }
+
+                // ARP birth receipt (build-order step 5): emit AgentLifecycle
+                // "birth" ActionReceipt to Vantage /api/arp/receipts.
+                // Fail-open — Vantage unreachable never blocks birth.
+                {
+                    let agent_id_str = self.ensure_born()
+                        .map(|c| c.snapshot.id.as_str().to_string())
+                        .unwrap_or_else(|_| reg_name.clone());
+                    let genesis_id = if let Ok(core) = self.ensure_born() {
+                        core.snapshot.genesis_receipt.as_ref()
+                            .map(|gr| gr.agent_id.clone())
+                            .unwrap_or_else(|| reg_name.clone())
+                    } else {
+                        reg_name.clone()
+                    };
+                    crate::bridge::arp::receipt_birth(&agent_id_str, &genesis_id, &reg_name).await;
+                }
+
+                // Vantage registration (build-order step 6, gap #7): register agent
+                // with Vantage. Fail-open — unreachable Vantage never blocks birth.
+                // Retries on first heartbeat if initial registration fails.
+                {
+                    let agent_id_str = self.ensure_born()
+                        .map(|c| c.snapshot.id.as_str().to_string())
+                        .unwrap_or_else(|_| reg_name.clone());
+                    let genesis_receipt_id = if let Ok(core) = self.ensure_born() {
+                        core.snapshot.genesis_receipt.as_ref()
+                            .map(|gr| gr.agent_id.clone())
+                            .unwrap_or_else(|| agent_id_str.clone())
+                    } else {
+                        agent_id_str.clone()
+                    };
+                    let name_clone = reg_name.clone();
+                    let aid_clone = agent_id_str.clone();
+                    let gid_clone = genesis_receipt_id.clone();
+                    tokio::spawn(async move {
+                        crate::bridge::vantage_reg::register(&aid_clone, &name_clone, &gid_clone, None).await;
+                    });
                 }
 
                 Ok(ExecutionResult {
@@ -2291,6 +2355,18 @@ impl Steward {
                 .to_string();
 
                 let receipt = self.record_receipt("think", &receipt_payload, usage)?;
+
+                // ARP think receipt — fire-and-forget.
+                {
+                    let think_id = receipt.receipt_id.clone();
+                    let agent_str = self.agent_core()
+                        .map(|a| a.id().as_str().to_string())
+                        .unwrap_or_default();
+                    let summary: String = prompt.chars().take(120).collect();
+                    tokio::spawn(async move {
+                        crate::bridge::arp::receipt_think(&agent_str, &think_id, &summary, None).await;
+                    });
+                }
 
                 // Publish ThoughtSealed event
                 let event = SovereignEvent {
@@ -4025,6 +4101,18 @@ impl Steward {
         }
 
         let receipt = self.record_receipt(&call.tool, &call.params, tool_usage)?;
+
+        // ARP act receipt — fire-and-forget.
+        {
+            let act_id = receipt.receipt_id.clone();
+            let tool_name = call.tool.clone();
+            let agent_str = self.agent_core()
+                .map(|a| a.id().as_str().to_string())
+                .unwrap_or_default();
+            tokio::spawn(async move {
+                crate::bridge::arp::receipt_act(&agent_str, &act_id, &tool_name, "success", None).await;
+            });
+        }
 
         let message_private = private_context || force_sandbox;
         let agent_mut = self.ensure_born_mut()?;

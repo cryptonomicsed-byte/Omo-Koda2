@@ -192,3 +192,113 @@ fn now_secs() -> u64 {
         .unwrap_or_default()
         .as_secs()
 }
+
+// ── VCP Device Binding ────────────────────────────────────────────────────────
+//
+// Links a kernel DeviceDescriptor to a VCP session — the device becomes
+// "inhabited" by this agent via the VCP broker.
+
+/// Active VCP session bound to a kernel device.
+#[derive(Debug, Clone)]
+pub struct VcpBinding {
+    pub device_id:    String,   // kernel device path (e.g. /devices/drone/0001)
+    pub session_id:   String,   // VCP session ID from broker
+    pub device_pubkey: String,  // Ed25519 hex pubkey of the physical device
+    pub vcp_broker_url: String,
+    pub bound_at:     u64,
+}
+
+/// VCP client for device binding operations.
+///
+/// Connects this Omo-Koda2 instance to the VCP broker at `VCP_BROKER_URL`
+/// (default http://localhost:7791) to establish device sessions.
+pub struct VcpClient {
+    broker_url: String,
+    agent_id:   String,
+    http:       reqwest::Client,
+}
+
+impl VcpClient {
+    pub fn new(agent_id: impl Into<String>) -> Self {
+        let broker_url = std::env::var("VCP_BROKER_URL")
+            .unwrap_or_else(|_| "http://localhost:7791".into());
+        Self {
+            broker_url,
+            agent_id: agent_id.into(),
+            http: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(10))
+                .build()
+                .unwrap_or_default(),
+        }
+    }
+
+    /// Bind a kernel device to a VCP session.
+    ///
+    /// Calls POST /api/sessions on the VCP broker to open a new session.
+    /// The `device_id` and `device_pubkey` identify the physical device.
+    /// Returns the VcpBinding on success.
+    pub async fn bind(
+        &self,
+        kernel_device_id: &str,
+        device_pubkey:    &str,
+    ) -> Result<VcpBinding, String> {
+        let url  = format!("{}/api/sessions", self.broker_url);
+        let body = serde_json::json!({
+            "agent_id":      self.agent_id,
+            "device_id":     kernel_device_id,
+            "device_pubkey": device_pubkey,
+        });
+
+        let resp = self.http
+            .post(&url)
+            .json(&body)
+            .send().await
+            .map_err(|e| format!("VCP bind POST {url}: {e}"))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text   = resp.text().await.unwrap_or_default();
+            return Err(format!("VCP broker {status}: {text}"));
+        }
+
+        let json: serde_json::Value = resp.json().await
+            .map_err(|e| format!("VCP bind parse: {e}"))?;
+
+        let session_id = json["session_id"]
+            .as_str()
+            .ok_or("VCP response missing session_id")?
+            .to_string();
+
+        Ok(VcpBinding {
+            device_id:       kernel_device_id.to_string(),
+            session_id,
+            device_pubkey:   device_pubkey.to_string(),
+            vcp_broker_url:  self.broker_url.clone(),
+            bound_at:        now_secs(),
+        })
+    }
+
+    /// Close a VCP session (unbind).
+    pub async fn unbind(&self, session_id: &str) -> Result<(), String> {
+        let url = format!("{}/api/sessions/{session_id}", self.broker_url);
+        self.http
+            .delete(&url)
+            .send().await
+            .map_err(|e| format!("VCP unbind: {e}"))?
+            .error_for_status()
+            .map_err(|e| format!("VCP unbind status: {e}"))?;
+        Ok(())
+    }
+
+    /// List active sessions for this agent.
+    pub async fn list_sessions(&self) -> Result<Vec<serde_json::Value>, String> {
+        let url = format!("{}/api/sessions?agent_id={}", self.broker_url, self.agent_id);
+        let resp = self.http
+            .get(&url)
+            .send().await
+            .map_err(|e| format!("VCP list: {e}"))?
+            .json::<serde_json::Value>().await
+            .map_err(|e| format!("VCP list parse: {e}"))?;
+        Ok(resp["sessions"].as_array().cloned().unwrap_or_default())
+    }
+}

@@ -1,5 +1,11 @@
 pub mod dag;
+pub mod private_schema;
+pub mod tier2_vault;
+
+pub use private_schema::PrivateMemoryEntry;
+pub use tier2_vault::Tier2Vault;
 pub mod engine;
+pub mod gix_bridge;
 pub mod glyph_memory;
 pub mod larql_query;
 pub mod memdir;

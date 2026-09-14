@@ -155,6 +155,44 @@ impl SynapseAccount {
     }
 }
 
+// ── ToC mint authorization ────────────────────────────────────────────────────
+
+/// Synapse tokens earned per GPU-hour of fully-verified compute (10:1 burn ratio).
+const SYNAPSE_PER_GPU_HOUR: f64 = 1_000.0;
+
+/// Authorize a Synapse mint from a VerifiedGPUWork record.
+///
+/// Returns `Ok(synapse_amount)` if the work is fully verified and the pool
+/// has capacity; returns `Err(reason)` otherwise.  Callers must call
+/// `account.earn_from_tip(amount)` and `pool.allocate(amount)` after success.
+pub fn authorize_toc_mint(
+    work: &crate::kernel::compute::verified_work::VerifiedGPUWork,
+    account: &SynapseAccount,
+    pool: &DopaminePool,
+) -> Result<u64, String> {
+    if !work.is_fully_verified() {
+        return Err("work is not fully verified (osovm_proof / witnesses / zangbeto required)".into());
+    }
+    let gpu_hours = work.gpu_seconds / 3600.0;
+    let earned = (gpu_hours * SYNAPSE_PER_GPU_HOUR) as u64;
+    if earned == 0 {
+        return Err("gpu_seconds too small to earn any Synapse".into());
+    }
+    // Check tier cap.
+    let headroom = account.tier_cap().saturating_sub(account.balance);
+    if headroom == 0 {
+        return Err("account already at tier cap".into());
+    }
+    // Check pool capacity (Synapse comes from Dopamine allocation pressure).
+    if pool.available() < earned as f64 {
+        return Err(format!(
+            "pool has only {:.0} Dopamine capacity; need {earned} more Synapse allocation",
+            pool.available()
+        ));
+    }
+    Ok(earned.min(headroom))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

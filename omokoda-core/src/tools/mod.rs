@@ -35,6 +35,10 @@ pub mod walrus_tool;
 pub mod wallet_tools;
 pub mod zero_tool;
 pub mod ucx_tool;
+pub mod provider_tools;
+pub mod ucx_receipt;
+pub mod ucx_policy;
+pub mod omohome_tool;
 
 #[derive(Debug, Clone)]
 pub struct ExecutionContext {
@@ -262,6 +266,12 @@ impl ToolRegistry {
             for tool in ucx_tool::ucx_tools() {
                 registry.register(tool);
             }
+            registry.register(Box::new(provider_tools::UcxRegisterProviderTool));
+            registry.register(Box::new(provider_tools::UcxListProvidersTool));
+            registry.register(Box::new(provider_tools::UcxDeregisterProviderTool));
+            registry.register(Box::new(ucx_receipt::UcxJobStatusTool));
+            registry.register(Box::new(ucx_receipt::UcxJobReceiptTool));
+            registry.register(Box::new(ucx_policy::UcxCheckPolicyTool));
         }
 
         // VCP device inhabitation tools — activated when VCP_BROKER_URL or VANTAGE_URL is set.
@@ -269,6 +279,15 @@ impl ToolRegistry {
             for tool in ucx_tool::vcp_tools() {
                 registry.register(tool);
             }
+        }
+
+        // OmoHome sovereign habitat tools — activated when OMOHOME_URL is set.
+        if std::env::var("OMOHOME_URL").is_ok() {
+            registry.register(Box::new(omohome_tool::OmoHomeListDevicesTool));
+            registry.register(Box::new(omohome_tool::OmoHomeGetStateTool));
+            registry.register(Box::new(omohome_tool::OmoHomeCallServiceTool));
+            registry.register(Box::new(omohome_tool::OmoHomeListAreasTool));
+            registry.register(Box::new(omohome_tool::OmoHomeHealthTool));
         }
 
         // Config-driven external service skills (ships with Vantage).

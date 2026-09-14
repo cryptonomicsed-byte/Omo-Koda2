@@ -13,6 +13,38 @@
  */
 
 import { EventEmitter } from 'events';
+import { request as _httpReq } from 'http';
+import { request as _httpsReq } from 'https';
+
+// UCX Dopamine mint endpoint (fail-open — never blocks routing logic)
+const UCX_DOPAMINE_MINT_URL = process.env.UCX_DOPAMINE_MINT_URL
+  ?? 'http://127.0.0.1:7794/api/ucx/dopamine/mint';
+
+function _notifyUcxMint(agentId, amount, poolKey) {
+  try {
+    const body = JSON.stringify({
+      agent_id:    String(agentId),
+      amount,
+      source:      'ase_emission',
+      pool:        poolKey,
+      timestamp:   Date.now(),
+    });
+    const url = new URL(UCX_DOPAMINE_MINT_URL);
+    const lib = url.protocol === 'https:' ? _httpsReq : _httpReq;
+    const req = lib({
+      hostname: url.hostname,
+      port:     url.port || (url.protocol === 'https:' ? 443 : 80),
+      path:     url.pathname + url.search,
+      method:   'POST',
+      headers:  { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+    });
+    req.on('error', () => {});  // fail-open: swallow network errors
+    req.write(body);
+    req.end();
+  } catch (_e) {
+    // fail-open
+  }
+}
 
 // ===== Constants =====
 
@@ -208,15 +240,23 @@ export class ElegbaraRouter extends EventEmitter {
 
     this.totalMinted += amount;
     this.emit('mint_routed', { total: amount, routed });
+
+    // Notify UCX Dopamine pool for each sub-wallet share (fail-open)
+    for (const [key, share] of Object.entries(routed)) {
+      if (share > 0) _notifyUcxMint('elegbara_pool', share, key);
+    }
+
     return routed;
   }
 
   // ===== Transaction Tax Routing =====
 
-  routeTransaction(amount) {
+  routeTransaction(amount, agentId = 'unknown') {
     const { tax, net } = this.extractEsuTax(amount);
     // Tax goes to Elegbára routing (split across sub-wallets)
     this.routeTaxToSubWallets(tax);
+    // Notify UCX: Èṣù tax collected (fail-open)
+    _notifyUcxMint(agentId, tax, 'esu_tax');
     return { tax, net };
   }
 

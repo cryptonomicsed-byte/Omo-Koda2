@@ -1,4 +1,5 @@
 pub mod ase;
+pub mod credential_index;
 pub mod bipon39;
 pub mod buzz;
 pub mod machine_vault;
@@ -17,6 +18,9 @@ pub mod safety;
 pub mod user;
 pub mod vault;
 pub mod wallet;
+
+pub use vault::{CapabilityToken, IdentityVault, SealVault};
+pub use credential_index::{CredentialEntry, CredentialIndex, CredentialKind};
 
 use serde::{Deserialize, Serialize};
 

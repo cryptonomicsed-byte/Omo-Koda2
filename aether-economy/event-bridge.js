@@ -80,6 +80,67 @@ export class EventBridge extends EventEmitter {
   }
 
   /**
+   * Process a GPU contribution event from Ọ̀ṢỌ́VM (opcode 0x3f GPU_CONTRIBUTION).
+   * Gap #20: VerifiedGPUWork → Dopamine mint via authorized source path.
+   *
+   * @param {object} vmEvent
+   * @param {string} vmEvent.agentId      - Contributing agent
+   * @param {number} vmEvent.gpuSeconds   - Verified GPU-seconds contributed
+   * @param {string} vmEvent.receiptHash  - ARP ActionReceipt hash (proof)
+   * @param {number} [vmEvent.f1Score]    - Quality score (0-1)
+   * @param {string} [vmEvent.jobId]      - UCX job identifier
+   */
+  async processGpuContribution(vmEvent) {
+    const { agentId, gpuSeconds, receiptHash, f1Score, jobId } = vmEvent;
+
+    if (!agentId || !gpuSeconds || gpuSeconds <= 0) {
+      throw new Error('GPU contribution missing agentId or gpuSeconds');
+    }
+    if (!receiptHash) {
+      throw new Error('GPU contribution requires ARP receipt hash for verification');
+    }
+
+    // Gap #21: mint allowlist check — GPU contribution is an authorized source
+    // Dopamine minted proportional to GPU-hours × quality score
+    const gpuHours = gpuSeconds / 3600.0;
+    const qualityMultiplier = f1Score != null ? Math.max(0, Math.min(1, f1Score)) : 0.5;
+    const dopamineMinted = Math.floor(gpuHours * 1_000_000 * qualityMultiplier);
+
+    let mintResult = null;
+    if (dopamineMinted > 0) {
+      try {
+        // economy.applyGpuContribution mints Dopamine from authorized 'gpu_contribution' source
+        mintResult = await this.economy.applyGpuContribution(agentId, dopamineMinted, {
+          source:      'gpu_contribution',  // mint allowlist entry (gap #21)
+          gpu_seconds: gpuSeconds,
+          receipt_hash: receiptHash,
+          f1_score:    f1Score ?? null,
+          job_id:      jobId ?? null,
+        });
+      } catch (err) {
+        // Fail-open: contribution recorded even if economy.applyGpuContribution unavailable
+        mintResult = { error: err.message, dopamine_minted: 0 };
+      }
+    }
+
+    const processed = {
+      type:             'gpu_contribution',
+      agentId,
+      gpuSeconds,
+      gpuHours:         gpuHours.toFixed(4),
+      receiptHash,
+      f1Score:          f1Score ?? null,
+      dopamineMinted,
+      mintResult,
+      timestamp:        Date.now(),
+    };
+
+    this.processedEvents.push(processed);
+    this.emit('gpu_contribution_complete', processed);
+    return processed;
+  }
+
+  /**
    * Queue an event for processing (async bridge mode).
    */
   queueEvent(vmEvent) {
@@ -98,7 +159,12 @@ export class EventBridge extends EventEmitter {
     while (this.pendingEvents.length > 0) {
       const event = this.pendingEvents.shift();
       try {
-        const result = await this.processAgentBirth(event);
+        let result;
+        if (event.type === 'gpu_contribution') {
+          result = await this.processGpuContribution(event);
+        } else {
+          result = await this.processAgentBirth(event);
+        }
         results.push(result);
       } catch (err) {
         this.emit('event_error', { event, error: err.message });

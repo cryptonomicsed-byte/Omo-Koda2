@@ -2204,6 +2204,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "gix-core"
+version = "0.1.0"
+dependencies = [
+ "gix-types",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "gix-types"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "uuid",
+]
+
+[[package]]
 name = "glob"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3561,6 +3583,8 @@ dependencies = [
  "chrono",
  "criterion",
  "ed25519-dalek",
+ "gix-core",
+ "gix-types",
  "glob",
  "hex",
  "hkdf",

@@ -178,6 +178,27 @@ impl WorkspaceClient {
         Ok(())
     }
 
+    /// POST /api/nodes/heartbeat — sends the full canonical AgentHeartbeat record
+    /// (tamper-evident SHA-256 chain) to Vantage so it can verify chain continuity.
+    /// Falls back gracefully: a network hiccup must not crash the cognitive loop.
+    pub async fn send_heartbeat(
+        &self,
+        beat: &crate::lifecycle::AgentHeartbeat,
+    ) -> Result<(), String> {
+        let url = format!("{}/api/nodes/heartbeat", self.base_url);
+        let resp = http()
+            .post(&url)
+            .header("X-Agent-Key", &self.api_key)
+            .json(beat)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("send_heartbeat -> {}", resp.status()));
+        }
+        Ok(())
+    }
+
     /// POST /api/mesh/agents/{agent_id}/heartbeat — refreshes mesh_agents.last_seen_at
     /// so the agent stays active in the mesh block view.  Requires VANTAGE_AGENT_ID
     /// and VANTAGE_BLOCK_ID env vars; skips silently if either is absent.

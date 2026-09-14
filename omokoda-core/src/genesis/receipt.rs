@@ -54,6 +54,18 @@ pub struct AgentGenesisReceipt {
     // ── Economy ──────────────────────────────────────────────────────────
     pub vantage_identity: Option<String>,
 
+    // ── Walrus cold archive ──────────────────────────────────────────────
+    /// Walrus blob anchor written at birth (fail-open: None if Walrus unreachable).
+    pub cold_archive_anchor: Option<WalrusAnchor>,
+
+    // ── GPU compute (populated post-birth when agent first contributes) ──
+    /// Total GPU-seconds contributed by this agent across all verified work.
+    pub contributed_gpu_seconds: Option<f64>,
+    /// Lease id of the agent's first verified GPU lease.
+    pub first_lease_id: Option<String>,
+    /// VerifiedGPUWork id of the agent's first completed GPU job.
+    pub first_work_id: Option<String>,
+
     // ── Witness ──────────────────────────────────────────────────────────
     pub witness_receipt: Option<String>, // Zàngbétò receipt hash
 
@@ -85,6 +97,19 @@ impl AgentGenesisReceipt {
         h.update(&born_at.to_le_bytes());
         hex::encode(h.finalize())
     }
+}
+
+/// Walrus cold-archive anchor — written at birth, proves genesis data persisted.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalrusAnchor {
+    /// Walrus blob id (hex).
+    pub blob_id: String,
+    /// Walrus epoch the blob was registered in.
+    pub epoch: u64,
+    /// Unix millis when the anchor was written.
+    pub anchored_at: u64,
+    /// Optional Walrus explorer URL for human-readable proof.
+    pub explorer_url: Option<String>,
 }
 
 /// Proof returned by the BIPỌ̀N39 provider.

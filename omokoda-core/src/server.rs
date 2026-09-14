@@ -1457,13 +1457,13 @@ fn spawn_heartbeat(
             drop(guard);
 
             // 5. Advance the tamper-evident heartbeat chain.
-            {
+            let canonical_beat = {
                 use crate::lifecycle::HeartbeatState as HbState;
                 let mut rt = runtime.lock().await;
                 rt.daemons.mark_ticked("heartbeat");
-                let _beat = rt.advance_chain(HbState::Alive, intent.as_deref().map(str::to_string));
-                // Future: publish _beat to Zàngbétò for receipt chain.
-            }
+                rt.advance_chain(HbState::Alive, intent.as_deref().map(str::to_string))
+                // Future: also publish beat to Zàngbétò for receipt chain.
+            };
             if let Some(client) = crate::vantage::WorkspaceClient::from_env() {
                 if let Some(ref name) = agent_name {
                     let _ = client
@@ -1473,6 +1473,10 @@ fn spawn_heartbeat(
                 match client.heartbeat().await {
                     Ok(_) => println!("[heartbeat] vantage last_seen_at refreshed"),
                     Err(e) => println!("[heartbeat] vantage ping failed (non-fatal): {e}"),
+                }
+                match client.send_heartbeat(&canonical_beat).await {
+                    Ok(_) => println!("[heartbeat] canonical chain beat #{} sent to vantage", canonical_beat.sequence),
+                    Err(e) => println!("[heartbeat] canonical beat deferred (non-fatal): {e}"),
                 }
                 match client.mesh_heartbeat().await {
                     Ok(_) => println!("[heartbeat] mesh last_seen_at refreshed"),

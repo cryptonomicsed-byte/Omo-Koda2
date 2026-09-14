@@ -318,6 +318,11 @@ pub struct AgentSnapshot {
     /// Was previously built but never referenced by any live agent.
     #[serde(default)]
     pub reflection: crate::memory::reflection::ReflectionLedger,
+    /// Genesis Protocol v2 birth certificate — assembled at birth from all
+    /// provider proofs (BIPỌ̀N39, Koodu, Soul, Minipae, IP-Layer). Persisted
+    /// so callers can inspect the full birth provenance at any time.
+    #[serde(default)]
+    pub genesis_receipt: Option<crate::genesis::receipt::AgentGenesisReceipt>,
 }
 
 /// Response payload for `AgentCore::reveal_seed` / `/v1/reveal-seed`.
@@ -1161,6 +1166,113 @@ impl Steward {
         let synapse = self.dopamine_pool.compute_initial_synapse();
         self.dopamine_pool.allocate(synapse);
 
+        // ── Genesis Protocol v2: build AgentGenesisReceipt ───────────────
+        // All inputs (entropy, mnemonic, primary_index, id, name,
+        // birth_timestamp) are in scope from the derivation above. Koodu
+        // uses the Gregorian fallback synchronously; a background task can
+        // later upgrade bitcoin_height/anchor without blocking birth.
+        let genesis_receipt_v2: Option<crate::genesis::receipt::AgentGenesisReceipt> = {
+            use crate::genesis::receipt::AgentGenesisReceipt;
+            use crate::genesis::koodu_time::koodu_from_unix;
+            use sha2::Digest;
+
+            let born_at_ms = birth_timestamp * 1_000;
+            let (k_epoch, k_cycle, k_phase) = koodu_from_unix(born_at_ms);
+            let agent_id_str = id.as_str();
+
+            // Minipae pubkey (matches DefaultMemoryProvider derivation)
+            let mut h = Sha256::new();
+            h.update(&entropy);
+            h.update(agent_id_str.as_bytes());
+            h.update(b"minipae-pubkey-v1");
+            let minipae_pubkey = hex::encode(h.finalize());
+
+            // Birth memory glyph
+            let genesis_fact = format!(
+                "I was born. Agent: {} | Koodu: epoch={} cycle={} phase={} | Odù: {}",
+                agent_id_str, k_epoch, k_cycle, k_phase, primary_index,
+            );
+            let mut hg = Sha256::new();
+            hg.update(genesis_fact.as_bytes());
+            let glyph_digest = hg.finalize();
+            let birth_memory_glyph = crate::genesis::orchestrator::pub_glyph_fold(&glyph_digest);
+
+            // Memory root
+            let mut hm = Sha256::new();
+            hm.update(agent_id_str.as_bytes());
+            hm.update(minipae_pubkey.as_bytes());
+            hm.update(genesis_fact.as_bytes());
+            let memory_root = hex::encode(hm.finalize());
+
+            // Entropy commitment
+            let mut he = Sha256::new();
+            he.update(&entropy);
+            let entropy_commitment = hex::encode(he.finalize());
+
+            // Harmonic signature + derivation root
+            let hk = Hkdf::<Sha256>::new(None, &entropy);
+            let mut hs = [0u8; 32];
+            let _ = hk.expand(b"harmonic-signature-v1", &mut hs);
+            let harmonic_signature = hex::encode(hs);
+            let mut rid = [0u8; 32];
+            let _ = hk.expand(b"derivation-root-id-v1", &mut rid);
+            let derivation_root_id = hex::encode(rid);
+
+            // Sigil hash from first 3 mnemonic words
+            let first_words: String = mnemonic.split_whitespace().take(3)
+                .collect::<Vec<_>>().join(" ");
+            let mut sh = Sha256::new();
+            sh.update(first_words.as_bytes());
+            let sigil_hash = hex::encode(sh.finalize());
+
+            let genesis_hash = AgentGenesisReceipt::compute_genesis_hash(
+                agent_id_str, &harmonic_signature, k_epoch, primary_index,
+                &memory_root, born_at_ms,
+            );
+
+            // Hermetic fingerprint
+            let hk2 = Hkdf::<Sha256>::new(None, genesis_hash.as_bytes());
+            let mut fp = [0u8; 32];
+            let _ = hk2.expand(b"hermetic-fingerprint-v1", &mut fp);
+
+            // Soul cast
+            let soul = crate::genesis::soul::pub_cast_soul(&entropy, k_epoch, k_cycle, k_phase);
+
+            Some(AgentGenesisReceipt {
+                agent_id: agent_id_str.to_string(),
+                genesis_hash,
+                birth_entropy_commitment: entropy_commitment,
+                harmonic_signature,
+                derivation_root_id,
+                symbolic_address: format!("{}/{}", name, primary_index),
+                sigil_hash,
+                cloak_commitment: hex::encode([0u8; 32]),
+                born_at: born_at_ms,
+                koodu_epoch: k_epoch,
+                koodu_cycle: k_cycle,
+                koodu_phase: k_phase,
+                bitcoin_height: None,
+                bitcoin_anchor: None,
+                gregorian_fallback: true,
+                primary_odu: soul.primary_odu,
+                composed_odu: soul.composed_odu,
+                temperament: soul.temperament,
+                orisha_alignment: soul.orisha_alignment,
+                destiny_threads: soul.destiny_threads,
+                minipae_pubkey,
+                memory_root,
+                birth_memory_glyph,
+                ip_root_event: None, // updated by ip_layer after publish
+                device_binding: None,
+                hermetic_fingerprint: hex::encode(fp),
+                blockmesh_identity: None,
+                vantage_identity: None,
+                witness_receipt: None,
+                genesis_signature: String::new(),
+                receipt_version: AgentGenesisReceipt::CURRENT_VERSION,
+            })
+        };
+
         let snapshot = AgentSnapshot {
             version: AGENT_STATE_VERSION,
             id,
@@ -1197,6 +1309,7 @@ impl Steward {
             causal_dag: crate::memory::dag::CausalMemoryDag::new(),
             last_causal_node: None,
             reflection: crate::memory::reflection::ReflectionLedger::new(),
+            genesis_receipt: genesis_receipt_v2,
         };
         let mut core = AgentCore::from_snapshot(snapshot, k_root);
         core.private_data = Some(private_data);
@@ -1615,7 +1728,11 @@ impl Steward {
                 // convention as the on-chain mint above. See ip_layer.rs.
                 if let Some(event_id) = crate::ip_layer::publish_ip_root(&birth_mnemonic, &reg_name).await {
                     if let Ok(core) = self.ensure_born_mut() {
-                        core.set_ip_root_event_id(event_id);
+                        core.set_ip_root_event_id(event_id.clone());
+                        // Backfill ip_root_event into genesis receipt
+                        if let Some(ref mut gr) = core.snapshot.genesis_receipt {
+                            gr.ip_root_event = Some(event_id);
+                        }
                     }
                     self.auto_save();
                 }

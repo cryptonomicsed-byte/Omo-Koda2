@@ -1,4 +1,5 @@
 pub mod agent_catalog;
+pub mod genesis;
 pub mod bridge;
 pub mod inference;
 pub mod util;

@@ -1,3 +1,4 @@
+use super::capability::flags;
 use serde::{Deserialize, Serialize};
 
 /// The transportable authenticated identity + state commitment for an Ọmọ Kọ́dà agent.
@@ -171,7 +172,7 @@ impl AgentCapsule {
             btc_anchor: manifest.temporal.btc_anchor.clone(),
             capsule_timestamp: now,
             capability_root: manifest.identity.capability_root.clone(),
-            capability_flags: 0,
+            capability_flags: flags::DEFAULT_BIRTH,
             memory_root: manifest.memory.memory_root.clone(),
             glyph_root: manifest.memory.glyph_root.clone(),
             twin_root: manifest.world.twin_root.clone(),

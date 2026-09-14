@@ -1,3 +1,4 @@
+pub mod capability;
 pub mod capsule;
 pub mod koodu_time;
 pub mod manifest;
@@ -6,6 +7,10 @@ pub mod providers;
 pub mod receipt;
 pub mod soul;
 
+pub use capability::{
+    default_offline_fabric, flags, AdapterError, CapabilityFabric, CapabilityGrant,
+    CapabilityRegistry, CapabilityScope, EcosystemAdapter, EcosystemBinding,
+};
 pub use capsule::{AgentCapsule, NetworkBinding, TransportKind};
 pub use manifest::{AgentManifest, NetworkSection, SoulSection, TemporalSection};
 pub use orchestrator::{pub_glyph_fold, BirthOrchestrator};

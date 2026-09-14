@@ -364,7 +364,11 @@ async fn reveal_seed_handler(
 
     match result {
         Ok(revealed) => Json(revealed).into_response(),
-        Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e}))).into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e})),
+        )
+            .into_response(),
     }
 }
 
@@ -616,9 +620,17 @@ async fn manifest_handler(
             match steward.agent_core() {
                 Some(core) => match &core.snapshot.agent_manifest {
                     Some(m) => (StatusCode::OK, Json(serde_json::json!(m))).into_response(),
-                    None => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "manifest not yet assembled"}))).into_response(),
+                    None => (
+                        StatusCode::NOT_FOUND,
+                        Json(serde_json::json!({"error": "manifest not yet assembled"})),
+                    )
+                        .into_response(),
                 },
-                None => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "agent not born"}))).into_response(),
+                None => (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({"error": "agent not born"})),
+                )
+                    .into_response(),
             }
         }
         Some(id) => {
@@ -626,10 +638,70 @@ async fn manifest_handler(
             match guests.get(id).and_then(|s| s.agent_core()) {
                 Some(core) => match &core.snapshot.agent_manifest {
                     Some(m) => (StatusCode::OK, Json(serde_json::json!(m))).into_response(),
-                    None => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "manifest not yet assembled"}))).into_response(),
+                    None => (
+                        StatusCode::NOT_FOUND,
+                        Json(serde_json::json!({"error": "manifest not yet assembled"})),
+                    )
+                        .into_response(),
                 },
-                None => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "agent not born"}))).into_response(),
+                None => (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({"error": "agent not born"})),
+                )
+                    .into_response(),
             }
+        }
+    }
+}
+
+async fn capability_handler(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    use crate::genesis::capability::{CapabilityRegistry, CapabilityScope};
+
+    let requested_id = headers.get("x-agent-id").and_then(|v| v.to_str().ok());
+    let receipt_opt = match requested_id {
+        None => {
+            let steward = state.steward.lock().await;
+            steward
+                .agent_core()
+                .and_then(|c| c.snapshot.genesis_receipt.clone())
+        }
+        Some(id) => {
+            let guests = state.guests.lock().await;
+            guests
+                .get(id)
+                .and_then(|s| s.agent_core())
+                .and_then(|c| c.snapshot.genesis_receipt.clone())
+        }
+    };
+
+    match receipt_opt {
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "agent not born"})),
+        )
+            .into_response(),
+        Some(gr) => {
+            let mut registry = CapabilityRegistry::new();
+            registry.issue_birth_grants(&gr.agent_id, gr.born_at);
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            let aggregate_flags = registry.aggregate_flags(&gr.agent_id, now_ms);
+            let active_scopes = CapabilityScope::from_flag(aggregate_flags);
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "agent_id": gr.agent_id,
+                    "capability_flags": aggregate_flags,
+                    "active_scopes": active_scopes,
+                    "grants": registry.grants_for(&gr.agent_id),
+                })),
+            )
+                .into_response()
         }
     }
 }
@@ -748,7 +820,11 @@ async fn seal_secret_handler(
 
     match steward.seal_additional_secrets(req.vantage_api_key, req.wallet_private_key_hex) {
         Ok(()) => Json(SealSecretResponse { sealed: true }).into_response(),
-        Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e}))).into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e})),
+        )
+            .into_response(),
     }
 }
 
@@ -1084,16 +1160,21 @@ async fn get_glyph_memory(
     if query.contains_key("tags") || query.contains_key("relations") {
         let allow_tags: Vec<String> = query
             .get("tags")
-            .map(|s| s.split(',').filter(|t| !t.is_empty()).map(String::from).collect())
+            .map(|s| {
+                s.split(',')
+                    .filter(|t| !t.is_empty())
+                    .map(String::from)
+                    .collect()
+            })
             .unwrap_or_default();
-        let relations: Option<Vec<String>> = query
-            .get("relations")
-            .map(|s| s.split(',').filter(|r| !r.is_empty()).map(String::from).collect());
-        let filtered = crate::memory::glyph_memory::filter_snapshot(
-            &graph,
-            &allow_tags,
-            relations.as_deref(),
-        );
+        let relations: Option<Vec<String>> = query.get("relations").map(|s| {
+            s.split(',')
+                .filter(|r| !r.is_empty())
+                .map(String::from)
+                .collect()
+        });
+        let filtered =
+            crate::memory::glyph_memory::filter_snapshot(&graph, &allow_tags, relations.as_deref());
         return Json(filtered.to_json());
     }
     Json(graph.to_json())
@@ -1114,7 +1195,10 @@ async fn get_glyph_anchor(
     let (graph, owner) = if let Some(id) = requested_id {
         let guests = state.guests.lock().await;
         (
-            guests.get(id).and_then(|s| s.agent_core()).map(|a| a.glyph_memory()),
+            guests
+                .get(id)
+                .and_then(|s| s.agent_core())
+                .map(|a| a.glyph_memory()),
             id.to_string(),
         )
     } else {
@@ -1190,6 +1274,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/v1/status", get(status_handler))
         .route("/v1/health", get(health_handler))
         .route("/v1/manifest", get(manifest_handler))
+        .route("/v1/capability", get(capability_handler))
         // Memory vault routes
         .route("/v1/vault", get(get_vault_status))
         .route("/v1/vault/config", get(get_vault_config))
@@ -1224,7 +1309,10 @@ pub fn create_router(state: AppState) -> Router {
 /// require a local provider and would hard-fail here. The shared Steward mutex
 /// naturally serialises the heartbeat with inbound /v1/think requests, so she
 /// never thinks two things at once.
-fn spawn_heartbeat(steward: Arc<Mutex<Steward>>, runtime: Arc<tokio::sync::Mutex<crate::lifecycle::AgentRuntime>>) {
+fn spawn_heartbeat(
+    steward: Arc<Mutex<Steward>>,
+    runtime: Arc<tokio::sync::Mutex<crate::lifecycle::AgentRuntime>>,
+) {
     let secs: u64 = std::env::var("HEARTBEAT_SECS")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -1274,11 +1362,12 @@ fn spawn_heartbeat(steward: Arc<Mutex<Steward>>, runtime: Arc<tokio::sync::Mutex
             let agent_name = guard.agent_core().map(|a| a.name().to_string());
 
             // Mark thinking in Vantage presence before locking the cognitive cycle.
-            if let (Some(client), Some(ref name)) = (
-                crate::vantage::WorkspaceClient::from_env(),
-                &agent_name,
-            ) {
-                let _ = client.update_presence(name, crate::vantage::PresenceState::Thinking).await;
+            if let (Some(client), Some(ref name)) =
+                (crate::vantage::WorkspaceClient::from_env(), &agent_name)
+            {
+                let _ = client
+                    .update_presence(name, crate::vantage::PresenceState::Thinking)
+                    .await;
             }
 
             // 1. PERCEIVE — pull her real situation from the Vantage mesh
@@ -1377,14 +1466,16 @@ fn spawn_heartbeat(steward: Arc<Mutex<Steward>>, runtime: Arc<tokio::sync::Mutex
             }
             if let Some(client) = crate::vantage::WorkspaceClient::from_env() {
                 if let Some(ref name) = agent_name {
-                    let _ = client.update_presence(name, crate::vantage::PresenceState::Available).await;
+                    let _ = client
+                        .update_presence(name, crate::vantage::PresenceState::Available)
+                        .await;
                 }
                 match client.heartbeat().await {
-                    Ok(_)  => println!("[heartbeat] vantage last_seen_at refreshed"),
+                    Ok(_) => println!("[heartbeat] vantage last_seen_at refreshed"),
                     Err(e) => println!("[heartbeat] vantage ping failed (non-fatal): {e}"),
                 }
                 match client.mesh_heartbeat().await {
-                    Ok(_)  => println!("[heartbeat] mesh last_seen_at refreshed"),
+                    Ok(_) => println!("[heartbeat] mesh last_seen_at refreshed"),
                     Err(e) => println!("[heartbeat] mesh heartbeat deferred (non-fatal): {e}"),
                 }
             }
@@ -1403,13 +1494,17 @@ pub async fn start_server(port: u16) -> Result<(), std::io::Error> {
         state.steward.clone(),
         state.runtime.clone(),
         std::env::var("JOB_DAEMON_POLL_SECS")
-            .ok().and_then(|v| v.parse().ok()).unwrap_or(60),
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(60),
     );
     crate::lifecycle::spawn_skill_daemon(
         state.steward.clone(),
         state.runtime.clone(),
         std::env::var("SKILL_DAEMON_SCAN_SECS")
-            .ok().and_then(|v| v.parse().ok()).unwrap_or(300),
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(300),
     );
     let router = create_router(state);
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
@@ -1450,14 +1545,22 @@ mod multi_agent_tests {
         // (Steward.agent: Option<AgentCore> could only ever hold one).
         let state = fresh_state();
 
-        let resp1 = birth_handler(State(state.clone()), axum::http::HeaderMap::new(), Json(birth_req("Agent-One")))
-            .await
-            .into_response();
+        let resp1 = birth_handler(
+            State(state.clone()),
+            axum::http::HeaderMap::new(),
+            Json(birth_req("Agent-One")),
+        )
+        .await
+        .into_response();
         assert_eq!(resp1.status(), axum::http::StatusCode::OK);
 
-        let resp2 = birth_handler(State(state.clone()), axum::http::HeaderMap::new(), Json(birth_req("Agent-Two")))
-            .await
-            .into_response();
+        let resp2 = birth_handler(
+            State(state.clone()),
+            axum::http::HeaderMap::new(),
+            Json(birth_req("Agent-Two")),
+        )
+        .await
+        .into_response();
         assert_eq!(resp2.status(), axum::http::StatusCode::OK);
 
         let guests = state.guests.lock().await;
@@ -1471,9 +1574,13 @@ mod multi_agent_tests {
     #[tokio::test]
     async fn guest_dispatch_requires_matching_key() {
         let state = fresh_state();
-        let _ = birth_handler(State(state.clone()), axum::http::HeaderMap::new(), Json(birth_req("Keyed-Agent")))
-            .await
-            .into_response();
+        let _ = birth_handler(
+            State(state.clone()),
+            axum::http::HeaderMap::new(),
+            Json(birth_req("Keyed-Agent")),
+        )
+        .await
+        .into_response();
 
         let agent_id = {
             let guests = state.guests.lock().await;

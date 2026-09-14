@@ -605,6 +605,35 @@ async fn health_handler() -> Json<HealthResponse> {
     Json(HealthResponse { ok: true })
 }
 
+async fn manifest_handler(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    let requested_id = headers.get("x-agent-id").and_then(|v| v.to_str().ok());
+    match requested_id {
+        None => {
+            let steward = state.steward.lock().await;
+            match steward.agent_core() {
+                Some(core) => match &core.snapshot.agent_manifest {
+                    Some(m) => (StatusCode::OK, Json(serde_json::json!(m))).into_response(),
+                    None => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "manifest not yet assembled"}))).into_response(),
+                },
+                None => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "agent not born"}))).into_response(),
+            }
+        }
+        Some(id) => {
+            let guests = state.guests.lock().await;
+            match guests.get(id).and_then(|s| s.agent_core()) {
+                Some(core) => match &core.snapshot.agent_manifest {
+                    Some(m) => (StatusCode::OK, Json(serde_json::json!(m))).into_response(),
+                    None => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "manifest not yet assembled"}))).into_response(),
+                },
+                None => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "agent not born"}))).into_response(),
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Vantage cognition webhook -- POST /v1/cognition
 // ---------------------------------------------------------------------------
@@ -1160,6 +1189,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/v1/events", get(events_handler))
         .route("/v1/status", get(status_handler))
         .route("/v1/health", get(health_handler))
+        .route("/v1/manifest", get(manifest_handler))
         // Memory vault routes
         .route("/v1/vault", get(get_vault_status))
         .route("/v1/vault/config", get(get_vault_config))

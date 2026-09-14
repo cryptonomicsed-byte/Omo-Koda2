@@ -1277,8 +1277,25 @@ impl Steward {
             })
         };
 
-        let agent_manifest_v2 =
-            genesis_receipt_v2.as_ref().map(crate::genesis::manifest::AgentManifest::from_genesis);
+        let agent_manifest_v2 = genesis_receipt_v2.as_ref().map(|gr| {
+            let mut m = crate::genesis::manifest::AgentManifest::from_genesis(gr);
+            // Bind all derived wallet addresses to the manifest (public addresses only)
+            m.bind_sui(format!("0x{}", hex::encode(&public_key[..20])), None);
+            m.network.btc_address = Some(btc_key.address.clone());
+            m.network.eth_address = Some(eth_key.address.clone());
+            m.network.nostr_pubkey = Some(nostr_key.address.clone());
+            m.economic.wallet_bindings = vec![
+                crate::genesis::manifest::WalletBinding { chain: "sui".into(),     address: format!("0x{}", hex::encode(&public_key[..20])) },
+                crate::genesis::manifest::WalletBinding { chain: "btc".into(),     address: btc_key.address.clone() },
+                crate::genesis::manifest::WalletBinding { chain: "eth".into(),     address: eth_key.address.clone() },
+                crate::genesis::manifest::WalletBinding { chain: "nostr".into(),   address: nostr_key.address.clone() },
+                crate::genesis::manifest::WalletBinding { chain: "cosmos".into(),  address: cosmos_key.address.clone() },
+                crate::genesis::manifest::WalletBinding { chain: "sol".into(),     address: sol_key.address.clone() },
+                crate::genesis::manifest::WalletBinding { chain: "aptos".into(),   address: aptos_key.address.clone() },
+                crate::genesis::manifest::WalletBinding { chain: "minipae".into(), address: minipae_key.address.clone() },
+            ];
+            m
+        });
 
         let snapshot = AgentSnapshot {
             version: AGENT_STATE_VERSION,
@@ -1711,7 +1728,10 @@ impl Steward {
                 // this agent re-authenticates instead of re-registering.
                 if let Some(key) = minted_key {
                     if let Ok(core) = self.ensure_born_mut() {
-                        core.set_vantage_key(key);
+                        core.set_vantage_key(key.clone());
+                        if let Some(ref mut m) = core.snapshot.agent_manifest {
+                            m.bind_vantage(key.clone());
+                        }
                     }
                     self.auto_save();
                 }
@@ -1725,7 +1745,11 @@ impl Steward {
                 // mint, not yet dynamic post-mint updates).
                 if let Some(nft_id) = crate::onchain::mint_onchain_agent(&reg_name).await {
                     if let Ok(core) = self.ensure_born_mut() {
-                        core.set_onchain_nft_id(nft_id);
+                        core.set_onchain_nft_id(nft_id.clone());
+                        if let Some(ref mut m) = core.snapshot.agent_manifest {
+                            let sui_addr = m.network.sui_address.clone().unwrap_or_default();
+                            m.bind_sui(sui_addr, Some(nft_id.clone()));
+                        }
                     }
                     self.auto_save();
                 }
@@ -1739,7 +1763,10 @@ impl Steward {
                         core.set_ip_root_event_id(event_id.clone());
                         // Backfill ip_root_event into genesis receipt
                         if let Some(ref mut gr) = core.snapshot.genesis_receipt {
-                            gr.ip_root_event = Some(event_id);
+                            gr.ip_root_event = Some(event_id.clone());
+                        }
+                        if let Some(ref mut m) = core.snapshot.agent_manifest {
+                            m.bind_ip_root(event_id.clone());
                         }
                     }
                     self.auto_save();

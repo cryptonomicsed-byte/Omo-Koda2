@@ -1250,7 +1250,19 @@ impl Steward {
                 derivation_root_id,
                 symbolic_address: format!("{}/{}", name, primary_index),
                 sigil_hash,
-                cloak_commitment: hex::encode([0u8; 32]),
+                cloak_commitment: {
+                    let words: Vec<&str> = mnemonic.split_whitespace().collect();
+                    match crate::identity::cloak::CloakSeed::from_seed(&odu_seed.0)
+                        .encode_phrase(&words)
+                    {
+                        Ok(cloaked) => {
+                            let mut hc = Sha256::new();
+                            hc.update(cloaked.join(" ").as_bytes());
+                            hex::encode(hc.finalize())
+                        }
+                        Err(_) => hex::encode([0u8; 32]),
+                    }
+                },
                 born_at: born_at_ms,
                 koodu_epoch: k_epoch,
                 koodu_cycle: k_cycle,
@@ -1276,6 +1288,7 @@ impl Steward {
                 first_lease_id: None,
                 first_work_id: None,
                 witness_receipt: None,
+                memory_write_status: crate::genesis::receipt::MemoryWriteStatus::Pending,
                 genesis_signature: String::new(),
                 receipt_version: AgentGenesisReceipt::CURRENT_VERSION,
             })

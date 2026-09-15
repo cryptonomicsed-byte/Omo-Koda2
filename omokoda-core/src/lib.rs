@@ -53,6 +53,7 @@ pub mod steward;
 pub mod tasks;
 pub mod tools;
 pub mod usage;
+pub mod services;
 pub mod vantage;
 pub mod vault;
 pub mod waggle;

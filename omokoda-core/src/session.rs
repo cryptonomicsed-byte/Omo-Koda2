@@ -222,6 +222,20 @@ pub struct PrivateSessionData {
     pub minipae_private_key_hex: Option<String>,
     #[serde(default)]
     pub minipae_npub: Option<String>,
+
+    // ── Inference / compute credentials ──────────────────────────────────────
+    #[serde(default)]
+    pub inference_endpoint: Option<String>,
+    #[serde(default)]
+    pub inference_provider: Option<String>,
+    #[serde(default)]
+    pub inference_model: Option<String>,
+    #[serde(default)]
+    pub gpu_ai_api_key: Option<String>,
+    #[serde(default)]
+    pub kaggle_username: Option<String>,
+    #[serde(default)]
+    pub kaggle_api_key: Option<String>,
 }
 
 /// Gap #1 — Tier 1 vault: key material only. No memory entries. Separate seal.
@@ -261,6 +275,29 @@ pub struct IdentityVaultData {
     pub minipae_private_key_hex: Option<String>,
     #[serde(default)]
     pub minipae_npub: Option<String>,
+
+    // ── Inference / compute credentials ──────────────────────────────────────
+    /// The agent's primary inference endpoint (larql, GPU.ai, RunPod, etc.).
+    /// Set at birth via UCX provisioning; updated when the agent upgrades its
+    /// compute tier or self-hosts a model after Mycelium fine-tune completes.
+    #[serde(default)]
+    pub inference_endpoint: Option<String>,
+    /// Provider tag: "larql" | "gpu_ai" | "runpod" | "openai" | "kaggle"
+    #[serde(default)]
+    pub inference_provider: Option<String>,
+    /// Model name served at inference_endpoint (e.g. "mycelium-q4_k_m").
+    #[serde(default)]
+    pub inference_model: Option<String>,
+    /// GPU.ai API key assigned to this agent at birth (sub-keyed from ecosystem key).
+    /// Stored here so the agent can independently provision GPU time via UCX.
+    #[serde(default)]
+    pub gpu_ai_api_key: Option<String>,
+    /// Kaggle API credentials — assigned from a pre-provisioned agent account pool.
+    /// Used to run fine-tuning notebooks, consume Kaggle datasets, submit simulations.
+    #[serde(default)]
+    pub kaggle_username: Option<String>,
+    #[serde(default)]
+    pub kaggle_api_key: Option<String>,
 }
 
 impl Drop for IdentityVaultData {

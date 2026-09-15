@@ -1165,6 +1165,22 @@ impl Steward {
             nostr_address: Some(nostr_key.address),
             minipae_private_key_hex: Some(minipae_key.private_key_hex),
             minipae_npub: Some(minipae_key.address),
+
+            // ── Inference / compute credentials (fail-open — None if not configured) ──
+            // Read from environment at birth so each sovereign node can configure
+            // the inference stack once and all agents born on it inherit it.
+            // Agents can update these later via Vantage (e.g. after running their
+            // own Mycelium fine-tune on Kaggle and deploying the GGUF locally).
+            inference_endpoint: std::env::var("AGENT_INFERENCE_URL").ok()
+                .or_else(|| std::env::var("LARQL_URL").ok()),
+            inference_provider: std::env::var("AGENT_INFERENCE_PROVIDER").ok()
+                .or_else(|| std::env::var("LARQL_URL").ok().map(|_| "larql".to_string())),
+            inference_model: std::env::var("AGENT_INFERENCE_MODEL").ok()
+                .or_else(|| Some("mycelium-q4_k_m".to_string())),
+            gpu_ai_api_key: std::env::var("GPUAI_API_KEY").ok()
+                .or_else(|| std::env::var("GPU_AI_API_KEY").ok()),
+            kaggle_username: std::env::var("KAGGLE_USERNAME").ok(),
+            kaggle_api_key: std::env::var("KAGGLE_KEY").ok(),
         };
 
         let synapse = self.dopamine_pool.compute_initial_synapse();

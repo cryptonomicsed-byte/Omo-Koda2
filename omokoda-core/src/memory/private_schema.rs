@@ -13,6 +13,12 @@ pub enum PrivateMemoryBody {
     Capability(CapabilityBody),
     Receipt(ReceiptBody),
     Note(NoteBody),
+    /// Private record of a specific encounter with another entity.
+    /// Stored only in this agent's MemoryVault — never transmitted to the hive.
+    Encounter(EncounterBody),
+    /// Cached hive-mind lookup result for a known entity.
+    /// Updated each time the agent queries `/api/hive/entities`.
+    EntityCache(EntityCacheBody),
 }
 
 /// A single private memory entry stored in MemoryVault.entries.
@@ -102,4 +108,117 @@ pub struct ReceiptBody {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoteBody {
     pub content: String,
+}
+
+// ── Encounter & hive-mind types ────────────────────────────────────────────────
+
+/// How the agent classifies a specific interaction.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EncounterKind {
+    Conversation,
+    Trade,
+    Request,
+    Governance,
+    Collaboration,
+    Dispute,
+    Observation,
+    Other(String),
+}
+
+/// Outcome the agent privately assigns to an encounter.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EncounterOutcome {
+    Positive,
+    Neutral,
+    Negative,
+    Hostile,
+    Unknown,
+}
+
+/// Tier the agent assigns to an entity in the ecosystem.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EntityTier {
+    Founder,
+    Council,
+    Friend,
+    Trader,
+    Investor,
+    Developer,
+    User,
+    Observer,
+    Unknown,
+    Suspicious,
+    Enemy,
+}
+
+impl Default for EntityTier {
+    fn default() -> Self {
+        Self::Unknown
+    }
+}
+
+/// What kind of identifier this is.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum IdentifierKind {
+    WalletEth,
+    WalletBtc,
+    WalletSol,
+    WalletSui,
+    WalletCosmos,
+    WalletNostr,
+    Email,
+    GitHub,
+    Discord,
+    Telegram,
+    Did,
+    Nostr,
+    Custom(String),
+}
+
+/// A single identifier observed for an entity (wallet address, email, etc.).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObservedIdentifier {
+    pub kind: IdentifierKind,
+    pub value: String,
+}
+
+/// Private encounter record — full honesty, never leaves this vault.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EncounterBody {
+    /// Hive entity_id if the agent successfully resolved this entity.
+    pub entity_id: Option<String>,
+    /// Identifiers the agent observed during this encounter.
+    pub identifiers: Vec<ObservedIdentifier>,
+    /// How this interaction happened.
+    pub kind: EncounterKind,
+    /// Outcome as the agent privately judges it.
+    pub outcome: EncounterOutcome,
+    /// Agent's private (honest, internal) note — never shared.
+    pub private_note: Option<String>,
+    /// Short summary the agent is willing to share with the hive.
+    /// None = keep fully private. Some = will be submitted to hive mind.
+    pub public_summary: Option<String>,
+    /// Tier the agent assigns to this entity based on this interaction.
+    pub tier_vote: EntityTier,
+    /// ARP receipt or Vantage tx id proving the interaction happened.
+    pub receipt_id: Option<String>,
+}
+
+/// Snapshot of a hive entity record cached locally after a lookup.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EntityCacheBody {
+    pub entity_id: String,
+    pub display_name: Option<String>,
+    /// Canonical tier as voted by the hive (may differ from agent's own vote).
+    pub hive_tier: EntityTier,
+    /// All known identifiers for this entity from the hive.
+    pub known_identifiers: Vec<ObservedIdentifier>,
+    /// Total interactions the ecosystem has logged for this entity.
+    pub interaction_count: u64,
+    /// Unix timestamp when this cache entry was fetched.
+    pub fetched_at: u64,
 }

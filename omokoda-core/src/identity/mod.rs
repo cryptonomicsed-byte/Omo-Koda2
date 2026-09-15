@@ -1,5 +1,6 @@
 pub mod ase;
 pub mod credential_index;
+pub mod hive;
 pub mod bipon39;
 pub mod buzz;
 pub mod machine_vault;

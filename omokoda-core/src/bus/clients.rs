@@ -1012,6 +1012,94 @@ impl YemojaClient for HttpYemojaClient {
     }
 }
 
+// ─── HttpSangoClient ── Ṣàngó Move on-chain receipts at SANGO_URL ────────────
+
+/// HTTP implementation of SangoClient.
+/// Base URL read from `SANGO_URL` env var (e.g. `http://localhost:5001`).
+/// Writes hermetic receipts to the on-chain Move journal. Fails open: a
+/// missing Ṣàngó service never blocks the action that generated the receipt.
+pub struct HttpSangoClient {
+    base_url: String,
+}
+
+impl HttpSangoClient {
+    pub fn new(base_url: impl Into<String>) -> Self {
+        Self {
+            base_url: base_url.into(),
+        }
+    }
+}
+
+#[async_trait]
+impl SangoClient for HttpSangoClient {
+    async fn write_receipt(
+        &self,
+        agent_id: &AgentId,
+        action_tool: &str,
+        hermetic: &HermeticResult,
+    ) {
+        let url = format!("{}/receipt", self.base_url);
+        let body = serde_json::json!({
+            "agent_id": agent_id.to_string(),
+            "action_tool": action_tool,
+            "allowed": hermetic.allowed,
+            "violations": hermetic.violations.len(),
+        });
+        // Fire-and-forget: receipt write must never stall the action path.
+        let _ = http_client()
+            .post(&url)
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(3))
+            .send()
+            .await;
+    }
+}
+
+// ─── HttpOgunClient ── Ògún Python tool exec at OGUN_URL ─────────────────────
+
+/// HTTP implementation of OgunClient.
+/// Base URL read from `OGUN_URL` env var (e.g. `http://localhost:5002`).
+/// Delegates tool execution to the Python Foundation layer. Returns the
+/// raw JSON output or an error string. Fails hard: a failing Ògún call
+/// propagates the error — execution is the one gate that may not fail-open.
+pub struct HttpOgunClient {
+    base_url: String,
+}
+
+impl HttpOgunClient {
+    pub fn new(base_url: impl Into<String>) -> Self {
+        Self {
+            base_url: base_url.into(),
+        }
+    }
+}
+
+#[async_trait]
+impl OgunClient for HttpOgunClient {
+    async fn execute_tool(&self, tool_name: &str, input_json: &str) -> Result<String, String> {
+        let url = format!("{}/execute", self.base_url);
+        let body = serde_json::json!({
+            "tool": tool_name,
+            "input": serde_json::from_str::<serde_json::Value>(input_json)
+                .unwrap_or(serde_json::Value::String(input_json.to_string())),
+        });
+        match http_client()
+            .post(&url)
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(30))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => resp
+                .text()
+                .await
+                .map_err(|e| format!("ogun response read error: {e}")),
+            Ok(resp) => Err(format!("ogun execute_tool '{}' failed: HTTP {}", tool_name, resp.status())),
+            Err(e) => Err(format!("ogun execute_tool '{}' network error: {e}", tool_name)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

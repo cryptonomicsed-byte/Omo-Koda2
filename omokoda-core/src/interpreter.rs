@@ -5014,6 +5014,26 @@ impl Steward {
             return Err(format!("Permission denied: {}", reason));
         }
 
+        // If-Script hermetic causal gate: structural tier×Odù coherence.
+        // This is not a policy check — it enforces the cause→action invariant
+        // (an agent cannot invoke capabilities outside its Odù alignment tier).
+        {
+            let decision = crate::ifscript_gate::evaluate_causal_gate(
+                &crate::ifscript_gate::CausalGateInput {
+                    tier,
+                    odu_id: odu_identity.primary_index,
+                    tool_name,
+                },
+            );
+            if !decision.allowed {
+                return Err(format!(
+                    "If-Script causal gate denied '{}': {}",
+                    tool_name,
+                    decision.denial_reason.unwrap_or_else(|| "hermetic constraint violated".into()),
+                ));
+            }
+        }
+
         let context = crate::tools::ExecutionContext {
             agent_id,
             name,

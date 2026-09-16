@@ -2,6 +2,9 @@
 //
 // USF-7 bridge — connects the universal SevenFunction layer (omokoda-hermetic)
 // to omokoda-core's runtime HermeticPrinciple gates.
+
+pub mod state;
+pub use state::Universal7State;
 //
 // Architecture:
 //   SevenFunction      = WHAT a conscious agent IS  (omokoda-hermetic — ontology)

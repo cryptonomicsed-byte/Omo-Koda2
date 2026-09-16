@@ -199,6 +199,41 @@ pub fn minipae_index_for(id: &str) -> u32 {
 
 const HARDENED: u32 = 0x8000_0000;
 
+/// Derive libp2p Ed25519 peer ID from k_root.
+///
+/// Uses a distinct HMAC path so the resulting keypair never collides with the
+/// Nostr key or any chain key.  The "peer_id" returned here is the hex-encoded
+/// 32-byte Ed25519 public key — a lightweight representation that does not
+/// require the libp2p crate (which is not in scope for omokoda-core).  Full
+/// multiaddr / multihash encoding can be added by the networking layer once the
+/// libp2p crate is wired in.
+///
+/// Path mnemonic: "omokoda:libp2p:v1"
+pub fn derive_libp2p_key(k_root: &[u8]) -> (String, String) {
+    let mut mac = Hmac::<Sha256>::new_from_slice(k_root)
+        .expect("HMAC accepts any key length");
+    mac.update(b"omokoda:libp2p:v1");
+    let seed: [u8; 32] = mac.finalize().into_bytes().into();
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(&seed);
+    let pubkey = signing_key.verifying_key().to_bytes();
+    (hex::encode(seed), hex::encode(pubkey))
+}
+
+/// Derive the deterministic email local-part for an agent from k_root.
+///
+/// Returns the first 16 hex characters of HMAC-SHA256(k_root,
+/// "omokoda:email:v1") — 8 bytes of entropy, short enough for a local-part
+/// while still globally unique across the agent population.
+///
+/// Path mnemonic: "omokoda:email:v1"
+pub fn derive_email_local(k_root: &[u8]) -> String {
+    let mut mac = Hmac::<Sha256>::new_from_slice(k_root)
+        .expect("HMAC accepts any key length");
+    mac.update(b"omokoda:email:v1");
+    let result = mac.finalize().into_bytes();
+    hex::encode(&result[..8]) // 8 bytes → 16 hex chars
+}
+
 fn bech32_p2wpkh(hrp_str: &str, hash160: &[u8]) -> Result<String, String> {
     use bech32::Hrp;
     let hrp = Hrp::parse(hrp_str).map_err(|e| e.to_string())?;
@@ -413,6 +448,49 @@ mod tests {
         // the account segment of the NIP-06 path is actually load-bearing.
         let c = derive_nostr(TEST_MNEMONIC, "", 1).unwrap();
         assert_ne!(a.private_key_hex, c.private_key_hex);
+    }
+
+    #[test]
+    fn libp2p_key_is_deterministic_and_well_formed() {
+        let k_root = b"test_k_root_32_bytes_exactly_here";
+        let (priv1, peer1) = derive_libp2p_key(k_root);
+        let (priv2, peer2) = derive_libp2p_key(k_root);
+        // Same k_root → same result every time (re-derivation guarantee)
+        assert_eq!(priv1, priv2, "private key must be deterministic");
+        assert_eq!(peer1, peer2, "peer_id must be deterministic");
+        assert_eq!(priv1.len(), 64, "32-byte private key = 64 hex chars");
+        assert_eq!(peer1.len(), 64, "32-byte Ed25519 pubkey = 64 hex chars");
+        // Different k_root → different key
+        let k_root2 = b"different_k_root_32_bytes_here__";
+        let (_, peer_other) = derive_libp2p_key(k_root2);
+        assert_ne!(peer1, peer_other, "different k_root must produce different peer_id");
+    }
+
+    #[test]
+    fn email_local_is_deterministic_and_well_formed() {
+        let k_root = b"test_k_root_32_bytes_exactly_here";
+        let local1 = derive_email_local(k_root);
+        let local2 = derive_email_local(k_root);
+        assert_eq!(local1, local2, "email local must be deterministic");
+        assert_eq!(local1.len(), 16, "must be exactly 16 hex chars");
+        // Different k_root → different local
+        let k_root2 = b"different_k_root_32_bytes_here__";
+        let local_other = derive_email_local(k_root2);
+        assert_ne!(local1, local_other, "different k_root must produce different email local");
+    }
+
+    #[test]
+    fn libp2p_key_distinct_from_nostr_key() {
+        // The libp2p key must not collide with the Nostr key derived from
+        // the same mnemonic — they use different derivation paths.
+        const M: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let nostr = derive_nostr(M, "", 0).unwrap();
+        // For libp2p we use a synthetic k_root (in birth flow k_root comes from
+        // the mnemonic seed; here we just verify non-collision with nostr privkey)
+        let seed = b"test_k_root_32_bytes_exactly_here";
+        let (libp2p_priv, _) = derive_libp2p_key(seed);
+        // They originate from completely different inputs so must be different
+        assert_ne!(nostr.private_key_hex, libp2p_priv);
     }
 
     #[test]

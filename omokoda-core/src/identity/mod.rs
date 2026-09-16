@@ -1,5 +1,6 @@
 pub mod ase;
 pub mod credential_index;
+pub mod fork;
 pub mod hive;
 pub mod bipon39;
 pub mod buzz;
@@ -22,6 +23,7 @@ pub mod wallet;
 
 pub use vault::{CapabilityToken, IdentityVault, SealVault};
 pub use credential_index::{CredentialEntry, CredentialIndex, CredentialKind};
+pub use fork::{ForkResult, derive_fork_entropy, fork_agent, fork_index_hmac_key};
 
 use serde::{Deserialize, Serialize};
 

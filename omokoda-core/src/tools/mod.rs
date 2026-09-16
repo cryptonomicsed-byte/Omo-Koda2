@@ -39,6 +39,8 @@ pub mod provider_tools;
 pub mod ucx_receipt;
 pub mod ucx_policy;
 pub mod omohome_tool;
+pub mod mail_tool;
+pub mod mailbox_provisioner;
 
 #[derive(Debug, Clone)]
 pub struct ExecutionContext {

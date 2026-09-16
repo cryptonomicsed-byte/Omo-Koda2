@@ -298,6 +298,37 @@ pub struct IdentityVaultData {
     pub kaggle_username: Option<String>,
     #[serde(default)]
     pub kaggle_api_key: Option<String>,
+
+    // ── Phase 7.1 world keys ──────────────────────────────────────────────────
+    /// libp2p Ed25519 peer id — DIP mesh identity, distinct derivation path
+    #[serde(default)]
+    pub libp2p_peer_id: Option<String>,
+    #[serde(default)]
+    pub libp2p_private_key_hex: Option<String>,
+    /// HMAC-derived local part of agent email address (first 16 hex chars)
+    #[serde(default)]
+    pub agent_email_local: Option<String>,
+    /// Full email address once mailbox is provisioned (local@domain)
+    #[serde(default)]
+    pub agent_email: Option<String>,
+    #[serde(default)]
+    pub agent_email_password: Option<String>,
+    #[serde(default)]
+    pub email_jmap_url: Option<String>,
+    #[serde(default)]
+    pub email_imap_host: Option<String>,
+    #[serde(default)]
+    pub email_smtp_host: Option<String>,
+    #[serde(default)]
+    pub agent_email_verified_at: Option<u64>,
+    /// Nostr relay list this agent subscribes to
+    #[serde(default)]
+    pub relay_list: Option<Vec<String>>,
+    /// Sui on-chain object IDs assigned at birth (fail-open — None if Sui unavailable)
+    #[serde(default)]
+    pub sui_soul_object_id: Option<String>,
+    #[serde(default)]
+    pub sui_agent_object_id: Option<String>,
 }
 
 impl Drop for IdentityVaultData {

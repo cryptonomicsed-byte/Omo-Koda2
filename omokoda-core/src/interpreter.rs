@@ -1145,6 +1145,13 @@ impl Steward {
             crate::identity::wallet::derive_minipae_key(&odu_identity.mnemonic, "", minipae_agent_index, 0)
                 .map_err(|e| format!("derive_minipae_key failed: {e}"))?;
 
+        // Phase 7.1 — derive libp2p peer identity and email local-part from k_root.
+        // Both use distinct HMAC paths so they never collide with chain keys.
+        let (libp2p_private_key_hex, libp2p_peer_id) =
+            crate::identity::wallet::derive_libp2p_key(&k_root);
+        let agent_email_local =
+            crate::identity::wallet::derive_email_local(&k_root);
+
         let private_data = PrivateSessionData {
             odu_seed: odu_seed.clone(),
             odu_identity: odu_identity.clone(),
@@ -1385,6 +1392,58 @@ impl Steward {
             if let Some(private_data) = core.private_data.clone() {
                 let _ = core.session_mut().seal_private(&private_data, &vault_key);
             }
+
+            // Gap #1 — also seal an IdentityVaultData blob so the two-vault
+            // design is populated at birth. Fields mirror private_data but
+            // include the Phase 7.1 world keys (libp2p, email) that only
+            // exist in IdentityVaultData.
+            let identity_vault = crate::session::IdentityVaultData {
+                odu_seed: odu_seed.clone(),
+                odu_identity: odu_identity.clone(),
+                vantage_api_key: None,
+                wallet_private_key_hex: Some(wallet_private_key_hex.clone()),
+                eth_private_key_hex: Some(eth_key.private_key_hex.clone()),
+                eth_address: Some(eth_key.address.clone()),
+                btc_private_key_hex: Some(btc_key.private_key_hex.clone()),
+                btc_address: Some(btc_key.address.clone()),
+                sol_private_key_hex: Some(sol_key.private_key_hex.clone()),
+                sol_address: Some(sol_key.address.clone()),
+                cosmos_private_key_hex: Some(cosmos_key.private_key_hex.clone()),
+                cosmos_address: Some(cosmos_key.address.clone()),
+                aptos_private_key_hex: Some(aptos_key.private_key_hex.clone()),
+                aptos_address: Some(aptos_key.address.clone()),
+                nostr_private_key_hex: Some(nostr_key.private_key_hex.clone()),
+                nostr_address: Some(nostr_key.address.clone()),
+                minipae_private_key_hex: Some(minipae_key.private_key_hex.clone()),
+                minipae_npub: Some(minipae_key.address.clone()),
+                // Phase 7.1 world keys — the reason this vault exists
+                libp2p_peer_id: Some(libp2p_peer_id.clone()),
+                libp2p_private_key_hex: Some(libp2p_private_key_hex.clone()),
+                agent_email_local: Some(agent_email_local.clone()),
+                // Remaining fields sourced from env (same as private_data)
+                inference_endpoint: std::env::var("AGENT_INFERENCE_URL").ok()
+                    .or_else(|| std::env::var("LARQL_URL").ok()),
+                inference_provider: std::env::var("AGENT_INFERENCE_PROVIDER").ok()
+                    .or_else(|| std::env::var("LARQL_URL").ok().map(|_| "larql".to_string())),
+                inference_model: std::env::var("AGENT_INFERENCE_MODEL").ok()
+                    .or_else(|| Some("mycelium-q4_k_m".to_string())),
+                gpu_ai_api_key: std::env::var("GPUAI_API_KEY").ok()
+                    .or_else(|| std::env::var("GPU_AI_API_KEY").ok()),
+                kaggle_username: std::env::var("KAGGLE_USERNAME").ok(),
+                kaggle_api_key: std::env::var("KAGGLE_KEY").ok(),
+                // Email provisioning fields are populated later by the
+                // email-provisioning daemon, not at birth.
+                agent_email: None,
+                agent_email_password: None,
+                email_jmap_url: None,
+                email_imap_host: None,
+                email_smtp_host: None,
+                agent_email_verified_at: None,
+                relay_list: None,
+                sui_soul_object_id: None,
+                sui_agent_object_id: None,
+            };
+            let _ = core.session_mut().seal_identity_vault(&identity_vault, &vault_key);
         }
 
         // Founding sovereign grant also (a) elevates the Steward's permission
@@ -1862,6 +1921,65 @@ impl Steward {
                     let gid_clone = genesis_receipt_id.clone();
                     tokio::spawn(async move {
                         crate::bridge::vantage_reg::register(&aid_clone, &name_clone, &gid_clone, None).await;
+                    });
+                }
+
+                // Nostr birth presence (Phase 8.1, build-order step 7):
+                // Publish kind 0 profile to configured relays. Fire-and-forget
+                // via tokio::spawn — relay unreachability never blocks birth.
+                // Requires AGENT_NOSTR_RELAYS env var (comma-separated wss:// URLs).
+                {
+                    // nostr_address holds the agent's hex Nostr public key,
+                    // derived from the mnemonic via derive_nostr() during birth.
+                    // Fall back to the Sui public key hex if Nostr key absent.
+                    let nostr_npub = if let Ok(core) = self.ensure_born() {
+                        core.snapshot.agent_manifest.as_ref()
+                            .and_then(|m| m.network.nostr_pubkey.clone())
+                            .or_else(|| {
+                                core.private_data.as_ref()
+                                    .and_then(|pd| pd.nostr_address.clone())
+                            })
+                            .unwrap_or_else(|| reg_pubkey.clone())
+                    } else {
+                        reg_pubkey.clone()
+                    };
+                    let nostr_nsec = if let Ok(core) = self.ensure_born() {
+                        core.private_data.as_ref()
+                            .and_then(|pd| pd.nostr_private_key_hex.clone())
+                            .unwrap_or_default()
+                    } else {
+                        String::new()
+                    };
+                    // Relay list: PrivateSessionData does not carry relay_list;
+                    // IdentityVaultData does (Gap #1 sealed vault). At birth the
+                    // sealed vault isn't loaded yet, so source from env var.
+                    // publish_birth_profile() also reads AGENT_NOSTR_RELAYS as
+                    // a fallback, so passing an empty vec here is always safe.
+                    let nostr_relay_list: Vec<String> = std::env::var("AGENT_NOSTR_RELAYS")
+                        .unwrap_or_default()
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    // Use the first 3 mnemonic words as the BIPON39 short-phrase
+                    // displayed in the Nostr profile (human-readable handle).
+                    let nostr_bipon39 = birth_mnemonic
+                        .split_whitespace().take(3).collect::<Vec<_>>().join("-");
+                    let nostr_odu_index = reg_odu;
+                    let nostr_tier = if let Ok(core) = self.ensure_born() {
+                        core.tier()
+                    } else {
+                        0
+                    };
+                    tokio::spawn(async move {
+                        crate::nostr_events::publish_birth_profile(
+                            &nostr_npub,
+                            &nostr_nsec,
+                            &nostr_bipon39,
+                            nostr_odu_index,
+                            nostr_tier,
+                            nostr_relay_list,
+                        ).await;
                     });
                 }
 

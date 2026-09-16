@@ -182,7 +182,7 @@ impl GateResult {
 }
 
 /// The 7 Hermetic Principles as enumerated gate indices (canonical order).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum HermeticPrinciple {
     Mentalism = 0,
     Correspondence = 1,

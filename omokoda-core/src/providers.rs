@@ -62,9 +62,62 @@ pub struct GenerationParams {
     pub max_tokens: u32,
 }
 
+/// Coarse reasoning tier — used by the Steward to decide whether to delegate
+/// complex planning to a stronger model or handle it locally.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ReasoningTier {
+    #[default]
+    Basic,
+    Standard,
+    Deep,
+}
+
+/// Describes what a model instance can actually do. The Spark/Steward uses
+/// this to decide routing, context compression, tool-call delegation, and
+/// whether structured output or vision inputs are safe to pass.
+///
+/// All fields default to conservative values so existing `LlmProvider`
+/// implementors need not change — override `capabilities()` only where
+/// a model genuinely supports the feature.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelCapabilities {
+    /// Maximum context tokens this model accepts (prompt + completion).
+    pub context_length: u32,
+    /// Model can produce tool/function calls in a structured envelope.
+    pub tool_calling: bool,
+    /// Model reliably returns valid JSON when a schema is requested.
+    pub structured_output: bool,
+    /// Model accepts image/vision inputs.
+    pub vision: bool,
+    /// Model supports streaming token output.
+    pub streaming: bool,
+    /// Coarse quality tier for complex reasoning / planning tasks.
+    pub reasoning: ReasoningTier,
+}
+
+impl Default for ModelCapabilities {
+    fn default() -> Self {
+        Self {
+            context_length: 8192,
+            tool_calling: false,
+            structured_output: false,
+            vision: false,
+            streaming: false,
+            reasoning: ReasoningTier::Basic,
+        }
+    }
+}
+
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
     fn metadata(&self) -> &ProviderMetadata;
+
+    /// Return what this model can do. The Steward uses this for routing.
+    /// Default = conservative baseline; override per provider where known.
+    fn capabilities(&self) -> ModelCapabilities {
+        ModelCapabilities::default()
+    }
+
     async fn generate(
         &self,
         prompt: &str,
@@ -115,6 +168,55 @@ pub trait LlmProvider: Send + Sync {
             content: text,
             usage,
         })
+    }
+}
+
+/// Capability requirements a caller can attach to a think/route call.
+/// The registry uses these to skip providers that cannot satisfy them,
+/// falling through to the next candidate in class-priority order.
+/// All fields are optional — unset means "no requirement".
+#[derive(Debug, Clone, Default)]
+pub struct ThinkRequirements {
+    /// Minimum context window needed (prompt + expected completion).
+    pub min_context: Option<u32>,
+    /// Provider must support structured tool/function calls.
+    pub needs_tools: Option<bool>,
+    /// Provider must support schema-constrained JSON output.
+    pub needs_structured: Option<bool>,
+    /// Provider must support image inputs.
+    pub needs_vision: Option<bool>,
+    /// Minimum reasoning quality tier.
+    pub min_reasoning: Option<ReasoningTier>,
+}
+
+impl ThinkRequirements {
+    /// Returns true when the given capabilities satisfy every set requirement.
+    pub fn satisfied_by(&self, caps: &ModelCapabilities) -> bool {
+        if let Some(ctx) = self.min_context {
+            if caps.context_length < ctx {
+                return false;
+            }
+        }
+        if self.needs_tools == Some(true) && !caps.tool_calling {
+            return false;
+        }
+        if self.needs_structured == Some(true) && !caps.structured_output {
+            return false;
+        }
+        if self.needs_vision == Some(true) && !caps.vision {
+            return false;
+        }
+        if let Some(tier) = self.min_reasoning {
+            let order = |t: ReasoningTier| match t {
+                ReasoningTier::Basic => 0u8,
+                ReasoningTier::Standard => 1,
+                ReasoningTier::Deep => 2,
+            };
+            if order(caps.reasoning) < order(tier) {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -282,12 +384,21 @@ impl ProviderRegistry {
     ) -> Result<LlmResponse, String> {
         let provider = if provider_name.is_empty() || provider_name.eq_ignore_ascii_case("default")
         {
+            // When tools are present, prefer a provider that natively supports
+            // tool/function calling — falls back to the first available provider
+            // if none declare tool_calling = true (e.g. Ollama without tools).
+            let needs_tools = !tools.is_empty();
             self.providers.iter().map(Box::as_ref).find(|p| {
-                if private_mode {
-                    self.is_allowed_in_private(p.metadata())
-                } else {
-                    true
+                if private_mode && !self.is_allowed_in_private(p.metadata()) {
+                    return false;
                 }
+                !needs_tools || p.capabilities().tool_calling
+            })
+            .or_else(|| {
+                // Fallback: ignore tool_calling requirement, just return first allowed
+                self.providers.iter().map(Box::as_ref).find(|p| {
+                    !private_mode || self.is_allowed_in_private(p.metadata())
+                })
             })
         } else {
             self.get_provider(provider_name)
@@ -359,11 +470,47 @@ impl ProviderRegistry {
         }
     }
 
+    /// Select the first provider (in class-priority order) whose capabilities
+    /// satisfy `reqs`. Returns `None` when no provider qualifies.
+    pub fn select_provider_for(
+        &self,
+        reqs: &ThinkRequirements,
+        private_mode: bool,
+    ) -> Option<&dyn LlmProvider> {
+        let order = Self::provider_order(private_mode);
+        for provider_class in order {
+            for provider in self
+                .providers
+                .iter()
+                .filter(|p| p.metadata().class == *provider_class)
+            {
+                if private_mode && !self.is_allowed_in_private(provider.metadata()) {
+                    continue;
+                }
+                if reqs.satisfied_by(&provider.capabilities()) {
+                    return Some(provider.as_ref());
+                }
+            }
+        }
+        None
+    }
+
     pub async fn route_think(
         &self,
         prompt: &str,
         history: &[ConversationMessage],
         private_mode: bool,
+    ) -> Result<(String, TokenUsage), String> {
+        self.route_think_with_requirements(prompt, history, private_mode, &ThinkRequirements::default()).await
+    }
+
+    /// Like `route_think` but skips any provider that cannot satisfy `reqs`.
+    pub async fn route_think_with_requirements(
+        &self,
+        prompt: &str,
+        history: &[ConversationMessage],
+        private_mode: bool,
+        reqs: &ThinkRequirements,
     ) -> Result<(String, TokenUsage), String> {
         let order = Self::provider_order(private_mode);
         for provider_class in order {
@@ -377,6 +524,9 @@ impl ProviderRegistry {
                 if private_mode && !self.is_allowed_in_private(metadata) {
                     continue;
                 }
+                if !reqs.satisfied_by(&provider.capabilities()) {
+                    continue;
+                }
 
                 match tokio::time::timeout(
                     Duration::from_secs(30),
@@ -385,12 +535,8 @@ impl ProviderRegistry {
                 .await
                 {
                     Ok(Ok(response)) => return Ok(response),
-                    Ok(Err(_e)) => {
-                        // Try next provider in the same class or next class
-                    }
-                    Err(_) => {
-                        // Timeout, try next provider
-                    }
+                    Ok(Err(_e)) => {}
+                    Err(_) => {}
                 }
             }
         }
@@ -449,6 +595,22 @@ impl ProviderRegistry {
         private_mode: bool,
         params: Option<&GenerationParams>,
     ) -> Result<(String, TokenUsage), String> {
+        self.route_think_with_params_and_requirements(
+            prompt, history, private_mode, params, &ThinkRequirements::default(),
+        )
+        .await
+    }
+
+    /// `route_think_with_params` + capability requirements. Skips providers
+    /// that cannot satisfy `reqs` before attempting generation.
+    pub async fn route_think_with_params_and_requirements(
+        &self,
+        prompt: &str,
+        history: &[ConversationMessage],
+        private_mode: bool,
+        params: Option<&GenerationParams>,
+        reqs: &ThinkRequirements,
+    ) -> Result<(String, TokenUsage), String> {
         let order = Self::provider_order(private_mode);
         for provider_class in order {
             for provider in self
@@ -459,6 +621,9 @@ impl ProviderRegistry {
                 let metadata = provider.metadata();
 
                 if private_mode && !self.is_allowed_in_private(metadata) {
+                    continue;
+                }
+                if !reqs.satisfied_by(&provider.capabilities()) {
                     continue;
                 }
 
@@ -781,6 +946,17 @@ impl LlmProvider for OpenAIProvider {
             .unwrap_or((0.7, 2000));
         self.generate_impl(prompt, history, temperature, max_tokens)
             .await
+    }
+
+    fn capabilities(&self) -> ModelCapabilities {
+        ModelCapabilities {
+            context_length: 128_000,
+            tool_calling: true,
+            structured_output: true,
+            vision: false,
+            streaming: true,
+            reasoning: ReasoningTier::Standard,
+        }
     }
 
     fn supports_tools(&self) -> bool {
@@ -1163,6 +1339,17 @@ impl AnthropicProvider {
 impl LlmProvider for AnthropicProvider {
     fn metadata(&self) -> &ProviderMetadata {
         &self.metadata
+    }
+
+    fn capabilities(&self) -> ModelCapabilities {
+        ModelCapabilities {
+            context_length: 200_000,
+            tool_calling: true,
+            structured_output: true,
+            vision: true,
+            streaming: true,
+            reasoning: ReasoningTier::Deep,
+        }
     }
 
     fn supports_tools(&self) -> bool {

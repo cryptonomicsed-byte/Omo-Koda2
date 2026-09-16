@@ -1,0 +1,11 @@
+[package]
+name = "oso-compiler"
+version = "0.1.0"
+edition = "2021"
+description = "Ọ̀ṢỌ́ compiler — IfDecision + context → IrProgram (feeds OSOVM executor)"
+
+[dependencies]
+oso-parser  = { path = "../oso-parser" }
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+thiserror   = "1"

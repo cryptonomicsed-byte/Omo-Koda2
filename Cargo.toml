@@ -8,6 +8,9 @@ members = [
     "zangbeto-stub",
     "nautilus_integration",
     "nist_entropy",
+    "oso-parser",
+    "oso-compiler",
+    "oso-sdk",
 ]
 resolver = "2"
 

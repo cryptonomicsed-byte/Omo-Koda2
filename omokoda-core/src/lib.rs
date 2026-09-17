@@ -1,5 +1,6 @@
 pub mod agent_catalog;
 pub mod genesis;
+pub mod goal_genesis;
 pub mod bridge;
 pub mod inference;
 pub mod util;
@@ -48,6 +49,7 @@ pub mod rhythm;
 pub mod sandbox;
 pub mod server;
 pub mod session;
+pub mod session_history;
 pub mod constitution;
 pub mod skill_patch;
 pub mod skills;

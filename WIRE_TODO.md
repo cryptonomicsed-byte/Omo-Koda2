@@ -89,7 +89,7 @@ Status legend: [ ] pending  [x] done  [~] in-progress  [!] blocked
 
 ## PHASE 5 — SESSION MANAGEMENT (medium effort)
 
-- [ ] W-13  Create `src/session_history.rs` — message dedup + pasted content refs
+- [x] W-13  Create `src/session_history.rs` — message dedup + pasted content refs
             `MessageHistory { messages: Vec<HistoryEntry>, max: usize }`
             `HistoryEntry { role, content, hash: u64, pasted: bool }`
             `push(role, content)` — dedup: if same hash as last, skip
@@ -120,9 +120,9 @@ Status legend: [ ] pending  [x] done  [~] in-progress  [!] blocked
 
 ## POST-BUILD VERIFICATION
 
-- [ ] PV-01  rustfmt --edition 2021 --check all new files
-- [ ] PV-02  Export all new modules from lib.rs
-- [ ] PV-03  Unit tests: neural_cache (3), json_repair (4), file_state_cache (3),
+- [x] PV-01  rustfmt --edition 2021 --check all new files
+- [x] PV-02  Export all new modules from lib.rs
+- [x] PV-03  Unit tests: neural_cache (3), json_repair (4), file_state_cache (3),
              mem_cell scoring (3), lpm persistence (2), behavioral_memory (3),
              inference_router (3), execution_log (2)
 - [ ] PV-04  Commit to Omo-Koda2

@@ -96,7 +96,7 @@ Goal: turn the Week-1 skeleton into a coherent Steward runtime while avoiding pr
 - [x] Add `birth_timestamp` as identity-critical runtime state.
 - [x] Add `odu_seed` / `odu_primary_index` placeholders with explicit TODO boundaries.
 - [x] Wire existing `identity::dna::generate_dna_fingerprint` into birth.
-- [ ] Keep `AgentCore` and `AgentSnapshot` separate to avoid circular state snapshots.
+- [x] Keep `AgentCore` and `AgentSnapshot` separate to avoid circular state snapshots.
 - [x] Add snapshot serialization tests before adding durable storage.
 
 ### Reputation and tiers
@@ -178,14 +178,14 @@ Goal: make private memory real, encrypted, and impossible to route externally by
 - [x] Add key rotation hooks for ownership transfer, act-count threshold, and epoch timeout. (Implemented in session.rs)
 - [x] Add tests that plaintext private content does not appear in saved session files.
 - [x] Add tests that wrong key/passphrase fails closed.
-- [ ] Add zeroization for sensitive key material.
+- [x] Add zeroization for sensitive key material.
 
 ### Memory tiers
 
-- [ ] Replace plain `MemoryEntry` with structured entries: id, scope, tier, content hash, created_at, importance, optional ciphertext.
-- [ ] Implement working memory for current turn.
-- [ ] Implement short-term memory persisted and pruned.
-- [ ] Implement long-term memory encrypted and durable.
+- [x] Replace plain `MemoryEntry` with structured entries: id, scope, tier, content hash, created_at, importance, optional ciphertext.
+- [x] Implement working memory for current turn.
+- [x] Implement short-term memory persisted and pruned.
+- [x] Implement long-term memory encrypted and durable.
 - [x] Add public memory routing for publishable outputs.
 - [x] Add private memory routing for sealed thoughts and plans.
 - [x] Implement RACK scoring: relevance × recency × importance × reputation impact. (Simplified RACK implemented)
@@ -209,7 +209,7 @@ Goal: make `act` useful while keeping capability unlocks, permissions, sandboxin
 - [x] Add a `Tool` trait with name, description, input schema, required tier, permission mode, and execute function.
 - [ ] Add JSON Schema validation for tool params.
 - [x] Add a `ToolRegistry` owned by the Steward.
-- [ ] Add deny-list filtering so unavailable/blocked tools are not visible to reasoning.
+- [x] Add deny-list filtering so unavailable/blocked tools are not visible to reasoning.
 - [ ] Add lazy loading for heavyweight tools.
 - [x] Add built-in read-only tools first: file read, glob, grep, web fetch/search placeholder.
 - [x] Add workspace-write tools second: file write/edit/note taking. (Implemented BashTool which covers this).
@@ -218,7 +218,7 @@ Goal: make `act` useful while keeping capability unlocks, permissions, sandboxin
 ### Permissions
 
 - [ ] Add permission modes adapted from Swibe/Claw/Claude patterns: `Auto`, `Ask`, `Plan`, `Monitor`, `Quarantine`, `Simulate`, `Refuse`.
-- [ ] Implement deny-first evaluation.
+- [x] Implement deny-first evaluation.
 - [x] Map reputation tier to default permission mode. (Implemented in reputation.rs)
 - [x] Add per-tool permission requirements.
 - [ ] Add prompt/approval trait for human-in-the-loop actions.
@@ -406,12 +406,12 @@ Goal: make each architecture promise mechanically testable.
 
 - [x] Add `tests/session_tests.rs`.
 - [x] Add `tests/privacy_tests.rs`.
-- [ ] Add `tests/memory_tests.rs`.
-- [ ] Add `tests/permissions_tests.rs`.
+- [x] Add `tests/memory_tests.rs`.
+- [x] Add `tests/permissions_tests.rs`.
 - [x] Add `tests/tool_registry_tests.rs`.
-- [ ] Add `tests/sandbox_tests.rs`.
-- [ ] Add `tests/provider_tests.rs`.
-- [ ] Add `tests/economics_tests.rs`.
+- [x] Add `tests/sandbox_tests.rs`.
+- [x] Add `tests/provider_tests.rs`.
+- [x] Add `tests/economics_tests.rs`.
 - [x] Add `tests/integration_tests.rs` for birth → think → act → receipt → resume.
 - [ ] Add `tests/adversarial_tests.rs` for private leakage, path traversal, prompt injection, receipt tampering, tier bypass, and budget abuse.
 

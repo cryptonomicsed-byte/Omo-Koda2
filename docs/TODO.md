@@ -260,20 +260,20 @@ Goal: move from stub `think` to a real, streaming reasoning loop.
 
 ### Turn loop
 
-- [ ] Add `TurnEvent` stream: started, token, tool_request_detected, receipt, warning, error, finished.
-- [ ] Add max-iteration guard for tool-call loops.
-- [ ] Add token/Synapse budget checks before and during turns.
+- [x] Add `TurnEvent` stream: started, token, tool_request_detected, receipt, warning, error, finished.
+- [x] Add max-iteration guard for tool-call loops.
+- [x] Add token/Synapse budget checks before and during turns. (burn_synapse called in Think/Act paths)
 - [ ] Add retry logic with explicit retry reasons.
-- [ ] Add context construction from memory + system policy + tool manifests.
-- [ ] Add compaction trigger before inference when context is too large.
+- [x] Add context construction from memory + system policy + tool manifests.
+- [x] Add compaction trigger before inference when context is too large.
 - [ ] Add tests for stream termination, provider failure, budget exhaustion, tool request deferral, and private hard fail.
 
 ### Neural router and ethics
 
 - [ ] Add 86-parameter neural router derived from Odu seed; keep it internal.
 - [ ] Add task classifier for routing model/tool selection.
-- [ ] Add Hermetic ethics engine as internal validator.
-- [ ] Add Sabbath/rhythm checks from Ritual Codex.
+- [x] Add Hermetic ethics engine as internal validator.
+- [x] Add Sabbath/rhythm checks from Ritual Codex.
 - [ ] Add constructive redirection for denied/destructive acts.
 - [ ] Add tests that ethical refusals create auditable refusal events without leaking hidden state.
 
@@ -283,17 +283,17 @@ Goal: add metabolism: Synapse, Dopamine, rhythm, cooldowns, and cost accounting.
 
 ### Synapse and Dopamine
 
-- [ ] Add `SynapseBalance` to agent state.
-- [ ] Add global `DopaminePool` abstraction, initially local/in-memory.
-- [ ] Burn Synapse for think/act according to model/tool cost.
-- [ ] Apply 8% daily Synapse decay back to the pool.
+- [x] Add `SynapseBalance` to agent state. (`synapse: f64` on AgentSnapshot, interpreter.rs:223)
+- [x] Add global `DopaminePool` abstraction, initially local/in-memory.
+- [x] Burn Synapse for think/act according to model/tool cost. (interpreter.rs:2214, 2785, 2834, 4194, 4243)
+- [x] Apply 8% daily Synapse decay back to the pool.
 - [ ] Add budget exhaustion errors and receipts.
 - [ ] Add tests for burn, decay, insufficient balance, and alert thresholds.
 
 ### Rhythm and Ritual Codex
 
-- [ ] Add a Rust-native minimal ritual calendar based on the `ritual-codex` JSON/day model.
-- [ ] Add UTC Sabbath guard first; BTC/spiral time can follow later.
+- [x] Add a Rust-native minimal ritual calendar based on the `ritual-codex` JSON/day model.
+- [x] Add UTC Sabbath guard first; BTC/spiral time can follow later.
 - [ ] Queue irreversible writes on Sabbath instead of executing them immediately.
 - [ ] Add cooldowns per action/tool based on rhythm policy.
 - [ ] Add daily limits tied to Synapse budget.
@@ -311,13 +311,13 @@ Goal: expose the core without expanding the language surface.
 
 ### CLI
 
-- [ ] Add an `omokoda` binary crate or `omokoda-core` binary entrypoint.
-- [ ] Implement commands:
-  - [ ] `omokoda birth <name>`
-  - [ ] `omokoda think <intent>`
-  - [ ] `omokoda act <tool> <params>`
-  - [ ] `omokoda repl`
-  - [ ] `omokoda session list|resume|archive`
+- [x] Add an `omokoda` binary crate or `omokoda-core` binary entrypoint. (`omokoda-cli/src/main.rs`)
+- [x] Implement commands:
+  - [x] `omokoda birth <name>`
+  - [x] `omokoda think <intent>`
+  - [x] `omokoda act <tool> <params>`
+  - [x] `omokoda repl`
+  - [x] `omokoda session list|resume|archive`
   - [ ] `omokoda memory status|recall`
   - [ ] `omokoda justice audit`
   - [ ] `omokoda flow status`
@@ -326,10 +326,10 @@ Goal: expose the core without expanding the language surface.
 
 ### HTTP/SSE server
 
-- [ ] Add an Axum server after the core API is stable.
-- [ ] Expose only primitive endpoints: `/v1/birth`, `/v1/think`, `/v1/act`.
-- [ ] Add read-only status endpoints for session, memory, justice, flow.
-- [ ] Add SSE `/v1/events` for turn events.
+- [x] Add an Axum server after the core API is stable.
+- [x] Expose only primitive endpoints: `/v1/birth`, `/v1/think`, `/v1/act`.
+- [x] Add read-only status endpoints for session, memory, justice, flow.
+- [x] Add SSE `/v1/events` for turn events.
 - [ ] Add auth/security requirements before binding outside localhost.
 
 ### IDE bridge and plugin packaging
@@ -347,25 +347,25 @@ Goal: anchor identity and public acts without compromising local/private operati
 ### Move specs first
 
 - [ ] Write `specs/sui-contracts.md` before Move code.
-- [ ] Define `soul.move` fields first; all other contracts reference it.
-- [ ] Define `agent.move` dNFT state and reputation scaling (`rep × 1000`).
-- [ ] Define `garden.move` for public receipt publication and tips.
-- [ ] Define `hive.move` last; do not start until Nautilus/TEE assumptions are stable.
+- [x] Define `soul.move` fields first; all other contracts reference it.
+- [x] Define `agent.move` dNFT state and reputation scaling (`rep × 1000`).
+- [x] Define `garden.move` for public receipt publication and tips.
+- [x] Define `hive.move` last; do not start until Nautilus/TEE assumptions are stable.
 
 ### Contract implementation order
 
-- [ ] Implement `contracts/sources/soul.move`.
-- [ ] Implement `contracts/sources/agent.move`.
-- [ ] Implement `contracts/sources/garden.move`.
-- [ ] Implement `contracts/sources/hive.move` only after testnet flow is proven.
+- [x] Implement `contracts/sources/soul.move`.
+- [x] Implement `contracts/sources/agent.move`.
+- [x] Implement `contracts/sources/garden.move`.
+- [x] Implement `contracts/sources/hive.move` only after testnet flow is proven.
 - [ ] Add Move tests for birth, reputation update, receipt anchor, tip, and invalid transitions.
 - [ ] Ensure public receipts anchor hashes only; private memory never goes on chain.
 
 ### Rust integration
 
-- [ ] Add Sui SDK wrapper in Rust.
-- [ ] Add local/testnet configuration.
-- [ ] Add transaction execution path; avoid dry-run for receipt creation.
+- [x] Add Sui SDK wrapper in Rust.
+- [x] Add local/testnet configuration.
+- [x] Add transaction execution path; avoid dry-run for receipt creation.
 - [ ] Add retry/idempotency around chain submission.
 - [ ] Add tests with a local/test container before public testnet.
 

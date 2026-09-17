@@ -63,7 +63,6 @@ impl ContractClient {
     }
 
     /// Call a method on a registered contract.
-    /// Concrete implementation provided by Phase 25.3-25.8 per contract class.
     pub fn call(
         &self,
         contract_id: &str,
@@ -71,13 +70,7 @@ impl ContractClient {
         args: serde_json::Value,
     ) -> SdkResult<CallResult> {
         let contract = self.get(contract_id)?;
-        // Default: echo contract + method for now (stubs replaced per Phase 25.x)
-        Ok(CallResult {
-            contract_id: contract.id.clone(),
-            method: method.into(),
-            output: args,
-            arp_payload: None,
-        })
+        crate::contracts::dispatch(contract, method, args)
     }
 }
 

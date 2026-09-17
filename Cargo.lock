@@ -3746,6 +3746,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "oso-deployer"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "oso-linter"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "oso-move"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "oso-parser"
 version = "0.1.0"
 dependencies = [
@@ -3766,6 +3793,33 @@ dependencies = [
  "thiserror 1.0.69",
  "ucx-protocol",
  "uuid",
+]
+
+[[package]]
+name = "oso-security"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "oso-simulator"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "oso-wasm"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

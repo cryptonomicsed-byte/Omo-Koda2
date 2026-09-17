@@ -1,0 +1,14 @@
+[package]
+name = "oso-deployer"
+version = "0.1.0"
+edition = "2021"
+description = "Authorization-tiered deployment pipeline for OSO-IR programs (Phase 26.6)"
+
+[[bin]]
+name = "oso-deploy"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }

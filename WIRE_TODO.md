@@ -125,4 +125,4 @@ Status legend: [ ] pending  [x] done  [~] in-progress  [!] blocked
 - [x] PV-03  Unit tests: neural_cache (3), json_repair (4), file_state_cache (3),
              mem_cell scoring (3), lpm persistence (2), behavioral_memory (3),
              inference_router (3), execution_log (2)
-- [ ] PV-04  Commit to Omo-Koda2
+- [x] PV-04  Commit to Omo-Koda2

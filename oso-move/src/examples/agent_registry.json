@@ -1,0 +1,62 @@
+{
+  "oso_ir_version": "1.0",
+  "contract_class": "agent",
+  "contract_name": "AgentRegistry",
+  "assets": [
+    {
+      "name": "AgentRecord",
+      "fields": [
+        "agent_id",
+        "npub",
+        "bipon39_hash",
+        "odu_index",
+        "tier",
+        "reputation_score",
+        "principal",
+        "birth_timestamp",
+        "walrus_profile_blob"
+      ]
+    },
+    {
+      "name": "TierUpRequest",
+      "fields": [
+        "request_id",
+        "agent_id",
+        "target_tier",
+        "stake_amount_mist",
+        "submitted_at"
+      ]
+    }
+  ],
+  "capabilities": ["AGENT_SPAWN"],
+  "minimum_tier": 0,
+  "evidence": {
+    "required": true,
+    "type": "AgentLifecycle",
+    "fields": ["agent_id", "event_type", "genesis_hash", "principal"]
+  },
+  "witness_policy": {
+    "quorum": 1,
+    "types": ["node"]
+  },
+  "settlement": {
+    "currency": "ASE",
+    "fee_routing": "6-pool",
+    "creator_share": 0.00,
+    "burn_share": 0.05,
+    "provider_share": 0.00
+  },
+  "policy": {
+    "esu_tithe": 0.0369,
+    "fork_allowed": true,
+    "tier_stake_required": true,
+    "escalation_path": "council"
+  },
+  "lifecycle": [
+    "CREATED",
+    "REGISTERED",
+    "ACTIVE",
+    "SUSPENDED",
+    "DEREGISTERED"
+  ]
+}

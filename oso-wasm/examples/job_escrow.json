@@ -1,0 +1,22 @@
+{
+  "oso_ir_version": "1.0",
+  "contract_class": "work",
+  "contract_name": "JobEscrow",
+  "assets": [
+    { "name": "escrow", "fields": ["locked_amount", "employer", "worker"] },
+    { "name": "proof", "fields": ["f1_score", "veil_id", "run_id"] }
+  ],
+  "capabilities": ["ESCROW_LOCK", "ESCROW_RELEASE", "ESCROW_SLASH", "EMIT_RECEIPT"],
+  "minimum_tier": 2,
+  "settlement": {
+    "currency": "ASE",
+    "amount": 1000,
+    "tithe_rate": 0.0369
+  },
+  "policy": {
+    "require_evidence": true,
+    "min_witnesses": 1,
+    "dispute_window_s": 172800
+  },
+  "lifecycle": ["create", "fund_escrow", "assign", "submit_proof", "verify", "settle", "close"]
+}

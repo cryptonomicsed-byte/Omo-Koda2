@@ -1,0 +1,18 @@
+[package]
+name = "oso-security"
+version = "0.1.0"
+edition = "2021"
+description = "Formal capability and resource security analyzer for OSO-IR programs (Phase 26.5)"
+
+[[bin]]
+name = "oso-security"
+path = "src/main.rs"
+
+[lib]
+name = "oso_security"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }

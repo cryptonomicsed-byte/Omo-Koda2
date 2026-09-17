@@ -20,4 +20,8 @@ pub enum SdkError {
     ProofTimeout,
     #[error("invalid state: {0}")]
     InvalidState(String),
+    #[error("method not found: {0}")]
+    MethodNotFound(String),
+    #[error("invalid arguments: {0}")]
+    InvalidArgs(String),
 }

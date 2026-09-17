@@ -1,0 +1,65 @@
+{
+  "oso_ir_version": "1.0",
+  "contract_class": "work",
+  "contract_name": "JobContract",
+  "assets": [
+    {
+      "name": "Job",
+      "fields": [
+        "job_id",
+        "creator",
+        "assignee",
+        "budget_mist",
+        "deadline_unix",
+        "description_blob_id",
+        "result_blob_id",
+        "state"
+      ]
+    },
+    {
+      "name": "JobResult",
+      "fields": [
+        "job_id",
+        "provider",
+        "output_hash",
+        "quality_score",
+        "completed_at",
+        "evidence_hash"
+      ]
+    }
+  ],
+  "capabilities": ["GPU_COMPUTE"],
+  "minimum_tier": 1,
+  "evidence": {
+    "required": true,
+    "type": "WorkCompletion",
+    "fields": ["job_id", "output_hash", "quality_score", "provider"]
+  },
+  "witness_policy": {
+    "quorum": 2,
+    "types": ["peer", "node"]
+  },
+  "settlement": {
+    "currency": "ASE",
+    "fee_routing": "6-pool",
+    "creator_share": 0.05,
+    "burn_share": 0.05,
+    "provider_share": 0.85
+  },
+  "policy": {
+    "deadline_enforcement": true,
+    "quality_threshold": 0.7,
+    "esu_tithe": 0.0369,
+    "escalation_path": "peer-vote",
+    "auto_slash_on_miss": true
+  },
+  "lifecycle": [
+    "CREATED",
+    "ASSIGNED",
+    "ACCEPTED",
+    "STARTED",
+    "EXECUTED",
+    "VERIFIED",
+    "SETTLED"
+  ]
+}

@@ -16,6 +16,10 @@ module omokoda::soul {
         odu_index: u8,
         dna_fingerprint: vector<u8>,
         hermetic_seed_hash: vector<u8>,
+        // Phase 7.2 additions — sovereign identity anchors
+        nostr_pubkey: vector<u8>,      // 32-byte BIP-340 pubkey (npub stripped)
+        bipon39_words: vector<u8>,     // UTF-8 encoded mnemonic phrase (12–24 words)
+        walrus_blob_id: vector<u8>,    // Walrus public profile blob pointer (optional)
     }
 
     /// Emitted once, at forge time. Makes on-chain agent birth queryable
@@ -40,6 +44,9 @@ module omokoda::soul {
         dna_fingerprint: vector<u8>,
         hermetic_seed_hash: vector<u8>,
         mnemonic_checksum: vector<u8>,
+        nostr_pubkey: vector<u8>,
+        bipon39_words: vector<u8>,
+        walrus_blob_id: vector<u8>,
         clock: &Clock,
         ctx: &mut TxContext,
     ) {
@@ -56,6 +63,9 @@ module omokoda::soul {
             odu_index,
             dna_fingerprint,
             hermetic_seed_hash,
+            nostr_pubkey,
+            bipon39_words,
+            walrus_blob_id,
         };
         let owner = tx_context::sender(ctx);
         event::emit(SoulForged {
@@ -72,4 +82,7 @@ module omokoda::soul {
     public fun birth_timestamp(soul: &SoulRecord): u64 { soul.birth_timestamp }
     public fun odu_index(soul: &SoulRecord): u8 { soul.odu_index }
     public fun dna_fingerprint(soul: &SoulRecord): &vector<u8> { &soul.dna_fingerprint }
+    public fun nostr_pubkey(soul: &SoulRecord): &vector<u8> { &soul.nostr_pubkey }
+    public fun bipon39_words(soul: &SoulRecord): &vector<u8> { &soul.bipon39_words }
+    public fun walrus_blob_id(soul: &SoulRecord): &vector<u8> { &soul.walrus_blob_id }
 }

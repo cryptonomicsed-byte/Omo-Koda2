@@ -11,6 +11,12 @@ members = [
     "oso-parser",
     "oso-compiler",
     "oso-sdk",
+    "oso-wasm",
+    "oso-linter",
+    "oso-simulator",
+    "oso-move",
+    "oso-security",
+    "oso-deployer",
 ]
 resolver = "2"
 

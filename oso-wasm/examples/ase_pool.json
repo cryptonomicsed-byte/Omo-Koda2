@@ -1,0 +1,22 @@
+{
+  "oso_ir_version": "1.0",
+  "contract_class": "financial",
+  "contract_name": "AsePool",
+  "assets": [
+    { "name": "pool", "fields": ["balance", "locked", "total_deposited"] },
+    { "name": "tithe_vault", "fields": ["accumulated"] }
+  ],
+  "capabilities": ["TRANSFER", "TITHE", "ESCROW_LOCK", "ESCROW_RELEASE"],
+  "minimum_tier": 1,
+  "settlement": {
+    "currency": "ASE",
+    "amount": 0,
+    "tithe_rate": 0.0369
+  },
+  "policy": {
+    "require_evidence": false,
+    "min_witnesses": 0,
+    "dispute_window_s": 86400
+  },
+  "lifecycle": ["deposit", "lock", "release", "withdraw", "distribute_tithe"]
+}

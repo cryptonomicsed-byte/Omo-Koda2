@@ -214,9 +214,8 @@ pub fn build_status_note_event(npub: &str, content: &str) -> Value {
 
 /// Publish a Nostr event to all configured relays (fire-and-forget).
 ///
-/// Signing and WebSocket relay transport are the full Phase 18 scope.
-/// Until that wire implementation lands, this function logs intent and returns
-/// `Ok(())` — callers spawn it with `tokio::spawn` so it never blocks birth.
+/// Implements NIP-01 BIP-340 Schnorr signing + WebSocket relay transport.
+/// Gap #46 — replaces the previous stub/log-only implementation.
 ///
 /// `nsec_hex` — the agent's Nostr private key in hex (from IdentityVaultData).
 /// `relay_list` — sourced from `IdentityVaultData::relay_list` or from the
@@ -226,6 +225,9 @@ pub async fn publish_event(
     nsec_hex: &str,
     relay_list: &[String],
 ) -> Result<(), String> {
+    use nostr::{EventBuilder, Keys, Kind, SecretKey, Tag, Timestamp};
+    use nostr_sdk::Client;
+
     // Resolve relay list: if caller passes an empty slice, fall back to env var.
     let env_relays: Vec<String>;
     let effective_relays: &[String] = if relay_list.is_empty() {
@@ -241,12 +243,9 @@ pub async fn publish_event(
     };
 
     if effective_relays.is_empty() {
-        // No relays configured — this is expected on nodes without Nostr.
-        // Do not log a warning; Phase 18 will make this a non-issue.
         return Ok(());
     }
 
-    // Verify we have a usable nsec before attempting anything.
     if nsec_hex.is_empty() {
         tracing::debug!(
             kind = event["kind"].as_u64().unwrap_or(0),
@@ -255,17 +254,72 @@ pub async fn publish_event(
         return Ok(());
     }
 
-    // Phase 18 will replace this log with:
-    //   1. secp256k1 sign (NIP-01 event id + schnorr sig)
-    //   2. WS connect to each relay in parallel (tokio::select! with 5s timeout)
-    //   3. Send ["EVENT", <signed_event>] JSON frame
-    //   4. Wait for ["OK", ...] ack; log non-OK responses
-    tracing::info!(
-        kind = event["kind"].as_u64().unwrap_or(0),
+    // Parse private key (BIP-340 / secp256k1) — Gap #46 real signing.
+    let secret_key = SecretKey::from_hex(nsec_hex)
+        .map_err(|e| format!("nostr_events: invalid nsec_hex: {e}"))?;
+    let keys = Keys::new(secret_key);
+
+    // Build EventBuilder from the JSON event skeleton.
+    let kind_u = event["kind"].as_u64().unwrap_or(1) as u16;
+    let content = event["content"].as_str().unwrap_or("").to_string();
+    let tags: Vec<Tag> = event["tags"]
+        .as_array()
+        .unwrap_or(&vec![])
+        .iter()
+        .filter_map(|t| {
+            let arr: Vec<String> = t
+                .as_array()?
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect();
+            Tag::parse(&arr).ok()
+        })
+        .collect();
+
+    let mut builder = EventBuilder::new(Kind::from(kind_u), content);
+    for tag in tags {
+        builder = builder.tag(tag);
+    }
+
+    // Sign with Schnorr BIP-340 — produces canonical id (sha256) + sig.
+    let signed = builder
+        .sign_with_keys(&keys)
+        .map_err(|e| format!("nostr_events: sign failed: {e}"))?;
+
+    tracing::debug!(
+        event_id = %signed.id,
+        kind = kind_u,
         relay_count = effective_relays.len(),
-        "nostr_events: would publish kind {} to {} relay(s) — relay WS impl pending (Phase 18)",
-        event["kind"], effective_relays.len()
+        "nostr_events: signed kind={kind_u}, publishing to {} relay(s)",
+        effective_relays.len()
     );
+
+    // Publish via nostr-sdk (WebSocket, fire-and-forget per relay).
+    let client = Client::new(keys);
+    for relay_url in effective_relays {
+        if let Err(e) = client.add_relay(relay_url.as_str()).await {
+            tracing::warn!(relay = relay_url, err = %e, "nostr_events: add_relay failed");
+        }
+    }
+    client.connect().await;
+
+    // 5-second timeout so a dead relay never blocks the caller.
+    let timeout = std::time::Duration::from_secs(5);
+    match tokio::time::timeout(timeout, client.send_event(signed.clone())).await {
+        Ok(Ok(output)) => {
+            tracing::info!(
+                event_id = %signed.id,
+                success_count = output.success.len(),
+                "nostr_events: published"
+            );
+        }
+        Ok(Err(e)) => {
+            tracing::warn!(event_id = %signed.id, err = %e, "nostr_events: send_event error");
+        }
+        Err(_) => {
+            tracing::warn!(event_id = %signed.id, "nostr_events: relay timeout (5s)");
+        }
+    }
 
     Ok(())
 }

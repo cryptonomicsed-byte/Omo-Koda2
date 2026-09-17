@@ -1,0 +1,62 @@
+{
+  "oso_ir_version": "1.0",
+  "contract_class": "financial",
+  "contract_name": "AsePool",
+  "assets": [
+    {
+      "name": "Pool",
+      "fields": [
+        "pool_id",
+        "pool_name",
+        "balance_mist",
+        "total_deposited",
+        "total_withdrawn",
+        "created_at",
+        "last_distribution_at"
+      ]
+    },
+    {
+      "name": "PoolShare",
+      "fields": [
+        "share_id",
+        "pool_id",
+        "holder_agent_id",
+        "share_fraction",
+        "deposited_mist",
+        "locked_until"
+      ]
+    }
+  ],
+  "capabilities": [],
+  "minimum_tier": 1,
+  "evidence": {
+    "required": true,
+    "type": "ZangbetoReceipt",
+    "fields": ["receipt_hash", "action_type", "amount_mist", "principal_id"]
+  },
+  "witness_policy": {
+    "quorum": 1,
+    "types": ["node"]
+  },
+  "settlement": {
+    "currency": "ASE",
+    "fee_routing": "6-pool",
+    "creator_share": 0.00,
+    "burn_share": 0.05,
+    "provider_share": 0.90
+  },
+  "policy": {
+    "esu_tithe": 0.0369,
+    "deadline_enforcement": false,
+    "withdrawal_cooldown_secs": 86400,
+    "max_pool_size_mist": 1000000000000,
+    "escalation_path": "council"
+  },
+  "lifecycle": [
+    "OPEN",
+    "FUNDED",
+    "ACTIVE",
+    "SETTLING",
+    "CLOSED"
+  ]
+}

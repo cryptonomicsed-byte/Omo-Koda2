@@ -13,6 +13,7 @@
 
 pub mod job;
 pub mod contract;
+pub mod contracts;
 pub mod agent;
 pub mod error;
 

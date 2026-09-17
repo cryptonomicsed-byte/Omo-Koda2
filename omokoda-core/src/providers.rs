@@ -234,6 +234,25 @@ impl ProviderRegistry {
             providers: Vec::new(),
             has_mock: false,
         };
+        // OSO Brain — the sovereign local LLM (QLoRA-fine-tuned GGUF served via
+        // llama.cpp --server or Ollama). Registered first so it wins routing over
+        // all external providers. Set OSO_BRAIN_URL to activate (e.g. http://localhost:8080).
+        // Phase 28.3: try local sovereign brain first, external LLM only as fallback.
+        if let Ok(url) = std::env::var("OSO_BRAIN_URL") {
+            if !url.is_empty() {
+                let token = std::env::var("OSO_BRAIN_TOKEN").unwrap_or_default();
+                let model = std::env::var("OSO_BRAIN_MODEL")
+                    .unwrap_or_else(|_| "oso-brain".to_string());
+                registry.register(Box::new(OpenAIProvider::compatible(
+                    "oso-brain",
+                    ProviderClass::RegisteredLocal,
+                    token,
+                    model,
+                    url,
+                )));
+            }
+        }
+
         registry.register(Box::new(OllamaProvider::new(
             "http://localhost:11434".to_string(),
         )));

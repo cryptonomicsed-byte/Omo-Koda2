@@ -697,3 +697,80 @@ fn parse_settlement_receipt(json: &serde_json::Value) -> Option<SettlementReceip
         net: read_u64("net")?,
     })
 }
+
+// ── Phase 7.3 — soul::forge() integration ────────────────────────────────────
+
+
+/// Call `omokoda::soul::forge()` at birth to create the immutable on-chain
+/// soul record. Returns the minted SoulRecord object ID on success, `None`
+/// on any failure (fail-open — birth never blocked by chain availability).
+///
+/// Required env vars:
+///   OMOKODA_SOUL_PACKAGE   — deployed soul.move package id
+///   OMOKODA_SUI_CLOCK      — Sui clock object id (0x6 on mainnet/testnet)
+pub async fn forge_soul_onchain(
+    agent_id:     &str,
+    odu_index:    u8,
+    dna_fingerprint: &[u8],  // 86 bytes
+    hermetic_seed_hash: &[u8],
+    mnemonic_checksum: &[u8],
+    nostr_pubkey: &[u8],     // 32-byte BIP-340 pubkey
+    bipon39_words: &str,     // UTF-8 mnemonic phrase
+    walrus_blob_id: &str,    // optional Walrus blob pointer
+) -> Option<String> {
+    let package = std::env::var("OMOKODA_SOUL_PACKAGE").ok()?;
+    if package.is_empty() { return None; }
+    let clock = std::env::var("OMOKODA_SUI_CLOCK")
+        .unwrap_or_else(|_| "0x6".to_string());
+    let gas_budget = std::env::var("OMOKODA_SUI_GAS_BUDGET")
+        .unwrap_or_else(|_| DEFAULT_GAS_BUDGET.to_string());
+
+    let to_bytes_arg = |b: &[u8]| -> String {
+        format!("[{}]", b.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))
+    };
+    let to_str_bytes_arg = |s: &str| -> String { to_bytes_arg(s.as_bytes()) };
+
+    let agent_id_arg       = to_str_bytes_arg(agent_id);
+    let dna_arg            = to_bytes_arg(dna_fingerprint);
+    let hermetic_arg       = to_bytes_arg(hermetic_seed_hash);
+    let checksum_arg       = to_bytes_arg(mnemonic_checksum);
+    let npub_arg           = to_bytes_arg(nostr_pubkey);
+    let words_arg          = to_str_bytes_arg(bipon39_words);
+    let walrus_arg         = to_str_bytes_arg(walrus_blob_id);
+    let odu_arg            = odu_index.to_string();
+
+    let output = tokio::process::Command::new("sui")
+        .args([
+            "client", "call",
+            "--package", &package,
+            "--module",  "soul",
+            "--function","forge",
+            "--args",
+            &agent_id_arg, &odu_arg, &dna_arg, &hermetic_arg, &checksum_arg,
+            &npub_arg, &words_arg, &walrus_arg,
+            &clock,
+            "--gas-budget", &gas_budget,
+            "--json",
+        ])
+        .output()
+        .await
+        .ok()?;
+
+    if !output.status.success() {
+        eprintln!(
+            "[onchain] soul::forge failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return None;
+    }
+
+    // Extract the SoulRecord object ID from the created objects list.
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    json.get("objectChanges")?.as_array()?.iter().find_map(|c| {
+        if c.get("type")?.as_str()? == "created" {
+            c.get("objectId")?.as_str().map(|s| s.to_string())
+        } else {
+            None
+        }
+    })
+}

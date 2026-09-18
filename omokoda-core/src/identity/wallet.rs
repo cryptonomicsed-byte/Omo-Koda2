@@ -27,9 +27,30 @@ pub struct ChainKey {
     pub address: String,
 }
 
+/// EIP-55 mixed-case checksum for an Ethereum address.
+/// `addr_hex` is the 40-char lowercase hex WITHOUT the "0x" prefix.
+/// Ported from vanity-cloakseed's `crypto.ts::toChecksumAddress`.
+pub fn eip55_checksum(addr_hex: &str) -> String {
+    let mut hasher = Keccak256::new();
+    hasher.update(addr_hex.as_bytes());
+    let digest = hasher.finalize();
+    addr_hex
+        .chars()
+        .enumerate()
+        .map(|(i, c)| {
+            if c.is_ascii_alphabetic() {
+                let nibble = (digest[i / 2] >> (if i % 2 == 0 { 4 } else { 0 })) & 0xf;
+                if nibble >= 8 { c.to_ascii_uppercase() } else { c }
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
 /// Ethereum: secp256k1 BIP-32, path m/44'/60'/0'/0 (ported verbatim from
-/// vanity-cloakseed's `chains.ts` CHAINS.ethereum.bip44), address = last 20
-/// bytes of keccak256(uncompressed pubkey minus the 0x04 prefix).
+/// vanity-cloakseed's `chains.ts` CHAINS.ethereum.bip44), address = EIP-55
+/// checksummed last-20-bytes of keccak256(uncompressed pubkey[1..]).
 pub fn derive_ethereum(mnemonic: &str, passphrase: &str) -> Result<ChainKey, String> {
     let seed = mnemonic_to_seed(mnemonic, passphrase);
     let xprv = bip32::XPrv::derive_from_path(
@@ -44,7 +65,8 @@ pub fn derive_ethereum(mnemonic: &str, passphrase: &str) -> Result<ChainKey, Str
     let mut hasher = Keccak256::new();
     hasher.update(&pubkey_bytes[1..]);
     let digest = hasher.finalize();
-    let address = format!("0x{}", hex::encode(&digest[12..]));
+    let addr_hex = hex::encode(&digest[12..]);
+    let address = format!("0x{}", eip55_checksum(&addr_hex));
     Ok(ChainKey {
         private_key_hex: hex::encode(signing_key.to_bytes()),
         address,
@@ -392,6 +414,17 @@ mod tests {
         assert_eq!(a.private_key_hex.len(), 64, "32-byte secp256k1 scalar");
         assert!(a.address.starts_with("0x"));
         assert_eq!(a.address.len(), 42, "0x + 20-byte address");
+        // EIP-55: re-lowercasing and re-checksumming must reproduce the same address.
+        let addr_hex = &a.address[2..];
+        let rechecked = format!("0x{}", eip55_checksum(&addr_hex.to_lowercase()));
+        assert_eq!(a.address, rechecked, "EIP-55 checksum must be idempotent");
+    }
+
+    #[test]
+    fn eip55_checksum_known_vector() {
+        // EIP-55 spec example: https://eips.ethereum.org/EIPS/eip-55
+        let checksummed = eip55_checksum("5aaeb6053f3e94c9b9a09f33669435e7ef1beaed");
+        assert_eq!(checksummed, "5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed");
     }
 
     #[test]

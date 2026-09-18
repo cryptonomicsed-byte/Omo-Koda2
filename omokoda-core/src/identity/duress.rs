@@ -2,6 +2,7 @@
 //! From vanity-cloakseed. Wipes sensitive data or redirects to decoy wallet.
 
 use blake3;
+use hex;
 
 /// The duress response: what happens when the panic phrase is entered.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +31,16 @@ impl DuressHandler {
             panic_phrase_hash: phrase_hash,
             response,
         }
+    }
+
+    /// Reconstruct a handler from a stored blake3 hash hex (for agents loaded from disk).
+    /// `response` is the desired action when triggered.
+    pub fn from_stored_hash(hash_hex: &str, response: DuressResponse) -> Option<Self> {
+        let bytes = hex::decode(hash_hex).ok()?;
+        if bytes.len() != 32 { return None; }
+        let mut phrase_hash = [0u8; 32];
+        phrase_hash.copy_from_slice(&bytes);
+        Some(Self { panic_phrase_hash: phrase_hash, response })
     }
 
     /// Check if input matches the panic phrase (hash comparison).

@@ -25,6 +25,7 @@ use crate::usage::TokenUsage;
 use bipon39::{ElementalVector, Macro, MacroDistribution, PersonalityProfile};
 use ed25519_dalek::SigningKey;
 use hkdf::Hkdf;
+use hmac::Mac;
 use omokoda_hermetic::fractal::OPERATIONS;
 use omokoda_hermetic::HermeticState;
 use serde::{Deserialize, Serialize};
@@ -361,6 +362,11 @@ pub struct AgentCore {
     /// static key, then to software-only, never blocking a real memory
     /// write on Seal's availability.
     pub seal_dek_cache: Option<[u8; 32]>,
+    /// Runtime-only duress handler (never serialized). Reconstructed from
+    /// `snapshot.duress_phrase_hash` on load; checked by `check_duress()`.
+    /// Triggers `SilentAlert` by default when loaded from disk (the birth
+    /// path can override to `Decoy` once a panic phrase is generated).
+    pub duress_handler: Option<crate::identity::duress::DuressHandler>,
 }
 
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -410,6 +416,10 @@ impl AgentCore {
                     snapshot.odu_seed = private_data.odu_seed.clone();
                     snapshot.odu_identity = private_data.odu_identity.clone();
                     let current_memory_key = *snapshot.odu_seed.as_bytes();
+                    let duress_handler = snapshot.duress_phrase_hash.as_deref()
+                        .and_then(|h| crate::identity::duress::DuressHandler::from_stored_hash(
+                            h, crate::identity::duress::DuressResponse::SilentAlert,
+                        ));
                     return Self {
                         snapshot,
                         private_data: Some(private_data),
@@ -417,6 +427,7 @@ impl AgentCore {
                         current_memory_key,
                         memory: Vec::new(),
                         seal_dek_cache: None,
+                        duress_handler,
                     };
                 }
                 // Sealed with a human password instead (or nothing sealed at
@@ -425,6 +436,10 @@ impl AgentCore {
                 // before.
             }
         }
+        let duress_handler = snapshot.duress_phrase_hash.as_deref()
+            .and_then(|h| crate::identity::duress::DuressHandler::from_stored_hash(
+                h, crate::identity::duress::DuressResponse::SilentAlert,
+            ));
         let current_memory_key = *snapshot.odu_seed.as_bytes();
         Self {
             snapshot,
@@ -433,7 +448,15 @@ impl AgentCore {
             current_memory_key,
             memory: Vec::new(),
             seal_dek_cache: None,
+            duress_handler,
         }
+    }
+
+    /// Check whether `input` matches this agent's registered panic phrase.
+    /// Returns the duress response if triggered, `None` otherwise.
+    /// Safe to call with any user input — does a constant-time-ish hash compare.
+    pub fn check_duress(&self, input: &str) -> Option<&crate::identity::duress::DuressResponse> {
+        self.duress_handler.as_ref()?.check_and_respond(input)
     }
 
     pub fn id(&self) -> &AgentId {
@@ -1319,13 +1342,15 @@ impl Steward {
 
         let agent_manifest_v2 = genesis_receipt_v2.as_ref().map(|gr| {
             let mut m = crate::genesis::manifest::AgentManifest::from_genesis(gr);
-            // Bind all derived wallet addresses to the manifest (public addresses only)
-            m.bind_sui(format!("0x{}", hex::encode(&public_key[..20])), None);
+            // Bind all derived wallet addresses to the manifest (public addresses only).
+            // Sui address = blake2b256(0x00 || pubkey) per SIP-6, NOT the raw pubkey truncated.
+            let sui_address = crate::identity::wallet::sui_address_from_pubkey(&public_key);
+            m.bind_sui(sui_address.clone(), None);
             m.network.btc_address = Some(btc_key.address.clone());
             m.network.eth_address = Some(eth_key.address.clone());
             m.network.nostr_pubkey = Some(nostr_key.address.clone());
             m.economic.wallet_bindings = vec![
-                crate::genesis::manifest::WalletBinding { chain: "sui".into(),     address: format!("0x{}", hex::encode(&public_key[..20])) },
+                crate::genesis::manifest::WalletBinding { chain: "sui".into(),     address: sui_address },
                 crate::genesis::manifest::WalletBinding { chain: "btc".into(),     address: btc_key.address.clone() },
                 crate::genesis::manifest::WalletBinding { chain: "eth".into(),     address: eth_key.address.clone() },
                 crate::genesis::manifest::WalletBinding { chain: "nostr".into(),   address: nostr_key.address.clone() },
@@ -1379,6 +1404,25 @@ impl Steward {
         let mut core = AgentCore::from_snapshot(snapshot, k_root);
         core.private_data = Some(private_data);
         core.current_memory_key = k0;
+
+        // Wire duress handler at birth: if a panic phrase was registered
+        // (birth passphrase → duress_phrase_hash), upgrade from the default
+        // SilentAlert (set by from_snapshot above) to a Decoy response whose
+        // decoy seed is derived deterministically from odu_seed so no extra
+        // secret needs to be stored or transported.
+        if core.snapshot.duress_phrase_hash.is_some() {
+            let decoy_seed_hash = {
+                let mut mac = hmac::Hmac::<sha2::Sha256>::new_from_slice(&odu_seed.0)
+                    .expect("HMAC accepts any key size");
+                mac.update(b"omokoda:duress:decoy-seed:v1");
+                hex::encode(mac.finalize().into_bytes())
+            };
+            core.duress_handler = core.snapshot.duress_phrase_hash.as_deref()
+                .and_then(|h| crate::identity::duress::DuressHandler::from_stored_hash(
+                    h,
+                    crate::identity::duress::DuressResponse::Decoy { decoy_seed_hash },
+                ));
+        }
 
         // Self-seal at birth: real entropy this host holds, never a human
         // password, never returned in this (or any) response. Closes the

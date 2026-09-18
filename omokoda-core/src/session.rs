@@ -228,6 +228,18 @@ pub struct PrivateSessionData {
     pub vanity_private_key_hex: Option<String>,
     #[serde(default)]
     pub vanity_address: Option<String>,
+    /// CREATE2 vanity contract: the 32-byte salt (hex) whose deployment address
+    /// matches the requested prefix/suffix. The contract address itself is stored
+    /// as a wallet binding (chain = "create2_contract") in the public manifest.
+    #[serde(default)]
+    pub create2_salt_hex: Option<String>,
+    #[serde(default)]
+    pub create2_contract_address: Option<String>,
+    /// EIP-2307 keystore v3 JSON for the ETH private key, encrypted with the
+    /// `keystore_password` birth metadata. None if no password was supplied at birth.
+    /// Store this somewhere safe — it is the only recovery path if the vault is lost.
+    #[serde(default)]
+    pub eth_keystore_v3_json: Option<String>,
 
     // ── Inference / compute credentials ──────────────────────────────────────
     #[serde(default)]

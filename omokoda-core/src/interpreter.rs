@@ -348,6 +348,10 @@ pub struct RevealedSeed {
     /// minipae Python adapter; accepts both hex and nsec1 format).
     pub minipae_npub: Option<String>,
     pub minipae_private_key_hex: Option<String>,
+    /// CREATE2 vanity contract mined at birth (public — contract address only).
+    pub create2_contract_address: Option<String>,
+    /// True if an EIP-2307 keystore v3 JSON was generated and sealed into the vault.
+    pub eth_keystore_v3_generated: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -576,6 +580,8 @@ impl AgentCore {
             nostr_address: private_data.nostr_address.clone(),
             minipae_npub: private_data.minipae_npub.clone(),
             minipae_private_key_hex: private_data.minipae_private_key_hex.clone(),
+            create2_contract_address: private_data.create2_contract_address.clone(),
+            eth_keystore_v3_generated: private_data.eth_keystore_v3_json.is_some(),
         };
         self.snapshot.revealed_seed = true;
         Ok(revealed)
@@ -1207,6 +1213,51 @@ impl Steward {
             }
         };
 
+        // Optional CREATE2 vanity contract: mine a salt whose deployment address
+        // matches the requested prefix/suffix. Requires `create2_deployer` and
+        // `create2_bytecode` in birth metadata. The agent's own ETH address is
+        // the default deployer if `create2_deployer` is omitted.
+        let create2_result: Option<crate::identity::wallet::Create2VanityResult> = {
+            let c2prefix = meta_get("create2_prefix").unwrap_or_default();
+            let c2suffix = meta_get("create2_suffix").unwrap_or_default();
+            let c2bytecode = meta_get("create2_bytecode").unwrap_or_default();
+            if (c2prefix.is_empty() && c2suffix.is_empty()) || c2bytecode.is_empty() {
+                None
+            } else {
+                let deployer = meta_get("create2_deployer")
+                    .unwrap_or_else(|| eth_key.address.clone());
+                let c2max: u64 = meta_get("create2_max_attempts")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(1_000_000);
+                match crate::identity::wallet::mine_create2_vanity(
+                    &deployer, &c2bytecode, &c2prefix, &c2suffix, c2max,
+                ) {
+                    Ok(r) => Some(r),
+                    Err(e) => { tracing::warn!("CREATE2 mine failed: {e}"); None }
+                }
+            }
+        };
+
+        // Optional EIP-2307 keystore v3 export: if `keystore_password` birth
+        // metadata is present, encrypt the ETH private key and store the JSON
+        // inside the sealed vault. The password itself is NOT stored anywhere.
+        let eth_keystore_v3_json: Option<String> = {
+            let pw = meta_get("keystore_password").unwrap_or_default();
+            if pw.is_empty() {
+                None
+            } else {
+                match crate::identity::wallet::export_keystore_v3(
+                    &eth_key.private_key_hex, &pw,
+                ) {
+                    Ok(ks) => match serde_json::to_string(&ks) {
+                        Ok(j) => Some(j),
+                        Err(e) => { tracing::warn!("keystore serialize failed: {e}"); None }
+                    },
+                    Err(e) => { tracing::warn!("keystore export failed: {e}"); None }
+                }
+            }
+        };
+
         // Phase 7.1 — derive libp2p peer identity and email local-part from k_root.
         // Both use distinct HMAC paths so they never collide with chain keys.
         let (libp2p_private_key_hex, libp2p_peer_id) =
@@ -1236,6 +1287,9 @@ impl Steward {
             minipae_npub: Some(minipae_key.address.clone()),
             vanity_private_key_hex: vanity_result.as_ref().map(|v| v.private_key_hex.clone()),
             vanity_address: vanity_result.as_ref().map(|v| v.address.clone()),
+            create2_salt_hex: create2_result.as_ref().map(|c| c.salt_hex.clone()),
+            create2_contract_address: create2_result.as_ref().map(|c| c.contract_address.clone()),
+            eth_keystore_v3_json: eth_keystore_v3_json.clone(),
 
             // ── Inference / compute credentials (fail-open — None if not configured) ──
             // Read from environment at birth so each sovereign node can configure
@@ -1436,6 +1490,17 @@ impl Steward {
                 m.economic.wallet_bindings.push(crate::genesis::manifest::WalletBinding {
                     chain: format!("{vchain}_vanity"),
                     address: v.address.clone(),
+                    poison_scan: Some(scan),
+                });
+            }
+            // Append CREATE2 contract address if one was mined at birth.
+            if let Some(ref c) = create2_result {
+                let scan = crate::identity::poison_radar::analyze_static(
+                    &c.contract_address, "eth",
+                );
+                m.economic.wallet_bindings.push(crate::genesis::manifest::WalletBinding {
+                    chain: "create2_contract".into(),
+                    address: c.contract_address.clone(),
                     poison_scan: Some(scan),
                 });
             }
@@ -4686,6 +4751,9 @@ impl Steward {
                     kaggle_api_key: None,
                     vanity_private_key_hex: None,
                     vanity_address: None,
+                    create2_salt_hex: None,
+                    create2_contract_address: None,
+                    eth_keystore_v3_json: None,
                 };
                 if let Ok(vault_key) =
                     crate::identity::machine_vault::derive_agent_vault_key(snapshot.id.as_str())

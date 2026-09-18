@@ -1744,6 +1744,200 @@ mod multi_agent_tests {
 }
 
 #[cfg(test)]
+mod keystore_tests {
+    use super::*;
+    use axum::body::to_bytes;
+    use axum::http::{HeaderMap, StatusCode};
+    use axum::response::IntoResponse;
+
+    fn fresh_state() -> AppState {
+        AppState {
+            steward: Arc::new(Mutex::new(Steward::new())),
+            guests: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            vault_base: PathBuf::from(".omokoda-test"),
+            runtime: crate::lifecycle::AgentRuntime::new("test", "resident"),
+        }
+    }
+
+    /// Read the response body as a serde_json::Value.
+    async fn body_json(resp: axum::response::Response) -> serde_json::Value {
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    /// Birth an owner (sovereign) agent. Pass `with_keystore = true` to include
+    /// a `keystore_password` birth metadata entry.
+    async fn birth_owner(state: &AppState, with_keystore: bool) {
+        let mut meta = vec![MetaKv {
+            key: "sovereign".to_string(),
+            value: "true".to_string(),
+        }];
+        if with_keystore {
+            meta.push(MetaKv {
+                key: "keystore_password".to_string(),
+                value: "test-password-123".to_string(),
+            });
+        }
+        let resp = birth_handler(
+            State(state.clone()),
+            HeaderMap::new(),
+            Json(BirthRequest { name: "ks-owner".to_string(), meta }),
+        )
+        .await
+        .into_response();
+        assert_eq!(resp.status(), StatusCode::OK, "owner birth must succeed");
+    }
+
+    /// Birth a guest agent (non-sovereign) and return its id.
+    async fn birth_guest(state: &AppState, with_keystore: bool) -> String {
+        let mut meta = vec![];
+        if with_keystore {
+            meta.push(MetaKv {
+                key: "keystore_password".to_string(),
+                value: "guest-password-456".to_string(),
+            });
+        }
+        let resp = birth_handler(
+            State(state.clone()),
+            HeaderMap::new(),
+            Json(BirthRequest { name: "ks-guest".to_string(), meta }),
+        )
+        .await
+        .into_response();
+        assert_eq!(resp.status(), StatusCode::OK, "guest birth must succeed");
+
+        state
+            .guests
+            .lock()
+            .await
+            .keys()
+            .next()
+            .cloned()
+            .expect("guest must appear in pool after birth")
+    }
+
+    // ── owner (no X-Agent-Id header) ─────────────────────────────────────
+
+    #[tokio::test]
+    async fn owner_keystore_returns_200_with_encrypted_json() {
+        let state = fresh_state();
+        birth_owner(&state, true).await;
+
+        let resp = keystore_handler(State(state), HeaderMap::new())
+            .await
+            .into_response();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        let ks_str = body["keystore"].as_str().expect("keystore field must be a string");
+
+        // The value must itself be valid JSON containing EIP-2307 v3 fields.
+        let ks: serde_json::Value = serde_json::from_str(ks_str)
+            .expect("keystore field must contain valid JSON");
+        assert_eq!(ks["version"].as_u64(), Some(3), "keystore version must be 3");
+        assert!(ks["crypto"].is_object(), "keystore must have a crypto object");
+        assert!(ks["id"].is_string(), "keystore must have a uuid id");
+        assert!(ks["address"].is_string(), "keystore must include the ETH address");
+    }
+
+    #[tokio::test]
+    async fn owner_keystore_returns_404_when_not_generated() {
+        let state = fresh_state();
+        birth_owner(&state, false).await; // no keystore_password
+
+        let resp = keystore_handler(State(state), HeaderMap::new())
+            .await
+            .into_response();
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        let body = body_json(resp).await;
+        assert!(
+            body["error"].as_str().unwrap_or("").contains("keystore_password"),
+            "error message must guide user to supply keystore_password at birth"
+        );
+    }
+
+    #[tokio::test]
+    async fn owner_keystore_is_retrievable_multiple_times() {
+        // Unlike reveal-seed, the keystore endpoint has no one-shot latch.
+        let state = fresh_state();
+        birth_owner(&state, true).await;
+
+        let r1 = keystore_handler(State(state.clone()), HeaderMap::new())
+            .await
+            .into_response();
+        let r2 = keystore_handler(State(state), HeaderMap::new())
+            .await
+            .into_response();
+
+        assert_eq!(r1.status(), StatusCode::OK, "first retrieval must succeed");
+        assert_eq!(r2.status(), StatusCode::OK, "second retrieval must also succeed (no latch)");
+    }
+
+    // ── guest (X-Agent-Id + X-Agent-Key required) ────────────────────────
+
+    #[tokio::test]
+    async fn guest_keystore_requires_correct_key() {
+        let state = fresh_state();
+        let agent_id = birth_guest(&state, true).await;
+
+        // No X-Agent-Key at all → 401.
+        let mut headers = HeaderMap::new();
+        headers.insert("x-agent-id", agent_id.parse().unwrap());
+        let resp = keystore_handler(State(state.clone()), headers)
+            .await
+            .into_response();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        // Wrong key → 401.
+        let mut headers = HeaderMap::new();
+        headers.insert("x-agent-id", agent_id.parse().unwrap());
+        headers.insert("x-agent-key", "wrong-key".parse().unwrap());
+        let resp = keystore_handler(State(state.clone()), headers)
+            .await
+            .into_response();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn guest_keystore_returns_404_when_not_generated() {
+        let state = fresh_state();
+        let agent_id = birth_guest(&state, false).await; // no password
+
+        // Retrieve the key the server would have assigned (same logic as dispatch tests).
+        let expected_key = {
+            let guests = state.guests.lock().await;
+            let steward = guests.get(&agent_id).unwrap();
+            steward
+                .agent_core()
+                .and_then(|a| a.vantage_key())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| agent_id.clone())
+        };
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-agent-id", agent_id.parse().unwrap());
+        headers.insert("x-agent-key", expected_key.parse().unwrap());
+
+        let resp = keystore_handler(State(state), headers)
+            .await
+            .into_response();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn unknown_agent_id_returns_404() {
+        let state = fresh_state();
+        let mut headers = HeaderMap::new();
+        headers.insert("x-agent-id", "ghost-agent".parse().unwrap());
+        let resp = keystore_handler(State(state), headers)
+            .await
+            .into_response();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+}
+
+#[cfg(test)]
 mod event_json_tests {
     use super::sovereign_event_to_json;
     use crate::bus::events::{

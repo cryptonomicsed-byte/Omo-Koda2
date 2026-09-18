@@ -2,6 +2,7 @@ use blake2::digest::consts::U32;
 use blake2::{Blake2b, Digest};
 use ed25519_dalek::SigningKey;
 use hmac::{Hmac, Mac};
+use serde::{Deserialize, Serialize};
 use sha2::{Sha256, Sha512};
 use sha3::{Keccak256, Sha3_256};
 
@@ -491,6 +492,335 @@ pub fn mine_sol_vanity(
         "Vanity mine exhausted after {max_attempts} attempts without finding \
          a match for prefix={prefix:?} suffix={suffix:?}"
     ))
+}
+
+// ── CREATE2 vanity contract address miner ──────────────────────────────────
+
+/// Result of a CREATE2 vanity salt search.
+#[derive(Debug, Clone)]
+pub struct Create2VanityResult {
+    /// 32-byte random salt as lowercase hex (no 0x prefix).
+    pub salt_hex: String,
+    /// EIP-55 checksummed `0x…` contract address.
+    pub contract_address: String,
+    pub attempts: u64,
+    pub duration_ms: u128,
+}
+
+/// Compute the CREATE2 deployment address given a deployer, salt, and bytecode.
+///
+/// All inputs may optionally have a `0x` prefix.
+/// Returns an EIP-55 checksummed `0x…` address.
+pub fn create2_address(
+    deployer_hex: &str,
+    salt_hex: &str,
+    bytecode_hex: &str,
+) -> Result<String, String> {
+    // Strip 0x prefixes.
+    let deployer = deployer_hex.trim_start_matches("0x");
+    let salt = salt_hex.trim_start_matches("0x");
+    let bytecode = bytecode_hex.trim_start_matches("0x");
+
+    if deployer.len() != 40 {
+        return Err(format!(
+            "deployer must be 40 hex chars (20 bytes), got {}",
+            deployer.len()
+        ));
+    }
+    if !deployer.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("deployer contains non-hex characters".into());
+    }
+
+    // Decode deployer (20 bytes).
+    let deployer_bytes = hex::decode(deployer).map_err(|e| e.to_string())?;
+
+    // Decode and left-pad salt to 32 bytes.
+    let salt_raw = hex::decode(salt).map_err(|e| e.to_string())?;
+    if salt_raw.len() > 32 {
+        return Err("salt must be at most 32 bytes".into());
+    }
+    let mut salt_bytes = [0u8; 32];
+    salt_bytes[32 - salt_raw.len()..].copy_from_slice(&salt_raw);
+
+    // keccak256(bytecode).
+    let bytecode_bytes = hex::decode(bytecode).map_err(|e| e.to_string())?;
+    let mut hasher = Keccak256::new();
+    hasher.update(&bytecode_bytes);
+    let init_code_hash = hasher.finalize();
+
+    // Preimage: 0xff ++ deployer(20) ++ salt(32) ++ keccak256(bytecode)(32) = 85 bytes.
+    let mut preimage = [0u8; 85];
+    preimage[0] = 0xff;
+    preimage[1..21].copy_from_slice(&deployer_bytes);
+    preimage[21..53].copy_from_slice(&salt_bytes);
+    preimage[53..85].copy_from_slice(&init_code_hash);
+
+    // Hash the preimage; take last 20 bytes.
+    let mut hasher2 = Keccak256::new();
+    hasher2.update(&preimage);
+    let digest = hasher2.finalize();
+    let addr_hex = hex::encode(&digest[12..]);
+
+    Ok(format!("0x{}", eip55_checksum(&addr_hex)))
+}
+
+/// Mine a random salt such that the CREATE2 deployment address starts with
+/// `prefix` and ends with `suffix` (case-insensitive hex, without `0x`).
+///
+/// Returns `Err` if `max_attempts` is exhausted without a match.
+pub fn mine_create2_vanity(
+    deployer_hex: &str,
+    bytecode_hex: &str,
+    prefix: &str,
+    suffix: &str,
+    max_attempts: u64,
+) -> Result<Create2VanityResult, String> {
+    use rand::RngCore;
+
+    let prefix_lc = prefix.to_lowercase();
+    let suffix_lc = suffix.to_lowercase();
+
+    if prefix_lc.chars().any(|c| !c.is_ascii_hexdigit())
+        || suffix_lc.chars().any(|c| !c.is_ascii_hexdigit())
+    {
+        return Err(
+            "CREATE2 vanity pattern must contain only hex characters 0-9 a-f".into(),
+        );
+    }
+    if prefix_lc.len() + suffix_lc.len() > 40 {
+        return Err("Combined vanity pattern length exceeds 40 hex chars".into());
+    }
+
+    // Pre-validate deployer and compute bytecode hash once.
+    let deployer = deployer_hex.trim_start_matches("0x");
+    if deployer.len() != 40 || !deployer.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("deployer must be 40 valid hex chars".into());
+    }
+    let deployer_bytes = hex::decode(deployer).map_err(|e| e.to_string())?;
+
+    let bytecode_raw = hex::decode(bytecode_hex.trim_start_matches("0x"))
+        .map_err(|e| e.to_string())?;
+    let mut bh = Keccak256::new();
+    bh.update(&bytecode_raw);
+    let init_code_hash = bh.finalize();
+
+    let mut rng = rand::thread_rng();
+    let start = std::time::Instant::now();
+
+    for attempt in 0..max_attempts {
+        let mut salt_bytes = [0u8; 32];
+        rng.fill_bytes(&mut salt_bytes);
+
+        // Build preimage inline to avoid per-iteration heap alloc.
+        let mut preimage = [0u8; 85];
+        preimage[0] = 0xff;
+        preimage[1..21].copy_from_slice(&deployer_bytes);
+        preimage[21..53].copy_from_slice(&salt_bytes);
+        preimage[53..85].copy_from_slice(&init_code_hash);
+
+        let mut hasher = Keccak256::new();
+        hasher.update(&preimage);
+        let digest = hasher.finalize();
+        let addr_hex = hex::encode(&digest[12..]);
+
+        let matches = (prefix_lc.is_empty() || addr_hex.starts_with(prefix_lc.as_str()))
+            && (suffix_lc.is_empty() || addr_hex.ends_with(suffix_lc.as_str()));
+
+        if matches {
+            return Ok(Create2VanityResult {
+                salt_hex: hex::encode(salt_bytes),
+                contract_address: format!("0x{}", eip55_checksum(&addr_hex)),
+                attempts: attempt + 1,
+                duration_ms: start.elapsed().as_millis(),
+            });
+        }
+    }
+
+    Err(format!(
+        "CREATE2 vanity mine exhausted after {max_attempts} attempts without finding \
+         a match for prefix={prefix_lc:?} suffix={suffix_lc:?}"
+    ))
+}
+
+// ── EIP-2307 keystore v3 JSON export ──────────────────────────────────────
+
+/// EIP-2307 / Web3 Secret Storage Definition (keystore v3) encrypted wallet.
+///
+/// Cipher used: `xchacha20poly1305` (AEAD).  The nonce is stored in
+/// `cipherparams.nonce` (24 bytes hex).  MAC is
+/// `keccak256(derived_key[16..32] ++ ciphertext)` matching the geth v3 MAC
+/// convention.  KDF is PBKDF2-HMAC-SHA256 with 262 144 iterations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeystoreV3 {
+    pub crypto: KeystoreCrypto,
+    /// UUID v4.
+    pub id: String,
+    /// Always 3.
+    pub version: u8,
+    /// Lowercase hex without `0x`.
+    pub address: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeystoreCrypto {
+    /// `"xchacha20poly1305"`
+    pub cipher: String,
+    /// Hex-encoded ciphertext (includes AEAD tag).
+    pub ciphertext: String,
+    /// `{"nonce": "<24-byte hex>"}`.
+    pub cipherparams: serde_json::Value,
+    /// `"pbkdf2"`
+    pub kdf: String,
+    /// `{"c": 262144, "dklen": 32, "prf": "hmac-sha256", "salt": "<hex>"}`.
+    pub kdfparams: serde_json::Value,
+    /// `keccak256(derived_key[16..32] ++ ciphertext)` as hex.
+    pub mac: String,
+}
+
+/// Export an Ethereum private key as an encrypted EIP-2307 keystore v3 JSON.
+///
+/// `private_key_hex` may optionally have a `0x` prefix.
+/// `password` is the user-supplied passphrase for encryption.
+pub fn export_keystore_v3(private_key_hex: &str, password: &str) -> Result<KeystoreV3, String> {
+    use chacha20poly1305::aead::{Aead, KeyInit as _};
+    use chacha20poly1305::{Key as ChaChaKey, XChaCha20Poly1305, XNonce};
+    use rand::RngCore;
+    use uuid::Uuid;
+
+    let pk_hex = private_key_hex.trim_start_matches("0x");
+    if pk_hex.len() != 64 {
+        return Err(format!(
+            "private key must be 64 hex chars (32 bytes), got {}",
+            pk_hex.len()
+        ));
+    }
+    let pk_bytes = hex::decode(pk_hex).map_err(|e| e.to_string())?;
+
+    // Derive Ethereum address from private key.
+    let signing_key =
+        k256::ecdsa::SigningKey::from_bytes(pk_bytes.as_slice().into())
+            .map_err(|e| e.to_string())?;
+    let verifying_key = signing_key.verifying_key();
+    let uncompressed = verifying_key.to_encoded_point(false);
+    let pub_bytes = uncompressed.as_bytes();
+    let mut addr_hasher = Keccak256::new();
+    addr_hasher.update(&pub_bytes[1..]);
+    let addr_digest = addr_hasher.finalize();
+    let address = hex::encode(&addr_digest[12..]);
+
+    let mut rng = rand::thread_rng();
+
+    // KDF: PBKDF2-HMAC-SHA256, 262144 rounds, 32-byte output.
+    let mut salt = [0u8; 32];
+    rng.fill_bytes(&mut salt);
+    let mut derived_key = [0u8; 32];
+    pbkdf2::pbkdf2::<Hmac<Sha256>>(
+        password.as_bytes(),
+        &salt,
+        262_144,
+        &mut derived_key,
+    )
+    .map_err(|e| format!("PBKDF2 error: {e}"))?;
+
+    // Encrypt: XChaCha20Poly1305 with the first 32 bytes of derived key.
+    let mut nonce_bytes = [0u8; 24];
+    rng.fill_bytes(&mut nonce_bytes);
+    let cipher_key = ChaChaKey::from_slice(&derived_key);
+    let cipher = XChaCha20Poly1305::new(cipher_key);
+    let nonce = XNonce::from_slice(&nonce_bytes);
+    let ciphertext = cipher
+        .encrypt(nonce, pk_bytes.as_slice())
+        .map_err(|e| format!("encryption error: {e}"))?;
+
+    // MAC = keccak256(derived_key[16..32] ++ ciphertext).
+    let mut mac_hasher = Keccak256::new();
+    mac_hasher.update(&derived_key[16..32]);
+    mac_hasher.update(&ciphertext);
+    let mac_digest = mac_hasher.finalize();
+
+    Ok(KeystoreV3 {
+        crypto: KeystoreCrypto {
+            cipher: "xchacha20poly1305".into(),
+            ciphertext: hex::encode(&ciphertext),
+            cipherparams: serde_json::json!({ "nonce": hex::encode(nonce_bytes) }),
+            kdf: "pbkdf2".into(),
+            kdfparams: serde_json::json!({
+                "c": 262_144u32,
+                "dklen": 32u32,
+                "prf": "hmac-sha256",
+                "salt": hex::encode(salt),
+            }),
+            mac: hex::encode(mac_digest),
+        },
+        id: Uuid::new_v4().to_string(),
+        version: 3,
+        address,
+    })
+}
+
+/// Decrypt a keystore v3 JSON and return the private key as lowercase hex
+/// (no `0x` prefix).
+pub fn import_keystore_v3(keystore: &KeystoreV3, password: &str) -> Result<String, String> {
+    use chacha20poly1305::aead::{Aead, KeyInit as _};
+    use chacha20poly1305::{Key as ChaChaKey, XChaCha20Poly1305, XNonce};
+
+    let crypto = &keystore.crypto;
+
+    if crypto.kdf != "pbkdf2" {
+        return Err(format!("unsupported KDF: {}", crypto.kdf));
+    }
+    if crypto.cipher != "xchacha20poly1305" {
+        return Err(format!("unsupported cipher: {}", crypto.cipher));
+    }
+
+    // Parse KDF params.
+    let params = &crypto.kdfparams;
+    let c = params["c"].as_u64().ok_or("missing kdfparams.c")? as u32;
+    let salt_hex = params["salt"].as_str().ok_or("missing kdfparams.salt")?;
+    let salt = hex::decode(salt_hex).map_err(|e| e.to_string())?;
+
+    // Derive key.
+    let mut derived_key = [0u8; 32];
+    pbkdf2::pbkdf2::<Hmac<Sha256>>(
+        password.as_bytes(),
+        &salt,
+        c,
+        &mut derived_key,
+    )
+    .map_err(|e| format!("PBKDF2 error: {e}"))?;
+
+    // Decode ciphertext.
+    let ciphertext = hex::decode(&crypto.ciphertext).map_err(|e| e.to_string())?;
+
+    // Verify MAC.
+    let mut mac_hasher = Keccak256::new();
+    mac_hasher.update(&derived_key[16..32]);
+    mac_hasher.update(&ciphertext);
+    let mac_digest = mac_hasher.finalize();
+    let expected_mac = hex::encode(mac_digest);
+    if crypto.mac != expected_mac {
+        return Err("MAC mismatch — wrong password or corrupted keystore".into());
+    }
+
+    // Decrypt.
+    let nonce_hex = crypto.cipherparams["nonce"]
+        .as_str()
+        .ok_or("missing cipherparams.nonce")?;
+    let nonce_bytes = hex::decode(nonce_hex).map_err(|e| e.to_string())?;
+    if nonce_bytes.len() != 24 {
+        return Err(format!(
+            "nonce must be 24 bytes, got {}",
+            nonce_bytes.len()
+        ));
+    }
+    let cipher_key = ChaChaKey::from_slice(&derived_key);
+    let cipher = XChaCha20Poly1305::new(cipher_key);
+    let nonce = XNonce::from_slice(&nonce_bytes);
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext.as_slice())
+        .map_err(|_| "decryption failed — wrong password or corrupted ciphertext")?;
+
+    Ok(hex::encode(plaintext))
 }
 
 #[cfg(test)]

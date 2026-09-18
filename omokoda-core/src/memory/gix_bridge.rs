@@ -115,6 +115,188 @@ pub fn project_gix(dir: &OduDirectory) -> GixGraph {
     graph
 }
 
+// ── GIX query API ────────────────────────────────────────────────────────────
+
+/// Query result from a GIX SELECT / DESCRIBE / WALK / INFER operation.
+#[derive(Debug, Clone)]
+pub struct GixSelectResult {
+    /// Hex SHA-256 canonical id of the entry.
+    pub id: String,
+    /// GIX kind discriminant.
+    pub kind: GixKind,
+    /// Unix timestamp (float seconds) when the entry was recorded.
+    pub timestamp: f64,
+}
+
+impl GixSelectResult {
+    fn from_entry(e: &Gix1Entry) -> Self {
+        Self {
+            id: e.canonical_id.clone(),
+            kind: e.kind.clone(),
+            timestamp: e.ts,
+        }
+    }
+}
+
+/// DESCRIBE: return all metadata for a single entry by canonical id.
+/// Returns `None` if the entry is not present in the index.
+pub fn query_describe(index: &Gix1Index, id: &str) -> Option<GixSelectResult> {
+    index.entries().iter().find(|e| e.canonical_id == id).map(GixSelectResult::from_entry)
+}
+
+/// SELECT: filter entries by optional kind and optional time range \[since_ts, until_ts\].
+/// Pass `None` for either bound to leave it open.
+pub fn query_select(
+    index: &Gix1Index,
+    kind: Option<&GixKind>,
+    since_ts: Option<f64>,
+    until_ts: Option<f64>,
+) -> Vec<GixSelectResult> {
+    index
+        .entries()
+        .iter()
+        .filter(|e| kind.map_or(true, |k| &e.kind == k))
+        .filter(|e| since_ts.map_or(true, |t| e.ts >= t))
+        .filter(|e| until_ts.map_or(true, |t| e.ts <= t))
+        .map(GixSelectResult::from_entry)
+        .collect()
+}
+
+/// WALK: traverse from a starting canonical id, following entries within
+/// `max_depth` timestamp steps (each step = entries within ±1.0 ts of the
+/// previous frontier).  Returns the traversal path as a list of
+/// `GixSelectResult`.
+///
+/// Because `Gix1Index` has no explicit edge structure, proximity is defined
+/// purely by timestamp adjacency (±1.0 seconds per hop).
+pub fn query_walk(index: &Gix1Index, from_id: &str, max_depth: usize) -> Vec<GixSelectResult> {
+    // Find the starting entry.
+    let start = match index.entries().iter().find(|e| e.canonical_id == from_id) {
+        Some(e) => e,
+        None => return vec![],
+    };
+
+    let mut visited: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut result: Vec<GixSelectResult> = Vec::new();
+    let mut frontier_ts: Vec<f64> = vec![start.ts];
+
+    visited.insert(start.canonical_id.clone());
+    result.push(GixSelectResult::from_entry(start));
+
+    for _ in 0..max_depth {
+        let mut next_frontier_ts: Vec<f64> = Vec::new();
+        for &center_ts in &frontier_ts {
+            for entry in index.entries().iter() {
+                if visited.contains(&entry.canonical_id) {
+                    continue;
+                }
+                if (entry.ts - center_ts).abs() <= 1.0 {
+                    visited.insert(entry.canonical_id.clone());
+                    next_frontier_ts.push(entry.ts);
+                    result.push(GixSelectResult::from_entry(entry));
+                }
+            }
+        }
+        if next_frontier_ts.is_empty() {
+            break;
+        }
+        frontier_ts = next_frontier_ts;
+    }
+
+    result
+}
+
+/// INFER: given a partial id prefix, return up to `limit` entries whose
+/// canonical id starts with `id_prefix` (prefix match on the hex string).
+/// Used for semantic / auto-completion queries.
+pub fn query_infer(index: &Gix1Index, id_prefix: &str, limit: usize) -> Vec<GixSelectResult> {
+    index
+        .entries()
+        .iter()
+        .filter(|e| e.canonical_id.starts_with(id_prefix))
+        .take(limit)
+        .map(GixSelectResult::from_entry)
+        .collect()
+}
+
+/// Generate a simple Merkle inclusion proof for an entry.
+///
+/// Returns `(leaf_hash, root_hash, siblings_hex)` where `siblings_hex` is the
+/// ordered list of sibling hashes needed to reconstruct the root from the leaf.
+///
+/// Returns `Err` if the entry is not found in the index.
+///
+/// Implementation note: this replicates the same pairwise SHA-256 reduction
+/// used by `gix1_merkle_root` in `gix_types`.  We build the proof bottom-up
+/// so callers can independently verify inclusion without holding the full index.
+pub fn merkle_proof(
+    index: &Gix1Index,
+    id: &str,
+) -> Result<(String, String, Vec<String>), String> {
+    use sha2::{Digest, Sha256};
+
+    if index.is_empty() {
+        return Err(format!("index is empty; entry '{id}' not found"));
+    }
+
+    // Sort canonical_ids the same way gix1_merkle_root does.
+    let mut sorted_ids: Vec<&str> = index
+        .entries()
+        .iter()
+        .map(|e| e.canonical_id.as_str())
+        .collect();
+    sorted_ids.sort_unstable();
+
+    let leaf_pos = sorted_ids
+        .iter()
+        .position(|&s| s == id)
+        .ok_or_else(|| format!("entry '{id}' not found in index"))?;
+
+    // Build the leaf layer: hash each canonical_id.
+    let mut layer: Vec<[u8; 32]> = sorted_ids
+        .iter()
+        .map(|s| {
+            let mut h = Sha256::new();
+            h.update(s.as_bytes());
+            h.finalize().into()
+        })
+        .collect();
+
+    let leaf_hash = hex::encode(layer[leaf_pos]);
+    let mut siblings: Vec<String> = Vec::new();
+    let mut pos = leaf_pos;
+
+    while layer.len() > 1 {
+        // Find this node's sibling at the current level.
+        let sibling_pos = if pos % 2 == 0 {
+            // Left node: sibling is to the right (or self if odd layer).
+            if pos + 1 < layer.len() { pos + 1 } else { pos }
+        } else {
+            // Right node: sibling is to the left.
+            pos - 1
+        };
+        siblings.push(hex::encode(layer[sibling_pos]));
+
+        // Reduce layer.
+        let mut next: Vec<[u8; 32]> = Vec::with_capacity((layer.len() + 1) / 2);
+        let mut i = 0;
+        while i < layer.len() {
+            let left  = layer[i];
+            let right = if i + 1 < layer.len() { layer[i + 1] } else { left };
+            let mut h = Sha256::new();
+            h.update(&left);
+            h.update(&right);
+            next.push(h.finalize().into());
+            i += 2;
+        }
+        pos /= 2;
+        layer = next;
+    }
+
+    let root_hash = hex::encode(layer[0]);
+    Ok((leaf_hash, root_hash, siblings))
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 fn dir_canonical_ids(dir: &OduDirectory) -> Vec<String> {

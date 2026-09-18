@@ -590,6 +590,21 @@ impl AgentCore {
         Ok(revealed)
     }
 
+    /// Return the EIP-2307 keystore v3 JSON sealed at birth, or an error if
+    /// none was generated (no `keystore_password` birth metadata supplied).
+    /// Unlike `reveal_seed` this does NOT consume the one-shot latch — the
+    /// keystore is already encrypted with the user's password so repeated
+    /// retrieval is safe.
+    pub fn keystore_json(&self) -> Result<&str, String> {
+        let pd = self
+            .private_data
+            .as_ref()
+            .ok_or_else(|| "agent is locked — unlock first".to_string())?;
+        pd.eth_keystore_v3_json
+            .as_deref()
+            .ok_or_else(|| "no keystore: supply keystore_password at birth to generate one".to_string())
+    }
+
     pub fn onchain_nft_id(&self) -> Option<&str> {
         self.snapshot.onchain_nft_id.as_deref()
     }

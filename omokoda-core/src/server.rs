@@ -372,6 +372,73 @@ async fn reveal_seed_handler(
     }
 }
 
+/// Retrieve the EIP-2307 keystore v3 JSON sealed at birth without consuming
+/// the reveal-seed one-shot latch.  The keystore is already encrypted with
+/// the caller's own password, so repeated retrieval is safe.  Returns 404
+/// when no keystore was generated (no `keystore_password` at birth).
+/// Auth is identical to reveal_seed_handler.
+async fn keystore_handler(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    use axum::http::StatusCode;
+
+    let requested_id = headers
+        .get("x-agent-id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    let result: Result<String, (StatusCode, String)> = match requested_id {
+        None => {
+            let steward = state.steward.lock().await;
+            steward
+                .agent_core()
+                .ok_or_else(|| (StatusCode::NOT_FOUND, "no agent resident".to_string()))
+                .and_then(|c| {
+                    c.keystore_json()
+                        .map(|s| s.to_string())
+                        .map_err(|e| (StatusCode::NOT_FOUND, e))
+                })
+        }
+        Some(id) => {
+            let guests = state.guests.lock().await;
+            let Some(steward) = guests.get(&id) else {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({"error": "unknown agent_id"})),
+                )
+                    .into_response();
+            };
+            let expected_key = steward
+                .agent_core()
+                .and_then(|a| a.vantage_key())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| id.clone());
+            let presented = headers.get("x-agent-key").and_then(|v| v.to_str().ok());
+            if presented != Some(expected_key.as_str()) {
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    Json(serde_json::json!({"error": "invalid or missing X-Agent-Key"})),
+                )
+                    .into_response();
+            }
+            steward
+                .agent_core()
+                .ok_or_else(|| (StatusCode::NOT_FOUND, "no agent resident".to_string()))
+                .and_then(|c| {
+                    c.keystore_json()
+                        .map(|s| s.to_string())
+                        .map_err(|e| (StatusCode::NOT_FOUND, e))
+                })
+        }
+    };
+
+    match result {
+        Ok(json_str) => Json(serde_json::json!({ "keystore": json_str })).into_response(),
+        Err((status, msg)) => (status, Json(serde_json::json!({"error": msg}))).into_response(),
+    }
+}
+
 #[derive(Deserialize)]
 struct ResumeRequest {
     agent_id: String,
@@ -1267,6 +1334,7 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/v1/birth", post(birth_handler))
         .route("/v1/reveal-seed", post(reveal_seed_handler))
+        .route("/v1/keystore", get(keystore_handler))
         .route("/v1/resume", post(resume_handler))
         .route("/v1/think", post(think_handler))
         .route("/v1/cognition", post(cognition_handler))

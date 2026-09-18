@@ -350,8 +350,11 @@ pub struct RevealedSeed {
     pub minipae_private_key_hex: Option<String>,
     /// CREATE2 vanity contract mined at birth (public — contract address only).
     pub create2_contract_address: Option<String>,
-    /// True if an EIP-2307 keystore v3 JSON was generated and sealed into the vault.
-    pub eth_keystore_v3_generated: bool,
+    /// EIP-2307 keystore v3 JSON for the ETH key, present when a `keystore_password`
+    /// was supplied at birth. Already encrypted — safe to transmit, but store securely:
+    /// it is the only out-of-vault recovery path for the ETH private key.
+    /// None when no password was supplied at birth.
+    pub eth_keystore_v3_json: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -581,7 +584,7 @@ impl AgentCore {
             minipae_npub: private_data.minipae_npub.clone(),
             minipae_private_key_hex: private_data.minipae_private_key_hex.clone(),
             create2_contract_address: private_data.create2_contract_address.clone(),
-            eth_keystore_v3_generated: private_data.eth_keystore_v3_json.is_some(),
+            eth_keystore_v3_json: private_data.eth_keystore_v3_json.clone(),
         };
         self.snapshot.revealed_seed = true;
         Ok(revealed)

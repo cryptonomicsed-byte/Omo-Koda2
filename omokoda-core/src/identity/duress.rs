@@ -16,6 +16,7 @@ pub enum DuressResponse {
 }
 
 /// Duress handler — registered at birth with a secret panic phrase.
+#[derive(Debug, Clone)]
 pub struct DuressHandler {
     panic_phrase_hash: [u8; 32],
     response: DuressResponse,

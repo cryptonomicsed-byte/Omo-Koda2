@@ -5,6 +5,7 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 
 use crate::execution::permission_enforcer::{enforce_mode, validate_path_boundary};
+#[cfg(feature = "wasm")]
 use crate::sandbox::WasmSandbox;
 
 pub mod execution_log;
@@ -160,6 +161,9 @@ impl ToolRegistry {
         // DangerFullAccess-gated, but keep the vulnerable path UNREGISTERED by
         // default -- opt in with OMOKODA_ENABLE_WASM=1 -- until the per-agent
         // microVM/gVisor sandbox tier retires it (or wasmtime is bumped).
+        // Also requires the "wasm" feature flag (disabled on ARM64/Termux where
+        // cranelift-codegen crashes rustc).
+        #[cfg(feature = "wasm")]
         if std::env::var("OMOKODA_ENABLE_WASM").as_deref() == Ok("1") {
             registry.register(Box::new(LazyTool::new(
                 "wasm",
@@ -1042,7 +1046,9 @@ impl Tool for GrepTool {
     }
 }
 
+#[cfg(feature = "wasm")]
 struct WasmTool;
+#[cfg(feature = "wasm")]
 #[async_trait]
 impl Tool for WasmTool {
     fn name(&self) -> &str {

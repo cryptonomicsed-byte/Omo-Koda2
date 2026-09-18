@@ -613,6 +613,7 @@ async fn manifest_handler(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
+    use axum::http::StatusCode;
     let requested_id = headers.get("x-agent-id").and_then(|v| v.to_str().ok());
     match requested_id {
         None => {
@@ -658,6 +659,7 @@ async fn capability_handler(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
+    use axum::http::StatusCode;
     use crate::genesis::capability::{CapabilityRegistry, CapabilityScope};
 
     let requested_id = headers.get("x-agent-id").and_then(|v| v.to_str().ok());
@@ -1461,7 +1463,7 @@ fn spawn_heartbeat(
                 use crate::lifecycle::HeartbeatState as HbState;
                 let mut rt = runtime.lock().await;
                 rt.daemons.mark_ticked("heartbeat");
-                rt.advance_chain(HbState::Alive, intent.as_deref().map(str::to_string))
+                rt.advance_chain(HbState::Alive, Some(intent.clone()))
                 // Future: also publish beat to Zàngbétò for receipt chain.
             };
             if let Some(client) = crate::vantage::WorkspaceClient::from_env() {
@@ -1532,6 +1534,7 @@ mod multi_agent_tests {
             steward: Arc::new(Mutex::new(Steward::new())),
             guests: Arc::new(Mutex::new(std::collections::HashMap::new())),
             vault_base: PathBuf::from(".omokoda-test"),
+            runtime: crate::lifecycle::AgentRuntime::new("test", "resident"),
         }
     }
 

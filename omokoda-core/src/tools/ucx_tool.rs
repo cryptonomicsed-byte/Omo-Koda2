@@ -265,13 +265,15 @@ impl Tool for VcpRequestSessionTool {
          Optional: duration_secs (default 3600), scope (Exclusive/Shared/SingleUse)."
     }
 
-    fn tier_required(&self) -> u8 { 3 }
+    fn required_tier(&self) -> u8 { 3 }
+    fn is_write_operation(&self) -> bool { true }
 
     fn timeout_secs(&self) -> u64 { 30 }
 
-    async fn execute(&self, params: Value, ctx: &ExecutionContext) -> Result<Value, String> {
-        let device_id     = params["device_id"].as_str().ok_or("device_id required")?;
-        let required_caps = params["required_caps"]
+    async fn execute(&self, params: &str, ctx: &ExecutionContext) -> Result<(String, TokenUsage), String> {
+        let spec: Value = serde_json::from_str(params).unwrap_or(Value::Null);
+        let device_id     = spec["device_id"].as_str().ok_or("device_id required")?;
+        let required_caps = spec["required_caps"]
             .as_array()
             .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect::<Vec<_>>())
             .unwrap_or_default();
@@ -295,7 +297,7 @@ impl Tool for VcpRequestSessionTool {
             return Err(format!("VCP session request failed {status}: {val}"));
         }
 
-        Ok(val)
+        Ok((val.to_string(), TokenUsage::default()))
     }
 }
 
@@ -312,11 +314,12 @@ impl Tool for VcpListDevicesTool {
          Returns device_id, label, class, safety_class for each fresh device."
     }
 
-    fn tier_required(&self) -> u8 { 2 }
+    fn required_tier(&self) -> u8 { 2 }
+    fn is_write_operation(&self) -> bool { false }
 
     fn timeout_secs(&self) -> u64 { 15 }
 
-    async fn execute(&self, _params: Value, _ctx: &ExecutionContext) -> Result<Value, String> {
+    async fn execute(&self, _params: &str, _ctx: &ExecutionContext) -> Result<(String, TokenUsage), String> {
         let url = if let Some(vantage) = vantage_url() {
             format!("{vantage}/api/vcp/devices")
         } else {
@@ -332,7 +335,7 @@ impl Tool for VcpListDevicesTool {
         let resp  = req.send().await
             .map_err(|e| format!("VCP device list failed: {e}"))?;
         let val: Value = resp.json().await.unwrap_or(Value::Null);
-        Ok(val)
+        Ok((val.to_string(), TokenUsage::default()))
     }
 }
 
@@ -348,12 +351,14 @@ impl Tool for VcpRevokeSessionTool {
         "Revoke an active VCP session. Required params: session_id."
     }
 
-    fn tier_required(&self) -> u8 { 3 }
+    fn required_tier(&self) -> u8 { 3 }
+    fn is_write_operation(&self) -> bool { true }
 
     fn timeout_secs(&self) -> u64 { 15 }
 
-    async fn execute(&self, params: Value, ctx: &ExecutionContext) -> Result<Value, String> {
-        let session_id = params["session_id"].as_str().ok_or("session_id required")?;
+    async fn execute(&self, params: &str, ctx: &ExecutionContext) -> Result<(String, TokenUsage), String> {
+        let spec: Value = serde_json::from_str(params).unwrap_or(Value::Null);
+        let session_id = spec["session_id"].as_str().ok_or("session_id required")?;
         let url        = format!("{}/api/sessions/{session_id}", vcp_broker_url());
 
         let body = json!({ "revoker_did": ctx.agent_id });
@@ -362,7 +367,7 @@ impl Tool for VcpRevokeSessionTool {
         let resp   = client.delete(&url).json(&body).send().await
             .map_err(|e| format!("VCP revoke failed: {e}"))?;
         let val: Value = resp.json().await.unwrap_or(Value::Null);
-        Ok(val)
+        Ok((val.to_string(), TokenUsage::default()))
     }
 }
 

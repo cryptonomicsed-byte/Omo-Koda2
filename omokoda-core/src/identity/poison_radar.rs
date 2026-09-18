@@ -39,7 +39,7 @@ impl std::fmt::Display for RiskLevel {
 }
 
 /// Suspicious pattern counts detected during static analysis.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct SuspiciousPatterns {
     /// Longest run of the same character in the hex address.
     pub repeated_chars: u32,
@@ -52,7 +52,7 @@ pub struct SuspiciousPatterns {
 }
 
 /// Full result of Poison Radar analysis for a single address.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PoisonReport {
     /// `"clean"` | `"suspicious"` | `"error"`
     pub status: String,

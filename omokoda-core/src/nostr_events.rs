@@ -305,7 +305,7 @@ pub async fn publish_event(
 
     // 5-second timeout so a dead relay never blocks the caller.
     let timeout = std::time::Duration::from_secs(5);
-    match tokio::time::timeout(timeout, client.send_event(signed.clone())).await {
+    match tokio::time::timeout(timeout, client.send_event(&signed)).await {
         Ok(Ok(output)) => {
             tracing::info!(
                 event_id = %signed.id,

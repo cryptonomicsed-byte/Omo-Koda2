@@ -1042,8 +1042,8 @@ impl SangoClient for HttpSangoClient {
         let body = serde_json::json!({
             "agent_id": agent_id.to_string(),
             "action_tool": action_tool,
-            "allowed": hermetic.allowed,
-            "violations": hermetic.violations.len(),
+            "allowed": hermetic.is_allowed(),
+            "violations": if hermetic.is_blocked() { 1 } else { 0 },
         });
         // Fire-and-forget: receipt write must never stall the action path.
         let _ = http_client()

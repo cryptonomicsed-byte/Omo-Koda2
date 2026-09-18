@@ -176,7 +176,8 @@ mod tests {
 
     #[test]
     fn names() {
-        let names: Vec<&str> = osovm_tools().iter().map(|t| t.name()).collect();
+        let tools = osovm_tools();
+        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(names.contains(&"osovm_run"));
         assert!(names.contains(&"osovm_veilsim"));
         assert!(names.contains(&"osovm_health"));

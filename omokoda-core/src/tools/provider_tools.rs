@@ -55,9 +55,10 @@ impl Tool for UcxRegisterProviderTool {
 
     async fn execute(
         &self,
-        params: Value,
+        params: &str,
         ctx: &ExecutionContext,
     ) -> Result<(String, TokenUsage), String> {
+        let params: Value = serde_json::from_str(params).unwrap_or(Value::Null);
         let agent_id = agent_id_from_ctx(ctx);
         let body = json!({
             "provider_id":     format!("omo-{}", &agent_id[..agent_id.len().min(12)]),
@@ -113,7 +114,7 @@ impl Tool for UcxListProvidersTool {
 
     async fn execute(
         &self,
-        _params: Value,
+        _params: &str,
         _ctx: &ExecutionContext,
     ) -> Result<(String, TokenUsage), String> {
         let resp = reqwest::Client::new()
@@ -155,9 +156,10 @@ impl Tool for UcxDeregisterProviderTool {
 
     async fn execute(
         &self,
-        params: Value,
+        params: &str,
         _ctx: &ExecutionContext,
     ) -> Result<(String, TokenUsage), String> {
+        let params: Value = serde_json::from_str(params).unwrap_or(Value::Null);
         let provider_id = params["provider_id"].as_str()
             .ok_or("provider_id required")?;
 

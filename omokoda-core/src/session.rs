@@ -222,6 +222,12 @@ pub struct PrivateSessionData {
     pub minipae_private_key_hex: Option<String>,
     #[serde(default)]
     pub minipae_npub: Option<String>,
+    /// Optional vanity address mined at birth (standalone keypair, not HD-derived).
+    /// Present only when `vanity_prefix`/`vanity_suffix` birth metadata was supplied.
+    #[serde(default)]
+    pub vanity_private_key_hex: Option<String>,
+    #[serde(default)]
+    pub vanity_address: Option<String>,
 
     // ── Inference / compute credentials ──────────────────────────────────────
     #[serde(default)]
@@ -564,7 +570,7 @@ impl Session {
     fn seal_blob<T: Serialize>(
         data: &T,
         password_key: &[u8; 32],
-        agent_id: &str,
+        agent_id: &AgentId,
         birth_ts: u64,
     ) -> Result<EncryptedSession, String> {
         let salt = generate_salt(agent_id, birth_ts);

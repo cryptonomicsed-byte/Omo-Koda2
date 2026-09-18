@@ -46,6 +46,7 @@ pub mod query;
 pub mod receipt;
 pub mod reputation;
 pub mod rhythm;
+#[cfg(feature = "wasm")]
 pub mod sandbox;
 pub mod server;
 pub mod session;

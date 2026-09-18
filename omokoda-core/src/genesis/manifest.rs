@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 /// Canonical public manifest of all network bindings and identity commitments.
 /// Derived at birth from AgentGenesisReceipt. Updated as new bindings are
 /// established (IP-Layer, device, federation, economy). Never contains secrets.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct AgentManifest {
     // ── Core Identity ─────────────────────────────────────────────────
     pub identity: IdentitySection,
@@ -165,7 +165,7 @@ impl AgentManifest {
 
 // ─── Section structs ─────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct IdentitySection {
     pub agent_id: String,
     pub genesis_id: String,
@@ -175,7 +175,7 @@ pub struct IdentitySection {
     pub owner: Option<String>, // owner agent_id if delegated
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct GenesisSection {
     pub bipon39_commitment: String,
     pub harmonic_signature: String,
@@ -184,7 +184,7 @@ pub struct GenesisSection {
     pub symbolic_address: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct TemporalSection {
     pub born_at: u64, // Unix ms
     pub koodu_epoch: u64,
@@ -195,7 +195,7 @@ pub struct TemporalSection {
     pub gregorian_fallback: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct SoulSection {
     pub primary_odu: u8,
     pub composed_odu: u16,
@@ -205,7 +205,7 @@ pub struct SoulSection {
     pub hermetic_fingerprint: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct MemorySection {
     pub minipae_pubkey: String,
     pub memory_root: String,
@@ -213,7 +213,7 @@ pub struct MemorySection {
     pub birth_glyph: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct NetworkSection {
     pub ip_root_event: Option<String>, // Nostr kind 31900
     pub nostr_pubkey: Option<String>,
@@ -225,13 +225,13 @@ pub struct NetworkSection {
     pub web2_bindings: Vec<Web2Binding>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Web2Binding {
     pub kind: String,   // "oauth", "api", "email", etc.
     pub handle: String, // the actual address/handle — never a secret
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct EconomicSection {
     pub sui_object_id: Option<String>, // on-chain NFT object id
     pub vantage_key: Option<String>,   // Vantage API key (public portion only)
@@ -240,7 +240,7 @@ pub struct EconomicSection {
     pub wallet_bindings: Vec<WalletBinding>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WalletBinding {
     pub chain: String,   // "sui", "btc", "eth", "nostr", etc.
     pub address: String, // public address only
@@ -250,28 +250,28 @@ pub struct WalletBinding {
     pub poison_scan: Option<crate::identity::poison_radar::PoisonReport>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct BodySection {
     pub device_binding: Option<DeviceRef>,
     pub twin_id: Option<String>,
     pub additional_devices: Vec<DeviceRef>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DeviceRef {
     pub device_id: String,
     pub device_kind: String,
     pub bound_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct WorldSection {
     pub osovm_endpoint: Option<String>,
     pub zvm_endpoint: Option<String>,
     pub twin_root: Option<String>, // twin merkle root
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ProofSection {
     pub genesis_signature: String,
     pub witness_receipt: Option<String>,

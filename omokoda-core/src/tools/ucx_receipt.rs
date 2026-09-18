@@ -42,9 +42,10 @@ impl Tool for UcxJobStatusTool {
 
     async fn execute(
         &self,
-        params: Value,
+        params: &str,
         _ctx: &ExecutionContext,
     ) -> Result<(String, TokenUsage), String> {
+        let params: Value = serde_json::from_str(params).unwrap_or(Value::Null);
         let job_id = params["job_id"].as_str()
             .ok_or("job_id required")?;
 
@@ -88,9 +89,10 @@ impl Tool for UcxJobReceiptTool {
 
     async fn execute(
         &self,
-        params: Value,
+        params: &str,
         _ctx: &ExecutionContext,
     ) -> Result<(String, TokenUsage), String> {
+        let params: Value = serde_json::from_str(params).unwrap_or(Value::Null);
         let job_id = params["job_id"].as_str()
             .ok_or("job_id required")?;
 

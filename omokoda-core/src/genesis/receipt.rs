@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// Full birth certificate for an Ọmọ Kọ́dà agent.
 /// Every field must be populated before birth is considered complete.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentGenesisReceipt {
     // ── Genesis ─────────────────────────────────────────────────────────
     pub agent_id: String,
@@ -105,7 +105,7 @@ impl AgentGenesisReceipt {
 }
 
 /// Walrus cold-archive anchor — written at birth, proves genesis data persisted.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WalrusAnchor {
     /// Walrus blob id (hex).
     pub blob_id: String,
@@ -118,7 +118,7 @@ pub struct WalrusAnchor {
 }
 
 /// Status of the minipae memory write at birth.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum MemoryWriteStatus {
     #[default]
     Pending,
@@ -181,7 +181,7 @@ pub struct NetworkProof {
 }
 
 /// Optional device binding from the Agent-Phone provider.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DeviceBinding {
     pub device_id: String,
     pub device_kind: String, // "fold", "tablet", "server", "node", etc.

@@ -147,7 +147,14 @@ impl BirthOrchestrator {
 
             blockmesh_identity: None,
             vantage_identity: None,
+
+            cold_archive_anchor: None,
+            contributed_gpu_seconds: None,
+            first_lease_id: None,
+            first_work_id: None,
+
             witness_receipt: None,
+            memory_write_status: crate::genesis::receipt::MemoryWriteStatus::Pending,
 
             genesis_signature: String::new(), // populated by caller after sealing
             receipt_version: AgentGenesisReceipt::CURRENT_VERSION,

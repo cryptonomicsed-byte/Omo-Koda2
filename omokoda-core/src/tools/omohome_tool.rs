@@ -41,7 +41,7 @@ impl Tool for OmoHomeListDevicesTool {
     fn params_schema(&self) -> Option<Value> {
         Some(json!({ "type": "object", "properties": {} }))
     }
-    async fn execute(&self, _params: Value, _ctx: &ExecutionContext) -> Result<(String, TokenUsage), String> {
+    async fn execute(&self, _params: &str, _ctx: &ExecutionContext) -> Result<(String, TokenUsage), String> {
         let result = match get("/api/devices").await {
             Ok(v)  => json!({ "ok": true, "devices": v }),
             Err(e) => json!({ "ok": false, "error": e }),
@@ -72,7 +72,8 @@ impl Tool for OmoHomeGetStateTool {
             "required": ["entity_id"]
         }))
     }
-    async fn execute(&self, params: Value, _ctx: &ExecutionContext) -> Result<(String, TokenUsage), String> {
+    async fn execute(&self, params: &str, _ctx: &ExecutionContext) -> Result<(String, TokenUsage), String> {
+        let params: Value = serde_json::from_str(params).unwrap_or(Value::Null);
         let eid = params.get("entity_id").and_then(|v| v.as_str())
             .ok_or_else(|| "entity_id required".to_string())?;
         let result = match get(&format!("/api/devices/{}/state", eid)).await {
@@ -107,7 +108,8 @@ impl Tool for OmoHomeCallServiceTool {
             "required": ["entity_id", "service"]
         }))
     }
-    async fn execute(&self, params: Value, _ctx: &ExecutionContext) -> Result<(String, TokenUsage), String> {
+    async fn execute(&self, params: &str, _ctx: &ExecutionContext) -> Result<(String, TokenUsage), String> {
+        let params: Value = serde_json::from_str(params).unwrap_or(Value::Null);
         let eid = params.get("entity_id").and_then(|v| v.as_str())
             .ok_or_else(|| "entity_id required".to_string())?;
         let svc = params.get("service").and_then(|v| v.as_str())
@@ -136,7 +138,7 @@ impl Tool for OmoHomeListAreasTool {
     fn params_schema(&self) -> Option<Value> {
         Some(json!({ "type": "object", "properties": {} }))
     }
-    async fn execute(&self, _params: Value, _ctx: &ExecutionContext) -> Result<(String, TokenUsage), String> {
+    async fn execute(&self, _params: &str, _ctx: &ExecutionContext) -> Result<(String, TokenUsage), String> {
         let result = match get("/api/areas").await {
             Ok(v)  => json!({ "ok": true, "areas": v }),
             Err(e) => json!({ "ok": false, "error": e }),
@@ -161,7 +163,7 @@ impl Tool for OmoHomeHealthTool {
     fn params_schema(&self) -> Option<Value> {
         Some(json!({ "type": "object", "properties": {} }))
     }
-    async fn execute(&self, _params: Value, _ctx: &ExecutionContext) -> Result<(String, TokenUsage), String> {
+    async fn execute(&self, _params: &str, _ctx: &ExecutionContext) -> Result<(String, TokenUsage), String> {
         let result = match get("/health").await {
             Ok(v)  => json!({ "ok": true, "health": v }),
             Err(e) => json!({ "ok": false, "error": e }),

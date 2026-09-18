@@ -20,8 +20,8 @@ chacha20poly1305 = "0.10"
 hex = "0.4"
 rand = "0.8"
 wasm-bindgen = "0.2"
-wasmtime = "47"
-wasmtime-wasi = { version = "47", features = ["p1"] }
+wasmtime = { version = "47", optional = true }
+wasmtime-wasi = { version = "47", features = ["p1"], optional = true }
 tokio = { version = "1.0", features = ["full"] }
 axum = { version = "0.7", features = ["json", "macros"] }
 tower-http = { version = "0.5", features = ["cors"] }
@@ -68,8 +68,17 @@ k256 = { version = "0.13", features = ["ecdsa"] }
 base64 = "0.22"
 bech32 = "0.12.0"
 bs58 = "0.5.1"
+tracing = "0.1"
 ripemd = "0.1"
 bip32 = { version = "0.5.3", default-features = false, features = ["std", "k256", "secp256k1"] }
+
+[features]
+# "wasm" pulls in wasmtime + wasmtime-wasi (cranelift-codegen). Disabled by
+# default on ARM64/Termux where cranelift's code-gen crashes rustc at compile
+# time (SIGSEGV — known upstream ARM64 stack-overflow bug). Enable explicitly
+# on x86_64 production nodes: `cargo build --features wasm`.
+default = []
+wasm = ["dep:wasmtime", "dep:wasmtime-wasi"]
 
 [dev-dependencies]
 criterion = "0.5"

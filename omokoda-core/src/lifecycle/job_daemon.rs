@@ -12,7 +12,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::Duration;
 
-use crate::interpreter::{Statement, Steward};
+use crate::parser::Statement;
+use crate::interpreter::Steward;
 use super::runtime::AgentRuntime;
 
 /// Spawn the job daemon.  Fire-and-forget; a crash logs and restarts.
@@ -90,11 +91,11 @@ pub fn spawn_job_daemon(
 
                 let result = {
                     let mut g = steward.lock().await;
-                    g.dispatch(Statement::Think { prompt, sandbox: false }).await
+                    g.dispatch(Statement::Think { prompt, private: false, modifiers: Default::default() }).await
                 };
 
                 let (new_status, result_text) = match result {
-                    Ok(resp)  => ("completed", resp.chars().take(1000).collect::<String>()),
+                    Ok(resp)  => ("completed", resp.tool_output.unwrap_or_default().chars().take(1000).collect::<String>()),
                     Err(e)    => ("failed",    format!("Error: {e}")),
                 };
 

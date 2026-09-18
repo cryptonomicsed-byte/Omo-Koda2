@@ -310,7 +310,7 @@ async fn send_email_jmap(
     password: &str,
     to: &str,
     subject: &str,
-    body: &str,
+    _body: &str,
 ) -> Result<(), String> {
     let client = reqwest::Client::new();
     // JMAP identity lookup + Email/set in a single session call.

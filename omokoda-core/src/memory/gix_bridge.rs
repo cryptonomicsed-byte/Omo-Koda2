@@ -67,9 +67,9 @@ pub fn build_gix1_index(dir: &OduDirectory) -> Gix1Index {
 }
 
 /// Add a receipt hash (any kind) to an existing Gix1Index and return the new root.
-pub fn record_receipt(index: &mut Gix1Index, receipt_id: &str, kind: GixKind, ts: f64) -> &str {
+pub fn record_receipt(index: &mut Gix1Index, receipt_id: &str, kind: GixKind, ts: f64) -> String {
     index.add_receipt(receipt_id, kind, ts);
-    index.root()
+    index.root().to_string()
 }
 
 /// Build a `GixGraph` from the agent's memory directory using `gix-types` nodes.

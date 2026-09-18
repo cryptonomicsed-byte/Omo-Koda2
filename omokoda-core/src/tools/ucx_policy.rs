@@ -82,7 +82,7 @@ impl Tool for UcxCheckPolicyTool {
 
     async fn execute(
         &self,
-        _params: Value,
+        _params: &str,
         _ctx: &ExecutionContext,
     ) -> Result<(String, TokenUsage), String> {
         let cfg = UcxPolicyConfig::from_env();

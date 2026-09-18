@@ -360,6 +360,139 @@ impl Wallet {
     }
 }
 
+// ── Vanity address mining ──────────────────────────────────────────────────
+
+/// Result of a vanity address mining run.
+#[derive(Debug, Clone)]
+pub struct VanityResult {
+    pub private_key_hex: String,
+    pub public_key_hex: String,
+    pub address: String,
+    pub attempts: u64,
+    pub duration_ms: u128,
+}
+
+/// Expected number of attempts to find a match (16^n for ETH hex, 58^n for base58).
+pub fn estimate_vanity_attempts(prefix: &str, suffix: &str, chain: &str) -> f64 {
+    let len = (prefix.len() + suffix.len()) as u32;
+    if len == 0 {
+        return 1.0;
+    }
+    match chain {
+        "sol" | "solana" | "btc" | "bitcoin" => 58f64.powi(len as i32),
+        _ => 16f64.powi(len as i32),
+    }
+}
+
+/// Mine a vanity Ethereum address (secp256k1, EIP-55 checksummed).
+///
+/// Generates random private keys until the lowercase hex address (without `0x`)
+/// starts with `prefix` and ends with `suffix`. Both comparisons are
+/// case-insensitive on the hex nibbles.
+///
+/// Returns `Err` if `max_attempts` is exhausted without a match.
+pub fn mine_eth_vanity(
+    prefix: &str,
+    suffix: &str,
+    max_attempts: u64,
+) -> Result<VanityResult, String> {
+    use k256::ecdsa::SigningKey as K256SigningKey;
+    use rand::RngCore;
+
+    let prefix_lc = prefix.to_lowercase();
+    let suffix_lc = suffix.to_lowercase();
+    if prefix_lc.chars().any(|c| !c.is_ascii_hexdigit())
+        || suffix_lc.chars().any(|c| !c.is_ascii_hexdigit())
+    {
+        return Err("Ethereum vanity pattern must contain only hex characters 0-9 a-f".into());
+    }
+    if prefix_lc.len() + suffix_lc.len() > 40 {
+        return Err("Combined vanity pattern length exceeds 40 hex chars".into());
+    }
+
+    let mut rng = rand::thread_rng();
+    let start = std::time::Instant::now();
+
+    for attempt in 0..max_attempts {
+        let mut raw = [0u8; 32];
+        rng.fill_bytes(&mut raw);
+        let Ok(signing_key) = K256SigningKey::from_bytes(raw.as_slice().into()) else {
+            continue;
+        };
+        let verifying = signing_key.verifying_key();
+        // Uncompressed public key = 0x04 || X || Y (65 bytes); skip the 0x04 prefix.
+        let pubkey_bytes = verifying.to_encoded_point(false);
+        let pub_uncompressed = &pubkey_bytes.as_bytes()[1..]; // 64 bytes
+        let mut hasher = Keccak256::new();
+        hasher.update(pub_uncompressed);
+        let digest = hasher.finalize();
+        let addr_hex = hex::encode(&digest[12..]); // last 20 bytes = 40 hex chars
+
+        let matches = (prefix_lc.is_empty() || addr_hex.starts_with(prefix_lc.as_str()))
+            && (suffix_lc.is_empty() || addr_hex.ends_with(suffix_lc.as_str()));
+
+        if matches {
+            return Ok(VanityResult {
+                private_key_hex: hex::encode(signing_key.to_bytes()),
+                public_key_hex: hex::encode(pubkey_bytes.as_bytes()),
+                address: format!("0x{}", eip55_checksum(&addr_hex)),
+                attempts: attempt + 1,
+                duration_ms: start.elapsed().as_millis(),
+            });
+        }
+    }
+
+    Err(format!(
+        "Vanity mine exhausted after {max_attempts} attempts without finding \
+         a match for prefix={prefix_lc:?} suffix={suffix_lc:?}"
+    ))
+}
+
+/// Mine a vanity Solana address (Ed25519, base58-encoded).
+///
+/// Generates random Ed25519 private keys until the base58 address starts with
+/// `prefix` and ends with `suffix` (case-sensitive — base58 is case-sensitive).
+pub fn mine_sol_vanity(
+    prefix: &str,
+    suffix: &str,
+    max_attempts: u64,
+) -> Result<VanityResult, String> {
+    use rand::RngCore;
+
+    if prefix.len() + suffix.len() > 44 {
+        return Err("Combined Solana vanity pattern length exceeds 44 chars".into());
+    }
+
+    let mut rng = rand::thread_rng();
+    let start = std::time::Instant::now();
+
+    for attempt in 0..max_attempts {
+        let mut raw = [0u8; 32];
+        rng.fill_bytes(&mut raw);
+        let signing_key = ed25519_dalek::SigningKey::from_bytes(&raw);
+        let verifying_bytes = signing_key.verifying_key().to_bytes();
+        let addr = bs58::encode(&verifying_bytes).into_string();
+
+        let matches = (prefix.is_empty() || addr.starts_with(prefix))
+            && (suffix.is_empty() || addr.ends_with(suffix));
+
+        if matches {
+            return Ok(VanityResult {
+                private_key_hex: hex::encode(raw),
+                public_key_hex: hex::encode(verifying_bytes),
+                address: addr,
+                attempts: attempt + 1,
+                duration_ms: start.elapsed().as_millis(),
+            });
+        }
+    }
+
+    Err(format!(
+        "Vanity mine exhausted after {max_attempts} attempts without finding \
+         a match for prefix={prefix:?} suffix={suffix:?}"
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1135,7 +1135,7 @@ impl Steward {
         };
 
         let mut session = Session::new(id.clone(), name.clone(), birth_timestamp);
-        for pair in metadata {
+        for pair in metadata.clone() {
             session.apply_metadata(&pair.key, &pair.value);
         }
 
@@ -1175,6 +1175,38 @@ impl Steward {
             crate::identity::wallet::derive_minipae_key(&odu_identity.mnemonic, "", minipae_agent_index, 0)
                 .map_err(|e| format!("derive_minipae_key failed: {e}"))?;
 
+        // Optional vanity address mining: if birth metadata contains
+        // `vanity_prefix` and/or `vanity_suffix`, mine a standalone keypair
+        // for the requested chain (default: "eth"). This is a secondary
+        // "persona address" — the HD-derived addresses above remain canonical.
+        // Cap at 500k attempts to avoid blocking birth indefinitely.
+        let vanity_result: Option<crate::identity::wallet::VanityResult> = {
+            let vprefix = meta_get("vanity_prefix").unwrap_or_default();
+            let vsuffix = meta_get("vanity_suffix").unwrap_or_default();
+            if vprefix.is_empty() && vsuffix.is_empty() {
+                None
+            } else {
+                let vchain = meta_get("vanity_chain")
+                    .unwrap_or_else(|| "eth".to_string());
+                let vmax: u64 = meta_get("vanity_max_attempts")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(500_000);
+                let result = match vchain.as_str() {
+                    "sol" | "solana" =>
+                        crate::identity::wallet::mine_sol_vanity(&vprefix, &vsuffix, vmax),
+                    _ =>
+                        crate::identity::wallet::mine_eth_vanity(&vprefix, &vsuffix, vmax),
+                };
+                match result {
+                    Ok(r) => Some(r),
+                    Err(e) => {
+                        tracing::warn!("vanity mine failed: {e}");
+                        None
+                    }
+                }
+            }
+        };
+
         // Phase 7.1 — derive libp2p peer identity and email local-part from k_root.
         // Both use distinct HMAC paths so they never collide with chain keys.
         let (libp2p_private_key_hex, libp2p_peer_id) =
@@ -1187,21 +1219,23 @@ impl Steward {
             odu_identity: odu_identity.clone(),
             private_messages: Vec::new(),
             vantage_api_key: None,
-            wallet_private_key_hex: Some(wallet_private_key_hex),
-            eth_private_key_hex: Some(eth_key.private_key_hex),
-            eth_address: Some(eth_key.address),
-            btc_private_key_hex: Some(btc_key.private_key_hex),
-            btc_address: Some(btc_key.address),
-            sol_private_key_hex: Some(sol_key.private_key_hex),
-            sol_address: Some(sol_key.address),
-            cosmos_private_key_hex: Some(cosmos_key.private_key_hex),
-            cosmos_address: Some(cosmos_key.address),
-            aptos_private_key_hex: Some(aptos_key.private_key_hex),
-            aptos_address: Some(aptos_key.address),
-            nostr_private_key_hex: Some(nostr_key.private_key_hex),
-            nostr_address: Some(nostr_key.address),
-            minipae_private_key_hex: Some(minipae_key.private_key_hex),
-            minipae_npub: Some(minipae_key.address),
+            wallet_private_key_hex: Some(wallet_private_key_hex.clone()),
+            eth_private_key_hex: Some(eth_key.private_key_hex.clone()),
+            eth_address: Some(eth_key.address.clone()),
+            btc_private_key_hex: Some(btc_key.private_key_hex.clone()),
+            btc_address: Some(btc_key.address.clone()),
+            sol_private_key_hex: Some(sol_key.private_key_hex.clone()),
+            sol_address: Some(sol_key.address.clone()),
+            cosmos_private_key_hex: Some(cosmos_key.private_key_hex.clone()),
+            cosmos_address: Some(cosmos_key.address.clone()),
+            aptos_private_key_hex: Some(aptos_key.private_key_hex.clone()),
+            aptos_address: Some(aptos_key.address.clone()),
+            nostr_private_key_hex: Some(nostr_key.private_key_hex.clone()),
+            nostr_address: Some(nostr_key.address.clone()),
+            minipae_private_key_hex: Some(minipae_key.private_key_hex.clone()),
+            minipae_npub: Some(minipae_key.address.clone()),
+            vanity_private_key_hex: vanity_result.as_ref().map(|v| v.private_key_hex.clone()),
+            vanity_address: vanity_result.as_ref().map(|v| v.address.clone()),
 
             // ── Inference / compute credentials (fail-open — None if not configured) ──
             // Read from environment at birth so each sovereign node can configure
@@ -1395,6 +1429,16 @@ impl Steward {
                     poison_scan: None, // bech32 npub — hex heuristics not applicable
                 },
             ];
+            // Append vanity address if one was mined at birth.
+            if let Some(ref v) = vanity_result {
+                let vchain = meta_get("vanity_chain").unwrap_or_else(|| "eth".to_string());
+                let scan = crate::identity::poison_radar::analyze_static(&v.address, &vchain);
+                m.economic.wallet_bindings.push(crate::genesis::manifest::WalletBinding {
+                    chain: format!("{vchain}_vanity"),
+                    address: v.address.clone(),
+                    poison_scan: Some(scan),
+                });
+            }
 
             // GIX wallet anchor: build a birth Gix1Index over all wallet addresses
             // so the full set is Merkle-auditable. Root goes into ProofSection.anchors
@@ -1419,8 +1463,8 @@ impl Steward {
             id,
             name,
             birth_timestamp,
-            odu_seed,
-            odu_identity,
+            odu_seed: odu_seed.clone(),
+            odu_identity: odu_identity.clone(),
             pet_identity,
             personality,
             dna_fingerprint,
@@ -4634,6 +4678,14 @@ impl Steward {
                     nostr_address: None,
                     minipae_private_key_hex: None,
                     minipae_npub: None,
+                    inference_endpoint: None,
+                    inference_provider: None,
+                    inference_model: None,
+                    gpu_ai_api_key: None,
+                    kaggle_username: None,
+                    kaggle_api_key: None,
+                    vanity_private_key_hex: None,
+                    vanity_address: None,
                 };
                 if let Ok(vault_key) =
                     crate::identity::machine_vault::derive_agent_vault_key(snapshot.id.as_str())

@@ -21,7 +21,7 @@ Human Intent
 ┌─────────────────────────────────────────────────────────────┐
 │                   BIRTH STACK                               │
 │                                                             │
-│  1. Bipon39-Rust  ──►  2. vanity2  ──►  3. Ritual Codex    │
+│  1. Bipon39-Rust  ──►  2. vanity-cloakseed  ──►  3. Ritual Codex    │
 │   (Soul Seed)         (Identity)        (Temporal Align)   │
 │       │                   │                   │            │
 │       └───────────────────┴───────────────────┘            │
@@ -71,7 +71,7 @@ In-repo stub at `bipon39-stub/` exposes the same API surface for CI without priv
 
 ---
 
-## Stage 2 — Sacred Identity Mask (vanity2)
+## Stage 2 — Sacred Identity Mask (vanity-cloakseed)
 
 **Orisha**: (pre-Èṣù, identity layer)
 **Language**: Rust

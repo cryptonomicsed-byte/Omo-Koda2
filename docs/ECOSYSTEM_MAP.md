@@ -12,7 +12,7 @@ The five repos that form the sacred birth pipeline. Each has a single, non-overl
 | Repo | Lang | Role | Key Exports | Consumed By |
 |---|---|---|---|---|
 | **Bipon39-Rust** | Rust | Soul Seed — entropy, mnemonic generation, deterministic keys | `entropy_to_mnemonic`, `mnemonic_to_seed`, `HarmonicSignature` | Omo-Koda2 (`omokoda-hermetic`) |
-| **vanity2** | Rust | Sacred Identity Mask — vanity addresses, sigil hashing | `VanityAddress`, `SigilHash`, `symbolic_address` | Omo-Koda2 (birth pipeline) |
+| **vanity-cloakseed** | Rust | Sacred Identity Mask — vanity addresses, sigil hashing | `VanityAddress`, `SigilHash`, `symbolic_address` | Omo-Koda2 (birth pipeline) |
 | **Ritual-codex-Julia** | Julia | Temporal Cosmology — day-state, resonance weights, Orisha bias | `DayState`, `OrishaBias`, `resonance_modifier` | Omo-Koda2 (`omokoda-memory`) |
 | **ifascript** | LARQL/DSL | Digital Ifá Oracle — Odù casting, archetype, destiny threads | `OduResult`, `orisha_alignment`, `destiny_threads` | Omo-Koda2 (`omokoda-hermetic`) |
 | **Omo-Koda2** | Multi | Living Agent System — runtime, memory, swarm, sovereignty | `AgentBirthReceipt`, `birth`, `think`, `act` | End consumers + Sui chain |

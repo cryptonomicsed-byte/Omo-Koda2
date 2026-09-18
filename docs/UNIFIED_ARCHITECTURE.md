@@ -26,7 +26,7 @@ forever: `birth`, `think`, `act`. Everything else is hidden beneath them.
 | DNA | **BIPON39** | deterministic seed → Ed25519 + BIP-32 child keys | [LIVE] in birth |
 | Soul | **IfáScript** (If-Script) | 256 Odù → archetype/orisha/taboos/opcode | [LIVE] in birth |
 | Clock | **Koodu** (was Ritual-codex) | day-state → resonance, Sabbath | [LIVE] in birth |
-| Wallet / panic room | **Cloakseed** (was vanity/vanity2) | keys, cloak, duress | [LIVE] cloak+duress; wallet [SPEC] |
+| Wallet / panic room | **vanity-cloakseed** | keys, cloak, duress | [LIVE] cloak+duress; wallet [SPEC] |
 | Immune / **JUDGE** | **Zàngbétò** (Rust) | act gating, verdicts, enforcement | **[LIVE]** :8787 |
 | **JURY** | **Twelve-thrones** | 12 frontier models → disagreement scoring | [BUILT] |
 | Macro face | **Axiom** | 3D galaxy: see/inspect/spawn agents | [BUILT] on MockGraphEngine |
@@ -48,7 +48,7 @@ that gap is the whole "what's left to wire."
 ### 2.1 Token trinity (three distinct things, not competing coins)
 - **Synapse** — metabolism. Burned to think/act/simulate. Per-agent (86M cap). Non-transferable. **[LIVE]**
 - **Dopamine** — compute. Akash-style global pool; earned by running nodes (phones→servers). Non-transferable capacity credit. [SPEC]
-- **Settlement token** (ÀṢẸ, *rename TBD*) — value. Minted **only** by proven sim→real. Transferable on Sui. Held in Cloakseed wallet. Funds the 24 sectors. [BUILT contract, purpose reframed]
+- **Settlement token** (ÀṢẸ, *rename TBD*) — value. Minted **only** by proven sim→real. Transferable on Sui. Held in vanity-cloakseed wallet. Funds the 24 sectors. [BUILT contract, purpose reframed]
 - Kill the standalone `synapse.move` idea: metabolism stays off-chain; only settlement goes on-chain.
 
 ### 2.2 OSOVM = the sim→real mint engine (its real purpose)
@@ -76,7 +76,7 @@ the live kernel; the orchestration is the build.
 - A **mask** = one isolated capability domain (its own key + scope + wallet).
 - **Èṣù-Elegba (Steward)** = hot-path router; holds **no** dangerous power.
 - **Èṣù-Ọdara (Transformer)** = cold-path, the **only** mask that wields **ZERO**; gated by Zàngbétò+Twelve Thrones. Never on the Steward.
-- **Wallet masks** (tithe / embodiment / investment / treasury): already specced as **`elegbara_router.move`** (8 strictly-isolated sub-wallets) + **BIPON39 child-key derivation** as the primitive. Cloakseed custodies.
+- **Wallet masks** (tithe / embodiment / investment / treasury): already specced as **`elegbara_router.move`** (8 strictly-isolated sub-wallets) + **BIPON39 child-key derivation** as the primitive. vanity-cloakseed custodies.
 - **Èṣù wallet-cluster (named masks, from AIO thread — each aspect = one flow):**
   - Èṣù **Elegbára** → AIO national treasury (the 3.69% universal tax) — *mandatory, weekday-triggered*
   - Èṣù **Ọ̀dàrà** → TechGnØŞ.EXE shrine treasury (the 50/25/15/10 split) — *fills only on offerings*
@@ -89,7 +89,7 @@ the live kernel; the orchestration is the build.
 - Make **Zàngbétò the enforcement spine** that *calls* the 22 VPS security layers as senses — don't absorb them.
 - **LARQL → into Zàngbétò/jury as READ-ONLY forensic lens** (inspect proposed weight deltas). LARQL reads are themselves receipted/access-controlled (they can reveal memorized secrets).
 - **ZERO → NOT in the judge.** A separate gated hand. Weight-modification is the highest-privilege op in the system (a poisoned brain compromises every agent) → treat a fine-tune like a mainnet deploy.
-- **Weight-adjustment gate:** corpus (high-rep, receipt-backed, Visa-gated, public-only) → memory gauntlet (secrets-strip via betterleaks/gitleaks; injection scan via XSStrike/SSTImap/sqlmap; `mem-poison-radar` cloned from Cloakseed's poison-radar; STIX indicators) → jury sample → Atomic Red Team adversarial vs shadow copy → judge verdict → zeroize checkpoint → ZERO applies → regression + auto-rollback → hot-swap. Never on Sabbath. EL-GUÀ can halt.
+- **Weight-adjustment gate:** corpus (high-rep, receipt-backed, Visa-gated, public-only) → memory gauntlet (secrets-strip via betterleaks/gitleaks; injection scan via XSStrike/SSTImap/sqlmap; `mem-poison-radar` cloned from vanity-cloakseed's poison-radar; STIX indicators) → jury sample → Atomic Red Team adversarial vs shadow copy → judge verdict → zeroize checkpoint → ZERO applies → regression + auto-rollback → hot-swap. Never on Sabbath. EL-GUÀ can halt.
 
 ---
 
@@ -214,7 +214,7 @@ The body is alive; most of this is **wiring, not inventing**:
 2. **Wire organism-core bridges to live services** (:7777, :8787, :8001) — turn the simulated nervous system real.
 3. **Hive Mind v0** — aggregate Garden → one LoRA fine-tune of an open model on a node → serve as Local provider → agents think through it. (LARQL+ZERO exist.)
 4. **sim→real mint v0** — VeilSim commitment → Witness attestation → mint on Sui testnet; Twelve Thrones+Zàngbétò as jury+judge.
-5. **Cloakseed → real Sui wallet** (+ wallet masks via BIPON39 child keys + elegbara routing).
+5. **vanity-cloakseed → real Sui wallet** (+ wallet masks via BIPON39 child keys + elegbara routing).
 6. **Immigration Office / Visas** in front of birth (World-ID gate) — anti-Sybil spine for hive training + mint.
 7. **World client Phase 1** — Layer-1-only 256×256, ECS+tilemap, Aether renderer as sprites, wired to VeilSim. (Doubles as UI + Proof-of-Simulation.)
 8. **Axiom → live GraphEngine** (macro face on real data).
@@ -240,4 +240,4 @@ Later: 3D fidelity, embodiment, 24-sector treasuries, EL-GUÀ console, Sentencin
 - **OsO → Oso-Aether → Omo-Koda2**: pet-language origin → WASM/frontend pet → full live kernel. Aether is the design ancestor; reuse its **ascii-renderer** only.
 - **Omokoda** (original, TS/Move): the grand *vision spec* (TEE, robot, causal DAG) — distinct from the live **Omo-Koda2** Rust kernel.
 - **Oso-control-center**: OSOVM opcode/language editor (design-frozen) — the natural tokenomics/VM workbench.
-- Outdated names in old docs: **Ritual-codex-Julia = Koodu**, **vanity/vanity2 = Cloakseed**.
+- Outdated names in old docs: **Ritual-codex-Julia = Koodu**, **vanity/vanity2 = vanity-cloakseed** (canonical repo: ~/vanity-cloakseed).

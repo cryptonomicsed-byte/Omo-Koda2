@@ -419,12 +419,12 @@ Boundary 5: Meshtastic fallback
 These are the conditions that confirm the implementation is correct:
 
 ### habitat/ module
-- [ ] `Habitat::register(config)` populates areas and resources from a static config
-- [ ] `topology.can_reach("mower-77", "front_lawn")` returns `true` when configured
-- [ ] `topology.can_reach("mower-77", "second_floor")` returns `false`
-- [ ] `IS_AVAILABLE("mower-77")` returns `false` when `resource.state == Busy`
-- [ ] `HabitatAddress` serializes to `NetworkRepr { network: "habitat", address: "..." }`
-- [ ] `HabitatAddress` round-trips through DIP `AgentManifest.network`
+- [x] `Habitat::register(config)` populates areas and resources from a static config
+- [x] `topology.can_reach("mower-77", "front_lawn")` returns `true` when configured
+- [x] `topology.can_reach("mower-77", "second_floor")` returns `false`
+- [x] `IS_AVAILABLE("mower-77")` returns `false` when `resource.state == Busy`
+- [x] `HabitatAddress` serializes to `NetworkRepr { network: "habitat", address: "..." }`
+- [x] `HabitatAddress` round-trips through DIP `AgentManifest.network`
 
 ### ha/ adapter
 - [ ] Adapter connects to HA WebSocket and authenticates with `HaConfig.access_token`

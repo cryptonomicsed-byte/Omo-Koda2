@@ -57,6 +57,44 @@ pub struct HabitatAddress {
     pub confirmed_at: u64,
 }
 
+impl HabitatAddress {
+    /// Serialize to `NetworkRepr { network: "habitat", address: "<area_id|agent_id>" }`.
+    /// Satisfies acceptance criterion: AGENT_HABITAT_SPEC.md line 426.
+    pub fn to_network_repr(&self) -> crate::bridge::NetworkRepr {
+        let address = self.area_id.clone().unwrap_or_else(|| self.agent_id.clone());
+        crate::bridge::NetworkRepr {
+            network: "habitat".to_string(),
+            address,
+        }
+    }
+
+    /// Expand into all known DIP network representations for an AgentManifest.
+    /// Returns one entry per non-None transport (habitat, nostr, meshtastic, ip).
+    /// Satisfies acceptance criterion: AGENT_HABITAT_SPEC.md line 427.
+    pub fn to_agent_manifest_networks(&self) -> Vec<crate::bridge::NetworkRepr> {
+        let mut nets = vec![self.to_network_repr()];
+        if let Some(npub) = &self.nostr_npub {
+            nets.push(crate::bridge::NetworkRepr {
+                network: "nostr".to_string(),
+                address: npub.clone(),
+            });
+        }
+        if let Some(node) = &self.mesh_node {
+            nets.push(crate::bridge::NetworkRepr {
+                network: "meshtastic".to_string(),
+                address: node.clone(),
+            });
+        }
+        if let Some(ip) = &self.ip {
+            nets.push(crate::bridge::NetworkRepr {
+                network: "ip".to_string(),
+                address: ip.clone(),
+            });
+        }
+        nets
+    }
+}
+
 /// Top-level Habitat: the agent's complete physical-digital presence.
 ///
 /// Holds all areas and resources the agent has registered, plus its canonical

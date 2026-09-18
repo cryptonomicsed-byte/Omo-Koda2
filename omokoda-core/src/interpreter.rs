@@ -343,6 +343,11 @@ pub struct RevealedSeed {
     pub cosmos_address: Option<String>,
     pub aptos_address: Option<String>,
     pub nostr_address: Option<String>,
+    /// minipae NIP-AE identity. `minipae_npub` = bech32 npub1… (public).
+    /// `minipae_private_key_hex` = hex seckey (set as NIPAE_NSEC for the
+    /// minipae Python adapter; accepts both hex and nsec1 format).
+    pub minipae_npub: Option<String>,
+    pub minipae_private_key_hex: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -569,6 +574,8 @@ impl AgentCore {
             cosmos_address: private_data.cosmos_address.clone(),
             aptos_address: private_data.aptos_address.clone(),
             nostr_address: private_data.nostr_address.clone(),
+            minipae_npub: private_data.minipae_npub.clone(),
+            minipae_private_key_hex: private_data.minipae_private_key_hex.clone(),
         };
         self.snapshot.revealed_seed = true;
         Ok(revealed)
@@ -1349,16 +1356,61 @@ impl Steward {
             m.network.btc_address = Some(btc_key.address.clone());
             m.network.eth_address = Some(eth_key.address.clone());
             m.network.nostr_pubkey = Some(nostr_key.address.clone());
+
+            // Poison Radar: static heuristic scan at birth (no network required).
+            // Chains with non-hex address formats (nostr npub, minipae npub) skip
+            // hex-pattern heuristics; their scan fields are None.
+            let pr = &crate::identity::poison_radar::analyze_static;
             m.economic.wallet_bindings = vec![
-                crate::genesis::manifest::WalletBinding { chain: "sui".into(),     address: sui_address },
-                crate::genesis::manifest::WalletBinding { chain: "btc".into(),     address: btc_key.address.clone() },
-                crate::genesis::manifest::WalletBinding { chain: "eth".into(),     address: eth_key.address.clone() },
-                crate::genesis::manifest::WalletBinding { chain: "nostr".into(),   address: nostr_key.address.clone() },
-                crate::genesis::manifest::WalletBinding { chain: "cosmos".into(),  address: cosmos_key.address.clone() },
-                crate::genesis::manifest::WalletBinding { chain: "sol".into(),     address: sol_key.address.clone() },
-                crate::genesis::manifest::WalletBinding { chain: "aptos".into(),   address: aptos_key.address.clone() },
-                crate::genesis::manifest::WalletBinding { chain: "minipae".into(), address: minipae_key.address.clone() },
+                crate::genesis::manifest::WalletBinding {
+                    chain: "sui".into(), address: sui_address.clone(),
+                    poison_scan: Some(pr(&sui_address, "sui")),
+                },
+                crate::genesis::manifest::WalletBinding {
+                    chain: "btc".into(), address: btc_key.address.clone(),
+                    poison_scan: Some(pr(&btc_key.address, "btc")),
+                },
+                crate::genesis::manifest::WalletBinding {
+                    chain: "eth".into(), address: eth_key.address.clone(),
+                    poison_scan: Some(pr(&eth_key.address, "eth")),
+                },
+                crate::genesis::manifest::WalletBinding {
+                    chain: "nostr".into(), address: nostr_key.address.clone(),
+                    poison_scan: None, // bech32 npub — hex heuristics not applicable
+                },
+                crate::genesis::manifest::WalletBinding {
+                    chain: "cosmos".into(), address: cosmos_key.address.clone(),
+                    poison_scan: Some(pr(&cosmos_key.address, "cosmos")),
+                },
+                crate::genesis::manifest::WalletBinding {
+                    chain: "sol".into(), address: sol_key.address.clone(),
+                    poison_scan: Some(pr(&sol_key.address, "sol")),
+                },
+                crate::genesis::manifest::WalletBinding {
+                    chain: "aptos".into(), address: aptos_key.address.clone(),
+                    poison_scan: Some(pr(&aptos_key.address, "aptos")),
+                },
+                crate::genesis::manifest::WalletBinding {
+                    chain: "minipae".into(), address: minipae_key.address.clone(),
+                    poison_scan: None, // bech32 npub — hex heuristics not applicable
+                },
             ];
+
+            // GIX wallet anchor: build a birth Gix1Index over all wallet addresses
+            // so the full set is Merkle-auditable. Root goes into ProofSection.anchors
+            // as "gix1:wallets:<root>".
+            {
+                use crate::memory::gix_bridge::{Gix1Index, GixKind};
+                let ts = birth_timestamp as f64;
+                let mut idx = Gix1Index::new();
+                for wb in &m.economic.wallet_bindings {
+                    idx.add_receipt(&format!("wallet:{}:{}", wb.chain, wb.address),
+                                    GixKind::Custom("wallet".into()), ts);
+                }
+                let root = idx.root().to_string();
+                m.proof.anchors.push(format!("gix1:wallets:{root}"));
+            }
+
             m
         });
 

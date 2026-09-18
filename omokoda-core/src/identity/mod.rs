@@ -12,6 +12,7 @@ pub mod cloak;
 pub mod dna;
 pub mod nip06;
 pub mod duress;
+pub mod poison_radar;
 pub mod merkle;
 pub mod oauth;
 pub mod odu;

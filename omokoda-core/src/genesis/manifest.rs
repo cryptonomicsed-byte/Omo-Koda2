@@ -244,6 +244,10 @@ pub struct EconomicSection {
 pub struct WalletBinding {
     pub chain: String,   // "sui", "btc", "eth", "nostr", etc.
     pub address: String, // public address only
+    /// Static Poison Radar scan result at birth. None for chains that derive
+    /// non-hex addresses (Nostr npub, minipae npub) where hex heuristics don't apply.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub poison_scan: Option<crate::identity::poison_radar::PoisonReport>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

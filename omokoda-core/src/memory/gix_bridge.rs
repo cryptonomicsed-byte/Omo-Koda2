@@ -17,6 +17,7 @@ pub use gix_core::{
     gix1_audit, gix1_merkle_root, GIX1_EMPTY_ROOT,
     GlyphNode as GixNode, GlyphEdge as GixEdge, GixKind, Gix1Entry,
 };
+pub use gix_types::{GixMemoryRef, GixMemoryTier, GixNamespace, RoutingHints};
 
 use crate::memory::memdir::OduDirectory;
 
@@ -192,6 +193,30 @@ pub fn project_gix(dir: &OduDirectory) -> GixGraph {
     }
 
     graph
+}
+
+// ── GixMemoryRef bridge ───────────────────────────────────────────────────────
+
+/// Convert an `OduEntry` and its `engine::MemoryTier` into a `GixMemoryRef`.
+///
+/// Maps the kernel's `engine::MemoryTier` to the protocol-level `GixMemoryTier`:
+///   `Working  → GixMemoryTier::Working`
+///   `Episodic → GixMemoryTier::Episodic`
+///   `Semantic → GixMemoryTier::Semantic`
+///
+/// `fold_depth` should be 0 for raw entries, or the REM fold nesting depth.
+pub fn entry_to_gix_memory_ref(
+    entry: &crate::memory::memdir::OduEntry,
+    tier: crate::memory::engine::MemoryTier,
+    fold_depth: u8,
+) -> GixMemoryRef {
+    use crate::memory::engine::MemoryTier;
+    let gix_tier = match tier {
+        MemoryTier::Working  => GixMemoryTier::Working,
+        MemoryTier::Episodic => GixMemoryTier::Episodic,
+        MemoryTier::Semantic => GixMemoryTier::Semantic,
+    };
+    GixMemoryRef::new(entry.content.as_bytes(), gix_tier, fold_depth)
 }
 
 // ── GIX query API ────────────────────────────────────────────────────────────
@@ -467,6 +492,32 @@ mod gix_bridge_tests {
             .filter(|e| e.relation == "contradicts").collect();
         assert_eq!(contradicts.len(), 1);
         assert_eq!(contradicts[0].weight, -1);
+    }
+
+    #[test]
+    fn entry_to_gix_memory_ref_maps_tier_and_fold_depth() {
+        use crate::memory::engine::MemoryTier;
+        let e = entry("e1", "some content", "memory/core", 100, &[]);
+        let mref = super::entry_to_gix_memory_ref(&e, MemoryTier::Episodic, 0);
+        assert_eq!(mref.tier, GixMemoryTier::Episodic);
+        assert_eq!(mref.fold_depth, 0);
+        assert_eq!(mref.canonical_id_hex().len(), 64);
+
+        let folded = super::entry_to_gix_memory_ref(&e, MemoryTier::Semantic, 2);
+        assert_eq!(folded.tier, GixMemoryTier::Semantic);
+        assert_eq!(folded.fold_depth, 2);
+        // canonical_id is content-addressed — same content, same id regardless of tier
+        assert_eq!(mref.canonical_id, folded.canonical_id);
+    }
+
+    #[test]
+    fn gix_memory_ref_to_gix1_has_triune_namespace() {
+        use crate::memory::engine::MemoryTier;
+        let e = entry("e1", "working content", "memory/core", 100, &[]);
+        let mref = super::entry_to_gix_memory_ref(&e, MemoryTier::Working, 0);
+        let env = mref.to_gix1(RoutingHints::default());
+        assert_eq!(env.namespace, GixNamespace::TriuneMemory);
+        assert!(env.verify_integrity());
     }
 
     #[test]

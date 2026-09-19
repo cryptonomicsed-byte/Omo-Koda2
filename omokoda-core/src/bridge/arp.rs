@@ -3,7 +3,12 @@
 //!
 //! Uses the Vantage /api/arp/receipts endpoint. Fail-open: Vantage being
 //! unreachable never blocks birth/think/act.
+//!
+//! Every receipt now carries a `Gix1` wire envelope (Phase 1 Step 7 of the
+//! GIX spec). The `gix1_for_receipt` hand-roll has been replaced with
+//! canonical `gix_types::Gix1::new`.
 
+use gix_types::{Gix1, GixKind, GixNamespace, RoutingHints};
 use serde_json::{json, Value};
 
 fn vantage_base() -> String {
@@ -25,37 +30,29 @@ fn now_secs() -> i64 {
 }
 
 fn gix1_for_receipt(receipt_id: &str) -> Value {
-    use sha2::{Digest, Sha256};
-    let digest: [u8; 32] = {
-        let mut h = Sha256::new();
-        h.update(receipt_id.as_bytes());
-        h.finalize().into()
-    };
-    let canonical_id = hex::encode(digest);
-    // GIX-FOLD-v1 glyph
-    const FOLD_RANGES: [(u32, u32); 3] = [
-        (0x0020, 0xD7FF - 0x0020 + 1),
-        (0xE000, 0xFDCF - 0xE000 + 1),
-        (0xFDF0, 0xFFFD - 0xFDF0 + 1),
-    ];
-    let total: u64 = FOLD_RANGES.iter().map(|(_, c)| *c as u64).sum();
-    let mut rem: u64 = 0;
-    for byte in &digest { rem = (rem << 8 | *byte as u64) % total; }
-    let mut idx = rem as u32;
-    let glyph = 'outer: {
-        for (start, count) in FOLD_RANGES {
-            if idx < count {
-                break 'outer char::from_u32(start + idx).unwrap_or('?');
-            }
-            idx -= count;
-        }
-        '?'
-    };
+    let created_at_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    let env = Gix1::new(
+        GixKind::Receipt,
+        GixNamespace::ArpReceipt,
+        receipt_id.as_bytes(),
+        None,
+        created_at_ms,
+        RoutingHints::default(),
+    );
+
     json!({
-        "canonical_id": canonical_id,
-        "glyph":        glyph.to_string(),
+        "canonical_id": hex::encode(env.canonical_id),
+        "glyph":        env.glyph.to_string(),
         "kind":         "receipt",
-        "odu_base":     digest[0],
+        "odu_base":     env.odu_base,
+        "odu_composed": env.odu_composed,
+        "namespace":    "arp_receipt",
+        "version":      env.version,
+        "envelope_hash": hex::encode(env.integrity.envelope_hash),
     })
 }
 

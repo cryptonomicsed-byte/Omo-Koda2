@@ -1,3 +1,5 @@
+use gix_types::{Gix1, GixKind, GixNamespace, RoutingHints};
+use hex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -146,6 +148,10 @@ pub struct Task {
     pub priority: i32,
     /// Whether completion was surfaced to the user
     pub notified: bool,
+    /// GIX1 canonical_id (hex) stamped when this task completes.
+    /// `GixNamespace::OsovmExecution` — links the task into the GIX receipt graph.
+    #[serde(default)]
+    pub gix1_canonical_id: Option<String>,
 }
 
 impl Task {
@@ -161,6 +167,7 @@ impl Task {
             parent_id: None,
             priority: 0,
             notified: false,
+            gix1_canonical_id: None,
         }
     }
 
@@ -223,6 +230,17 @@ impl TaskManager {
             if task.status == TaskStatus::Running {
                 task.status = TaskStatus::Completed(output);
                 task.finished_at = Some(now_secs());
+                // GIX Phase 4: stamp a GIX1 envelope on job/task completion.
+                let created_at_ms = task.finished_at.unwrap_or(0).saturating_mul(1000);
+                let env = Gix1::new(
+                    GixKind::Receipt,
+                    GixNamespace::OsovmExecution,
+                    task.id.as_bytes(),
+                    None,
+                    created_at_ms,
+                    RoutingHints::default(),
+                );
+                task.gix1_canonical_id = Some(hex::encode(env.canonical_id));
             }
         }
     }
@@ -351,4 +369,48 @@ fn now_secs() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+#[cfg(test)]
+mod gix_tests {
+    use super::*;
+
+    fn run_task(kind: TaskKind) -> Task {
+        let mut mgr = TaskManager::new();
+        let id = mgr.submit(kind);
+        mgr.start(&id);
+        mgr.complete(&id, "done".into());
+        mgr.get(&id).unwrap().clone()
+    }
+
+    #[test]
+    fn complete_stamps_gix1_canonical_id() {
+        let task = run_task(TaskKind::Think { prompt: "test".into(), private: false });
+        assert!(task.gix1_canonical_id.is_some());
+        let hex = task.gix1_canonical_id.unwrap();
+        assert_eq!(hex.len(), 64, "canonical_id should be 32-byte hex");
+    }
+
+    #[test]
+    fn pending_task_has_no_gix1() {
+        let mut mgr = TaskManager::new();
+        let id = mgr.submit(TaskKind::Think { prompt: "x".into(), private: false });
+        assert!(mgr.get(&id).unwrap().gix1_canonical_id.is_none());
+    }
+
+    #[test]
+    fn two_tasks_have_distinct_gix1_ids() {
+        let t1 = run_task(TaskKind::Think { prompt: "a".into(), private: false });
+        let t2 = run_task(TaskKind::Think { prompt: "b".into(), private: false });
+        assert_ne!(t1.gix1_canonical_id, t2.gix1_canonical_id);
+    }
+
+    #[test]
+    fn failed_task_has_no_gix1() {
+        let mut mgr = TaskManager::new();
+        let id = mgr.submit(TaskKind::Think { prompt: "x".into(), private: false });
+        mgr.start(&id);
+        mgr.fail(&id, "oops".into());
+        assert!(mgr.get(&id).unwrap().gix1_canonical_id.is_none());
+    }
 }

@@ -86,6 +86,17 @@ fn session_encryption_roundtrip() {
         nostr_address: None,
         minipae_private_key_hex: None,
         minipae_npub: None,
+        vanity_private_key_hex: None,
+        vanity_address: None,
+        create2_salt_hex: None,
+        create2_contract_address: None,
+        eth_keystore_v3_json: None,
+        inference_endpoint: None,
+        inference_provider: None,
+        inference_model: None,
+        gpu_ai_api_key: None,
+        kaggle_username: None,
+        kaggle_api_key: None,
     };
 
     // Seal
@@ -142,6 +153,17 @@ fn session_decryption_fails_with_wrong_password_key() {
         nostr_address: None,
         minipae_private_key_hex: None,
         minipae_npub: None,
+        vanity_private_key_hex: None,
+        vanity_address: None,
+        create2_salt_hex: None,
+        create2_contract_address: None,
+        eth_keystore_v3_json: None,
+        inference_endpoint: None,
+        inference_provider: None,
+        inference_model: None,
+        gpu_ai_api_key: None,
+        kaggle_username: None,
+        kaggle_api_key: None,
     };
 
     let password_key = [0u8; 32];
@@ -183,6 +205,17 @@ fn session_key_rotation_works() {
         nostr_address: None,
         minipae_private_key_hex: None,
         minipae_npub: None,
+        vanity_private_key_hex: None,
+        vanity_address: None,
+        create2_salt_hex: None,
+        create2_contract_address: None,
+        eth_keystore_v3_json: None,
+        inference_endpoint: None,
+        inference_provider: None,
+        inference_model: None,
+        gpu_ai_api_key: None,
+        kaggle_username: None,
+        kaggle_api_key: None,
     };
 
     let old_key = [0u8; 32];
@@ -237,6 +270,17 @@ fn session_leakage_test() {
         nostr_address: None,
         minipae_private_key_hex: None,
         minipae_npub: None,
+        vanity_private_key_hex: None,
+        vanity_address: None,
+        create2_salt_hex: None,
+        create2_contract_address: None,
+        eth_keystore_v3_json: None,
+        inference_endpoint: None,
+        inference_provider: None,
+        inference_model: None,
+        gpu_ai_api_key: None,
+        kaggle_username: None,
+        kaggle_api_key: None,
     };
 
     let password_key = [0u8; 32];
@@ -284,6 +328,17 @@ fn session_export_keeps_private_content_encrypted() {
         nostr_address: None,
         minipae_private_key_hex: None,
         minipae_npub: None,
+        vanity_private_key_hex: None,
+        vanity_address: None,
+        create2_salt_hex: None,
+        create2_contract_address: None,
+        eth_keystore_v3_json: None,
+        inference_endpoint: None,
+        inference_provider: None,
+        inference_model: None,
+        gpu_ai_api_key: None,
+        kaggle_username: None,
+        kaggle_api_key: None,
     };
 
     session.seal_private(&private_data, &[7u8; 32]).unwrap();

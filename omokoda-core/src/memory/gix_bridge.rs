@@ -112,6 +112,85 @@ pub fn project_gix(dir: &OduDirectory) -> GixGraph {
         }
     }
 
+    // Semantic "recalls" edges — entries sharing ≥1 common non-trivial tag.
+    // Two memories that share a tag co-activate in recall; weight 2 reflects
+    // stronger semantic coupling than the temporal "follows" chain.
+    {
+        let mut tag_to_ids: std::collections::BTreeMap<String, Vec<String>> =
+            std::collections::BTreeMap::new();
+        for entry in &entries {
+            let hex = hex::encode(gix_types::content_hash(&entry.content));
+            for tag in &entry.tags {
+                if !tag.is_empty() {
+                    tag_to_ids.entry(tag.clone()).or_default().push(hex.clone());
+                }
+            }
+        }
+        for ids in tag_to_ids.values() {
+            for pair in ids.windows(2) {
+                if pair[0] != pair[1] {
+                    graph.add_edge(GixEdge {
+                        from:     pair[0].clone(),
+                        to:       pair[1].clone(),
+                        relation: "recalls".to_string(),
+                        weight:   2,
+                    });
+                }
+            }
+        }
+    }
+
+    // Semantic "derives" edges — a sub-path entry derives from the most-recent
+    // entry in its parent path cluster, reflecting hierarchical memory synthesis.
+    {
+        for entry in &entries {
+            if let Some(parent_path) = entry.path.rsplit_once('/').map(|(p, _)| p) {
+                if let Some(cluster) = by_path.get(parent_path) {
+                    // Pick the most recent parent entry (latest created_at).
+                    if let Some(parent) = cluster.iter().max_by_key(|e| e.created_at) {
+                        let from = hex::encode(gix_types::content_hash(&parent.content));
+                        let to   = hex::encode(gix_types::content_hash(&entry.content));
+                        if from != to {
+                            graph.add_edge(GixEdge {
+                                from,
+                                to,
+                                relation: "derives".to_string(),
+                                weight:   1,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Semantic "contradicts" edges — entries tagged with a failure/error marker
+    // point back to their immediate predecessor in the same path cluster.
+    // Negative weight (-1) signals that this edge inverts the preceding assertion.
+    {
+        const CONTRADICTION_TAGS: &[&str] = &["error", "fail", "failure", "contradiction", "rejected"];
+        for cluster in by_path.values() {
+            let mut chain: Vec<&crate::memory::memdir::OduEntry> = cluster.clone();
+            chain.sort_by(|a, b| a.created_at.cmp(&b.created_at).then(a.id.cmp(&b.id)));
+            for (pos, entry) in chain.iter().enumerate() {
+                let has_contradiction = entry.tags.iter()
+                    .any(|t| CONTRADICTION_TAGS.contains(&t.as_str()));
+                if !has_contradiction || pos == 0 { continue; }
+                let pred = chain[pos - 1];
+                let from = hex::encode(gix_types::content_hash(&pred.content));
+                let to   = hex::encode(gix_types::content_hash(&entry.content));
+                if from != to {
+                    graph.add_edge(GixEdge {
+                        from,
+                        to,
+                        relation: "contradicts".to_string(),
+                        weight:   -1,
+                    });
+                }
+            }
+        }
+    }
+
     graph
 }
 
@@ -306,4 +385,99 @@ fn dir_canonical_ids(dir: &OduDirectory) -> Vec<String> {
     ids.sort_unstable();
     ids.dedup();
     ids
+}
+
+#[cfg(test)]
+mod gix_bridge_tests {
+    use super::*;
+    use crate::memory::memdir::{OduDirectory, OduEntry};
+
+    fn make_dir(entries: Vec<OduEntry>) -> OduDirectory {
+        let mut dir = OduDirectory::new();
+        for e in entries {
+            dir.insert(e);
+        }
+        dir
+    }
+
+    fn entry(id: &str, content: &str, path: &str, ts: u64, tags: &[&str]) -> OduEntry {
+        OduEntry {
+            id: id.into(),
+            content: content.into(),
+            importance: 0.5,
+            created_at: ts,
+            last_accessed: ts,
+            tags: tags.iter().map(|t| t.to_string()).collect(),
+            path: path.into(),
+        }
+    }
+
+    #[test]
+    fn follows_edges_appear_within_path_cluster() {
+        let dir = make_dir(vec![
+            entry("e1", "alpha", "memory/core", 100, &[]),
+            entry("e2", "beta",  "memory/core", 200, &[]),
+            entry("e3", "gamma", "memory/other", 300, &[]),
+        ]);
+        let g = project_gix(&dir);
+        let edges: Vec<_> = g.edges().iter()
+            .filter(|e| e.relation == "follows").collect();
+        // e1→e2 follow edge; e3 is in a different cluster — no cross-cluster follows
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].weight, 1);
+    }
+
+    #[test]
+    fn recalls_edges_link_entries_with_shared_tag() {
+        let dir = make_dir(vec![
+            entry("e1", "alpha content", "memory/a", 100, &["session", "core"]),
+            entry("e2", "beta content",  "memory/b", 200, &["session"]),
+            entry("e3", "gamma content", "memory/c", 300, &["unrelated"]),
+        ]);
+        let g = project_gix(&dir);
+        let recalls: Vec<_> = g.edges().iter()
+            .filter(|e| e.relation == "recalls").collect();
+        // e1 and e2 both have tag "session" → 1 recalls edge
+        assert_eq!(recalls.len(), 1);
+        assert_eq!(recalls[0].weight, 2);
+    }
+
+    #[test]
+    fn derives_edges_link_child_path_to_parent() {
+        let dir = make_dir(vec![
+            entry("e1", "parent content", "memory",      100, &[]),
+            entry("e2", "child content",  "memory/core", 200, &[]),
+        ]);
+        let g = project_gix(&dir);
+        let derives: Vec<_> = g.edges().iter()
+            .filter(|e| e.relation == "derives").collect();
+        // e2 is at "memory/core", parent is "memory" which contains e1
+        assert_eq!(derives.len(), 1);
+        assert_eq!(derives[0].weight, 1);
+    }
+
+    #[test]
+    fn contradicts_edges_have_negative_weight() {
+        let dir = make_dir(vec![
+            entry("e1", "assertion", "memory/core", 100, &[]),
+            entry("e2", "error log", "memory/core", 200, &["error"]),
+        ]);
+        let g = project_gix(&dir);
+        let contradicts: Vec<_> = g.edges().iter()
+            .filter(|e| e.relation == "contradicts").collect();
+        assert_eq!(contradicts.len(), 1);
+        assert_eq!(contradicts[0].weight, -1);
+    }
+
+    #[test]
+    fn no_self_edges_in_any_relation() {
+        let dir = make_dir(vec![
+            entry("e1", "unique alpha",   "memory/core", 100, &["tag"]),
+            entry("e2", "unique alpha",   "memory/core", 200, &["tag", "error"]),
+        ]);
+        let g = project_gix(&dir);
+        for edge in g.edges() {
+            assert_ne!(edge.from, edge.to, "self-edge found: {:?}", edge);
+        }
+    }
 }

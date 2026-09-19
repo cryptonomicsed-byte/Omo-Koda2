@@ -3,6 +3,8 @@ pub use act_receipt::{ActReceipt, EpistemicSeverity, PoCWProof};
 
 use crate::identity::AgentId;
 use ed25519_dalek::{Signature, Signer, Verifier, VerifyingKey};
+use gix_core::Gix1Index;
+use gix_types::{Gix1, GixKind, GixNamespace, RoutingHints};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -120,10 +122,13 @@ impl Receipt {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReceiptStore {
-    receipts: HashMap<String, Receipt>,
-    last_hash: String,
-    chain: Vec<String>,
+    receipts:    HashMap<String, Receipt>,
+    last_hash:   String,
+    chain:       Vec<String>,
     merkle_tree: SimpleMerkleTree,
+    /// GIX1 Merkle-auditable index — one envelope per recorded receipt.
+    #[serde(default)]
+    gix1_index:  Gix1Index,
 }
 
 pub type ReceiptEngine = ReceiptStore;
@@ -141,10 +146,11 @@ impl ReceiptStore {
 
     pub fn new() -> Self {
         Self {
-            receipts: HashMap::new(),
-            last_hash: "0".repeat(64),
-            chain: Vec::new(),
+            receipts:    HashMap::new(),
+            last_hash:   "0".repeat(64),
+            chain:       Vec::new(),
             merkle_tree: SimpleMerkleTree::new(),
+            gix1_index:  Gix1Index::new(),
         }
     }
 
@@ -177,7 +183,30 @@ impl ReceiptStore {
         self.last_hash = id.clone();
         self.chain.push(id.clone());
         self.merkle_tree.insert(id.clone());
+
+        // GIX Phase 3: stamp a GIX1 envelope for every receipt into the index.
+        let created_at_ms = receipt.timestamp.saturating_mul(1000);
+        let env = Gix1::new(
+            GixKind::Receipt,
+            GixNamespace::OsovmExecution,
+            id.as_bytes(),
+            None,
+            created_at_ms,
+            RoutingHints::default(),
+        );
+        self.gix1_index.insert_gix1(env);
+
         self.receipts.insert(id, receipt);
+    }
+
+    /// Current Merkle root of the GIX1 receipt index.
+    pub fn gix1_root(&self) -> &str {
+        self.gix1_index.root()
+    }
+
+    /// Access the full GIX1 receipt index.
+    pub fn gix1_index(&self) -> &Gix1Index {
+        &self.gix1_index
     }
 
     pub fn get(&self, receipt_id: &str) -> Option<&Receipt> {
@@ -299,4 +328,59 @@ fn blake3_hash_hex(parts: &[&[u8]]) -> String {
         hasher.update(part);
     }
     hasher.finalize().to_hex().to_string()
+}
+
+#[cfg(test)]
+mod gix_tests {
+    use super::*;
+    use ed25519_dalek::SigningKey;
+    use rand::rngs::OsRng;
+
+    fn make_store_with_receipts(n: u32) -> ReceiptStore {
+        let key = SigningKey::generate(&mut OsRng);
+        let agent_id = crate::identity::AgentId::from_str("agent-test");
+        let mut store = ReceiptStore::new();
+        for i in 0..n {
+            let r = Receipt::new_merkle(
+                &agent_id,
+                &format!("action_{i}"),
+                &format!("params_{i}"),
+                store.last_hash(),
+                &store.current_merkle_root(),
+                &key,
+            );
+            store.record(r);
+        }
+        store
+    }
+
+    #[test]
+    fn gix1_index_grows_with_receipts() {
+        let store = make_store_with_receipts(3);
+        assert_eq!(store.gix1_index().len(), 3);
+    }
+
+    #[test]
+    fn gix1_root_changes_per_receipt() {
+        let mut store = make_store_with_receipts(0);
+        let root0 = store.gix1_root().to_string();
+        let _ = make_store_with_receipts(1);
+        store = make_store_with_receipts(1);
+        assert_ne!(store.gix1_root(), root0);
+    }
+
+    #[test]
+    fn gix1_audit_passes_after_recording() {
+        let store = make_store_with_receipts(5);
+        assert!(store.gix1_index().audit().is_ok());
+    }
+
+    #[test]
+    fn gix1_envelopes_resolvable() {
+        let store = make_store_with_receipts(2);
+        for entry in store.gix1_index().entries() {
+            let resolved = store.gix1_index().resolve(&entry.canonical_id);
+            assert!(resolved.is_some(), "envelope not found for {}", entry.canonical_id);
+        }
+    }
 }

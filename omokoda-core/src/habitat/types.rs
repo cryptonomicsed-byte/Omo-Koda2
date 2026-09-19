@@ -4,6 +4,8 @@
 //! cognitive loop can reason about physical availability, power, bandwidth,
 //! and adjacent peers without coupling to any specific sensor API.
 
+use gix_core::Gix1Index;
+use gix_types::{Gix1, GixKind, GixNamespace, RoutingHints};
 use serde::{Deserialize, Serialize};
 
 /// A named physical or logical area the agent occupies or monitors.
@@ -108,6 +110,9 @@ pub struct Habitat {
     pub home_address: HabitatAddress,
     /// URL of the agent's OmoHome (Home Assistant) instance, if any.
     pub omohome_url:  Option<String>,
+    /// GIX1 index — one envelope per registered area / upserted resource.
+    #[serde(default)]
+    pub gix1_index:   Gix1Index,
 }
 
 impl Habitat {
@@ -119,6 +124,7 @@ impl Habitat {
             agent_id:    agent_id.to_string(),
             areas:       Vec::new(),
             resources:   Vec::new(),
+            gix1_index:  Gix1Index::new(),
             home_address: HabitatAddress {
                 agent_id:    agent_id.to_string(),
                 confirmed_at: std::time::SystemTime::now()
@@ -132,14 +138,34 @@ impl Habitat {
     }
 
     /// Register a new area (no-op if area_id already present).
+    /// GIX Phase 3: stamps a `GixNamespace::OmokodaAgent` envelope on first registration.
     pub fn register_area(&mut self, area: Area) {
         if !self.areas.iter().any(|a| a.area_id == area.area_id) {
+            let env = Gix1::new(
+                GixKind::Physical,
+                GixNamespace::OmokodaAgent,
+                area.area_id.as_bytes(),
+                None,
+                now_ms(),
+                RoutingHints::default(),
+            );
+            self.gix1_index.insert_gix1(env);
             self.areas.push(area);
         }
     }
 
     /// Upsert a physical resource (replace if resource_id already present).
+    /// GIX Phase 3: stamps a `GixNamespace::OmokodaAgent` envelope on every upsert.
     pub fn upsert_resource(&mut self, resource: PhysicalResource) {
+        let env = Gix1::new(
+            GixKind::Physical,
+            GixNamespace::OmokodaAgent,
+            resource.resource_id.as_bytes(),
+            None,
+            now_ms(),
+            RoutingHints::default(),
+        );
+        self.gix1_index.insert_gix1(env);
         if let Some(existing) = self.resources.iter_mut().find(|r| r.resource_id == resource.resource_id) {
             *existing = resource;
         } else {
@@ -151,4 +177,11 @@ impl Habitat {
     pub fn resources_in(&self, area_id: &str) -> Vec<&PhysicalResource> {
         self.resources.iter().filter(|r| r.area_id == area_id).collect()
     }
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }

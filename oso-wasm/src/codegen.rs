@@ -101,17 +101,15 @@ fn emit_policy_constants(out: &mut String, ir: &OsoIR) {
     writeln!(
         out,
         "  (global $require_evidence i32 (i32.const {}))",
-        if ir.policy.require_evidence { 1 } else { 0 }
+        if ir.evidence.required { 1 } else { 0 }
     )
     .unwrap();
-    writeln!(
-        out,
-        "  (global $min_witnesses i32 (i32.const {}))",
-        ir.policy.min_witnesses
-    )
-    .unwrap();
-    if let Some(window) = ir.policy.dispute_window_s {
-        writeln!(out, "  (global $dispute_window i64 (i64.const {window}))").unwrap();
+    let quorum = ir.witness_policy.as_ref().map(|w| w.quorum).unwrap_or(0);
+    writeln!(out, "  (global $min_witnesses i32 (i32.const {quorum}))").unwrap();
+    // esu_tithe: canonical 0.0369 unless overridden in the freeform policy map.
+    if let Some(tithe) = ir.policy.get("esu_tithe").and_then(|v| v.as_f64()) {
+        let bp = (tithe * 10_000.0) as i64;
+        writeln!(out, "  (global $esu_tithe_bp i32 (i32.const {bp}))").unwrap();
     }
     writeln!(out).unwrap();
 }
@@ -197,7 +195,10 @@ fn emit_tithe(out: &mut String, _ir: &OsoIR) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::{AssetSpec, OsoIR, PolicySpec, SettlementSpec};
+    use crate::ir::{
+        AssetSpec, EvidenceKind, EvidenceSpec, OsoIR, SettlementSpec, WitnessPolicySpec,
+        WitnessType,
+    };
 
     fn sample_ir() -> OsoIR {
         OsoIR {
@@ -210,16 +211,21 @@ mod tests {
             }],
             capabilities: vec!["TRANSFER".into()],
             minimum_tier: 2,
+            evidence: EvidenceSpec {
+                required: true,
+                kind: Some(EvidenceKind::ZangbetoReceipt),
+                fields: vec![],
+            },
+            witness_policy: Some(WitnessPolicySpec {
+                quorum: 1,
+                types: vec![WitnessType::Agent],
+            }),
             settlement: SettlementSpec {
                 currency: Some("ASE".into()),
                 amount: Some(1000),
                 tithe_rate: Some(0.0369),
             },
-            policy: PolicySpec {
-                require_evidence: true,
-                min_witnesses: 1,
-                dispute_window_s: Some(86400),
-            },
+            policy: Default::default(),
             lifecycle: vec!["deposit".into(), "withdraw".into(), "settle".into()],
         }
     }

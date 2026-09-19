@@ -47,7 +47,8 @@ pub struct AssetSpec {
 pub struct EvidenceSpec {
     #[serde(default)]
     pub required: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Serialised as `"type"` to match the OSO-IR spec wire format.
+    #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
     pub kind:     Option<EvidenceKind>,
     #[serde(default)]
     pub fields:   Vec<String>,
@@ -95,10 +96,25 @@ pub enum WitnessType {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SettlementSpec {
+    /// "ASE" | "SUI" | "USDC"
     #[serde(default)]
-    pub currency:   Option<String>,
+    pub currency:       Option<String>,
+    /// "6-pool" | "direct" | "dao-pool"
     #[serde(default)]
-    pub amount:     Option<u64>,
+    pub fee_routing:    Option<String>,
+    /// Creator's share of fees (0.0–1.0)
     #[serde(default)]
-    pub tithe_rate: Option<f64>,
+    pub creator_share:  Option<f64>,
+    /// Burn share (0.0–1.0)
+    #[serde(default)]
+    pub burn_share:     Option<f64>,
+    /// Provider/ecosystem pool share (0.0–1.0)
+    #[serde(default)]
+    pub provider_share: Option<f64>,
+    /// Legacy: fixed settlement amount in token units (kept for WASM codegen)
+    #[serde(default)]
+    pub amount:         Option<u64>,
+    /// Legacy: Èṣù tithe rate override (preferred: use policy.esu_tithe)
+    #[serde(default)]
+    pub tithe_rate:     Option<f64>,
 }

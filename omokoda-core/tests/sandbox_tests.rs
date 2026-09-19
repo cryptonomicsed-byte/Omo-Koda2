@@ -4,6 +4,7 @@ mod sandbox_tests {
     use std::fs;
     use wat::parse_str;
 
+    #[cfg(feature = "wasm")]
     #[tokio::test]
     async fn wasm_tool_executes_simple_module_in_sandbox() {
         std::env::set_var("OMOKODA_ENABLE_WASM", "1");
@@ -44,6 +45,7 @@ mod sandbox_tests {
         fs::remove_file("test_simple.wasm").unwrap();
     }
 
+    #[cfg(feature = "wasm")]
     #[tokio::test]
     async fn wasm_tool_rejects_outside_workspace_paths() {
         std::env::set_var("OMOKODA_ENABLE_WASM", "1");

@@ -85,14 +85,14 @@ impl Walletd {
 
     /// Spend `amount` Synapse for `reason`.
     ///
-    /// Enforces stake locks: available = `synapse_balance − synapse_staked`.
-    /// Any active lock amounts are excluded from the spendable pool.
+    /// `lock_stake` already deducts from `synapse_balance`, so the balance
+    /// field IS the free (spendable) pool — no need to subtract staked again.
     pub async fn spend_synapse(&self, amount: u64, reason: &str) -> Result<(), String> {
         let mut w = self.wallet.lock().await;
         w.apply_decay();
 
-        // Only the unstaked portion is spendable.
-        let available = w.synapse_balance.saturating_sub(w.synapse_staked);
+        // synapse_balance is already the unlocked portion (lock_stake deducts it).
+        let available = w.synapse_balance;
         if available < amount {
             return Err(format!(
                 "insufficient available synapse: {} available \
@@ -365,6 +365,9 @@ mod tests {
     #[tokio::test]
     async fn spend_synapse_respects_stake_lock() {
         let mut w = AgentComputeWallet::birth_endowment("agent:test");
+        // Flush decay before reading balance so the lock amount is based on
+        // the post-decay value (avoids race with apply_decay inside lock_stake).
+        w.apply_decay();
         // Stake all but 5 Synapse
         let bal = w.synapse_balance;
         w.lock_stake("lock:1", "tier_gate", bal - 5, 0).unwrap();

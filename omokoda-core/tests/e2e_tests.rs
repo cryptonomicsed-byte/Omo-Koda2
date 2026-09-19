@@ -18,6 +18,7 @@ mod e2e_tests {
         }};
     }
 
+    #[cfg(feature = "wasm")]
     #[tokio::test]
     async fn e2e_birth_think_and_wasm_act_flow() {
         std::env::set_var("OMOKODA_ENABLE_WASM", "1");

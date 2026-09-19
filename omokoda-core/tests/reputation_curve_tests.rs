@@ -85,8 +85,8 @@ fn reputation_gain_scales_with_difficulty() {
 
 #[test]
 fn tier_for_20_is_t0() {
-    // boundary: tier_for uses > (exclusive), so 20.0 is NOT > 20.0 → T0
-    assert_eq!(tier_for(20.0), 0);
+    // Closed-lower bounds: [20,40) → T1, so 20.0 exactly is T1.
+    assert_eq!(tier_for(20.0), 1);
 }
 
 #[test]
@@ -115,8 +115,9 @@ fn tier_for_80_001_is_t4() {
 }
 
 #[test]
-fn tier_for_80_exactly_is_t3() {
-    assert_eq!(tier_for(80.0), 3);
+fn tier_for_80_exactly_is_t4() {
+    // Closed-lower bounds: [80,100) → T4, so 80.0 exactly is T4.
+    assert_eq!(tier_for(80.0), 4);
 }
 
 // --- diminishing returns formula ---

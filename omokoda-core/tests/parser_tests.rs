@@ -95,9 +95,10 @@ mod parser_tests {
     fn text_fallback_becomes_think() {
         let result = parse("hello, what can you do?");
         assert!(result.is_ok());
+        // Plain chat uses private:false so the agentic loop can reach tools.
         assert!(matches!(
             result.unwrap()[0],
-            Statement::Think { private: true, .. }
+            Statement::Think { private: false, .. }
         ));
     }
 

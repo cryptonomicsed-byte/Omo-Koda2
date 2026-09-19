@@ -83,15 +83,17 @@ mod tests {
     // parallel threads (the default). One test, one path, no race.
     #[test]
     fn vault_key_derivation_is_deterministic_and_agent_specific() {
-        std::env::set_var(
-            "OMOKODA_VAULT_MASTER_PATH",
-            "/tmp/omokoda-test-vault-master.key",
-        );
+        // Use TMPDIR (respects Android/Termux) instead of hardcoded /tmp.
+        let tmp = std::env::var("TMPDIR")
+            .unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
+        let path = format!("{}/omokoda-test-vault-master.key", tmp);
+        let _ = std::fs::remove_file(&path); // clean up any stale file
+        std::env::set_var("OMOKODA_VAULT_MASTER_PATH", &path);
         let a1 = derive_agent_vault_key("agent-1").unwrap();
         let a2 = derive_agent_vault_key("agent-1").unwrap();
         let b = derive_agent_vault_key("agent-2").unwrap();
         assert_eq!(a1, a2, "same agent id must yield the same key");
         assert_ne!(a1, b, "different agent ids must yield different keys");
-        let _ = std::fs::remove_file("/tmp/omokoda-test-vault-master.key");
+        let _ = std::fs::remove_file(&path);
     }
 }

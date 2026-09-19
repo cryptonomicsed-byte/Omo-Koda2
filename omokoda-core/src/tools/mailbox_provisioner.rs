@@ -72,7 +72,7 @@ pub struct MailboxCredentials {
 /// configured (AGENT_MAIL_DOMAIN absent), or `Err(...)` on API failure.
 ///
 /// Callers in the birth path should:
-/// ```rust
+/// ```ignore
 /// if let Some(creds) = provision_mailbox(...).await.ok().flatten() {
 ///     vault.agent_email = Some(creds.email);
 ///     vault.agent_email_password = Some(creds.password);

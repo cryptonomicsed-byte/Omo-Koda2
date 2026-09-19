@@ -3622,6 +3622,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tower-http",
+ "tracing",
  "urlencoding",
  "uuid",
  "walkdir",

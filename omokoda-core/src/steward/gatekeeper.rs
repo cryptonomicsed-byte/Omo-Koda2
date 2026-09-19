@@ -97,7 +97,15 @@ impl EsuGatekeeper {
     pub fn new() -> Self {
         Self {
             gates: Self::make_gates(),
-            dna: HermeticDna::default(),
+            dna: HermeticDna {
+                mentalism: 0.5,
+                correspondence: 0.5,
+                vibration: 0.5,
+                polarity: 0.5,
+                rhythm: 0.5,
+                cause_effect: 0.5,
+                gender: 0.5,
+            },
         }
     }
 

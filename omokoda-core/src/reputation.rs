@@ -155,7 +155,7 @@ pub fn reputation_gain(base: f64, reputation: f64, multiplier: f64) -> f64 {
 }
 
 pub fn tier_for(reputation: f64) -> u8 {
-    // Boundaries match Tier::from_reputation() in justice/tier.rs:
+    // Closed-lower-bound ranges matching Tier::from_reputation() in justice/tier.rs:
     // [0,20) → T0, [20,40) → T1, [40,60) → T2, [60,80) → T3,
     // [80,100) → T4, [100,∞) → T5.
     if reputation >= 100.0 {

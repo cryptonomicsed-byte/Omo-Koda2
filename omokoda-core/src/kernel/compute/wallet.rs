@@ -75,12 +75,14 @@ impl AgentComputeWallet {
         let days = (now - self.last_decay_tick) as f64 / 86_400.0;
         let factor = (1.0 - DOPAMINE_DAILY_DECAY).powf(days);
 
-        let new_dop = (self.dopamine_balance as f64 * factor) as u64;
+        // Round instead of truncate so sub-token decay on small balances
+        // doesn't cause spurious 1-token drops (e.g. 5 → 4 after 1 second).
+        let new_dop = (self.dopamine_balance as f64 * factor).round() as u64;
         let dop_decayed = self.dopamine_balance.saturating_sub(new_dop);
         self.dopamine_decayed = self.dopamine_decayed.saturating_add(dop_decayed);
         self.dopamine_balance = new_dop;
 
-        let new_syn = (self.synapse_balance as f64 * factor) as u64;
+        let new_syn = (self.synapse_balance as f64 * factor).round() as u64;
         let syn_decayed = self.synapse_balance.saturating_sub(new_syn);
         self.synapse_decayed = self.synapse_decayed.saturating_add(syn_decayed);
         self.synapse_balance = new_syn;

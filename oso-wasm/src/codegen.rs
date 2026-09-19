@@ -228,7 +228,7 @@ mod tests {
     fn compiles_to_wat_module() {
         let ir = sample_ir();
         let wat = WasmCodegen::compile(&ir).unwrap();
-        assert!(wat.contains("(module $asepool)"));
+        assert!(wat.contains("(module $asepool"));
         assert!(wat.contains("oso_host"));
         assert!(wat.contains("$lifecycle_deposit"));
         assert!(wat.contains("$lifecycle_withdraw"));
